@@ -157,23 +157,33 @@ Level.prototype.draw_horizontal = function(meta_windows, work_area, y) {
  */
 function tile(windows, work_area) {
     let vertical = false; // Currently only horizontal tiling is fully implemented
-    {
-        let width = 0;
-        let height = 0;
-        for(let window of windows) {
-            width = Math.max(window.width, width);
-            height = Math.max(window.height, height);
-        }
-        // Vertical tiling mode is disabled for now
-        // if(width < height)
-        //     vertical = true;
+    
+    // IMPROVEMENT: Calculate total required area first
+    // This allows us to detect overflow earlier
+    let totalRequiredArea = 0;
+    for(let window of windows) {
+        // Use real area of each window
+        totalRequiredArea += (window.width * window.height);
     }
+    
+    // Available area in workspace
+    const availableArea = work_area.width * work_area.height;
+    
+    // If required area > 90% of available area, probably won't fit
+    // (we leave 10% margin for spacing)
+    const SPACE_USAGE_THRESHOLD = 0.9;
+    
     let levels = [new Level(work_area)];
     let total_width = 0;
     let total_height = 0;
     let x, y;
 
     let overflow = false; // Set to true if windows don't fit
+    
+    // Quick overflow check based on area
+    if (totalRequiredArea > availableArea * SPACE_USAGE_THRESHOLD) {
+        overflow = true;
+    }
 
     if(!vertical) { // Horizontal tiling mode
         // Calculate total width of all windows including spacing
@@ -456,17 +466,52 @@ export function tileWorkspaceWindows(workspace, reference_meta_window, _monitor,
     return overflow;
 }
 
-export function windowFits(window, workspace, monitor) {
+/**
+ * Checks if a new window fits in the workspace
+ * 
+ * This function is called BEFORE adding a window to the workspace
+ * to decide if it should go to a new workspace.
+ * 
+ * Checks:
+ * 1. If workspace has maximized/fullscreen window (= completely occupied)
+ * 2. If adding the window would cause overflow in the layout
+ * 
+ * @param {Meta.Window} window - New window to check
+ * @param {Meta.Workspace} workspace - Target workspace
+ * @param {number} monitor - Monitor index
+ * @returns {boolean} True if window fits, false if should go to new workspace
+ */
+export function canFitWindow(window, workspace, monitor) {
+    // Get workspace information
     let working_info = getWorkingInfo(workspace, window, monitor);
     if(!working_info) return false;
+    
+    // If window is already in this workspace, it always fits
     if(workspace.index() === window.get_workspace().index()) return true;
 
+    // RULE 1: Workspace with maximized window = completely occupied
+    // Cannot receive new apps
+    for(let existing_window of working_info.meta_windows) {
+        if(windowing.isMaximizedOrFullscreen(existing_window)) {
+            return false; // Workspace occupied by maximized window
+        }
+    }
+
+    // RULE 2: Try adding window to layout and see if it fits
     let windows = working_info.windows;
     windows.push(new WindowDescriptor(window, windows.length));
 
-    for(let window of working_info.meta_windows)
-        if(windowing.isMaximizedOrFullscreen(window))
-            return false;
+    // Calculate layout with the new window
+    const tile_result = tile(windows, working_info.work_area);
+    
+    // If it caused overflow, doesn't fit
+    return !tile_result.overflow;
+}
 
-    return !(tile(windows, working_info.work_area).overflow);
+/**
+ * DEPRECATED: Use canFitWindow() ao invés desta função
+ * Mantida para compatibilidade com código existente
+ */
+export function windowFits(window, workspace, monitor) {
+    return canFitWindow(window, workspace, monitor);
 }

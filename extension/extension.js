@@ -60,8 +60,15 @@ export default class WindowMosaicExtension extends Extension {
 
     /**
      * Handler called when a new window is created in the display.
-     * Waits for the window to be fully initialized before attempting to tile it.
-     * If the window doesn't fit in the current workspace, it's moved to a new one.
+     * 
+     * OVERFLOW FLOW (Main requirement):
+     * 1. Every new window goes through space optimization calculation
+     * 2. If it fits in current workspace → add to tiling
+     * 3. If it DOESN'T fit → move to new workspace
+     * 
+     * SPECIAL RULES:
+     * - Workspace with maximized window = completely occupied
+     * - Maximized window with other apps → move maximized to new workspace
      * 
      * @param {Meta.Display} _ - The display (unused)
      * @param {Meta.Window} window - The newly created window
@@ -70,7 +77,8 @@ export default class WindowMosaicExtension extends Extension {
         let timeout = setInterval(() => {
             let workspace = window.get_workspace();
             let monitor = window.get_monitor();
-            // Ensure window is valid before performing any actions
+            
+            // Ensure window is valid before any action
             if( monitor !== null &&
                 window.wm_class !== null &&
                 window.get_compositor_private() &&
@@ -78,13 +86,37 @@ export default class WindowMosaicExtension extends Extension {
                 !window.is_hidden())
             {
                 clearTimeout(timeout);
-                if(windowing.isRelated(window)) {
-                    if((windowing.isMaximizedOrFullscreen(window) &&
-                        windowing.getMonitorWorkspaceWindows(workspace, monitor).length > 1) ||
-                        !tiling.windowFits(window, workspace, monitor))
+                
+                // Check if window should be managed
+                if(!windowing.isRelated(window)) {
+                    return; // Window should not be managed (dialog, etc.)
+                }
+                
+                // CASE 1: Window is maximized/fullscreen AND there are other apps in workspace
+                // → Move maximized window to new workspace
+                if(windowing.isMaximizedOrFullscreen(window)) {
+                    const workspaceWindows = windowing.getMonitorWorkspaceWindows(workspace, monitor);
+                    if(workspaceWindows.length > 1) {
+                        console.log('[MOSAIC WM] Maximized window with other apps - moving to new workspace');
                         windowing.moveOversizedWindow(window);
-                    else
-                        tiling.tileWorkspaceWindows(workspace, window, monitor, false);
+                        return;
+                    }
+                }
+                
+                // CASE 2: Check if window FITS in current workspace
+                // Uses canFitWindow() which checks:
+                // - If workspace has maximized window (= occupied)
+                // - If adding would cause overflow
+                const canFit = tiling.canFitWindow(window, workspace, monitor);
+                
+                if(!canFit) {
+                    // DOESN'T FIT → Create new workspace and move window
+                    console.log('[MOSAIC WM] Window doesn\'t fit - moving to new workspace');
+                    windowing.moveOversizedWindow(window);
+                } else {
+                    // FITS → Add to tiling in current workspace
+                    console.log('[MOSAIC WM] Window fits - adding to tiling');
+                    tiling.tileWorkspaceWindows(workspace, window, monitor, false);
                 }
             }
         }, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS);
