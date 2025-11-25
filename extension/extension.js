@@ -18,6 +18,7 @@
 
 /* exported init */
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+import Meta from 'gi://Meta';
 import * as windowing from './windowing.js';
 import * as tiling from './tiling.js';
 import * as drawing from './drawing.js';
@@ -94,11 +95,20 @@ export default class WindowMosaicExtension extends Extension {
                 
                 // CASE 1: Window is maximized/fullscreen AND there are other apps in workspace
                 // → Move maximized window to new workspace
+                // IMPORTANT: Only move if workspace is NOT empty (has other windows)
                 if(windowing.isMaximizedOrFullscreen(window)) {
                     const workspaceWindows = windowing.getMonitorWorkspaceWindows(workspace, monitor);
+                    
+                    // Only move to new workspace if there are OTHER windows (length > 1)
+                    // If workspace is empty or only has this window, keep it here
                     if(workspaceWindows.length > 1) {
                         console.log('[MOSAIC WM] Maximized window with other apps - moving to new workspace');
                         windowing.moveOversizedWindow(window);
+                        return;
+                    } else {
+                        console.log('[MOSAIC WM] Maximized window in empty workspace - keeping here');
+                        // Don't move, just tile normally (will be alone in workspace)
+                        tiling.tileWorkspaceWindows(workspace, window, monitor, false);
                         return;
                     }
                 }
@@ -126,12 +136,34 @@ export default class WindowMosaicExtension extends Extension {
         let window = win.meta_window;
         let monitor = window.get_monitor();
         if(monitor === global.display.get_primary_monitor()) {
-            tiling.tileWorkspaceWindows(windowing.getWorkspace(), 
+            const workspace = windowing.getWorkspace();
+            
+            tiling.tileWorkspaceWindows(workspace, 
                 global.display.get_focus_window(),
                 null,
                 true);
-            let workspace = window.get_workspace()
-            windowing.renavigate(workspace, windowing.getMonitorWorkspaceWindows(workspace, monitor).length === 0);
+            
+            // Check if workspace is now empty and navigate to previous if so
+            const windows = windowing.getMonitorWorkspaceWindows(workspace, monitor);
+            const managedWindows = windows.filter(w => windowing.isRelated(w));
+            
+            if (managedWindows.length === 0) {
+                console.log('[MOSAIC WM] Workspace is empty - navigating to previous workspace');
+                
+                const previousWorkspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
+                
+                if (previousWorkspace && previousWorkspace.index() !== workspace.index()) {
+                    previousWorkspace.activate(global.get_current_time());
+                    console.log(`[MOSAIC WM] Navigated to workspace ${previousWorkspace.index()}`);
+                } else {
+                    const nextWorkspace = workspace.get_neighbor(Meta.MotionDirection.RIGHT);
+                    
+                    if (nextWorkspace && nextWorkspace.index() !== workspace.index()) {
+                        nextWorkspace.activate(global.get_current_time());
+                        console.log(`[MOSAIC WM] Navigated to workspace ${nextWorkspace.index()}`);
+                    }
+                }
+            }
         }
     }
     
