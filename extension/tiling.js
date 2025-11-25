@@ -50,15 +50,20 @@ class WindowDescriptor{
     
     /**
      * Applies this descriptor's position to the actual window.
+     * Finds the window by ID instead of index to support filtered window lists.
      * 
      * @param {Meta.Window[]} meta_windows - Array of actual windows
      * @param {number} x - New X position
      * @param {number} y - New Y position
      */
     draw(meta_windows, x, y) {
-        meta_windows[this.index].move_frame(false,
-                                            x,
-                                            y);
+        // Find window by ID instead of index (supports filtered lists)
+        const window = meta_windows.find(w => w.get_id() === this.id);
+        if (window) {
+            window.move_frame(false, x, y);
+        } else {
+            console.warn(`[MOSAIC WM] Could not find window with ID ${this.id} for drawing`);
+        }
     }
 }
 
@@ -269,32 +274,42 @@ function tile(windows, work_area) {
     }
 }
 
-function swapElements (array, index1, index2) {
-    if(!array[index1] || !array[index2])
-        return; // Prevent making swaps for elements that do not exist
+/**
+ * Swaps two elements in an array by their window IDs.
+ * Finds windows by ID and swaps their positions.
+ * 
+ * @param {WindowDescriptor[]} array - Array of window descriptors
+ * @param {number} id1 - ID of first window
+ * @param {number} id2 - ID of second window
+ */
+function swapElements(array, id1, id2) {
+    // Find indices of windows with these IDs
+    const index1 = array.findIndex(w => w.id === id1);
+    const index2 = array.findIndex(w => w.id === id2);
+    
+    if (index1 === -1 || index2 === -1)
+        return; // One or both windows not found
+    
+    // Swap the elements
     let tmp = array[index1];
     array[index1] = array[index2];
     array[index2] = tmp;
 }
 
+/**
+ * Sets a temporary swap between two windows by their IDs.
+ * The swap will be applied when applyTmpSwap() is called.
+ * Now uses window IDs directly instead of converting to indices.
+ * 
+ * @param {number} id1 - ID of first window
+ * @param {number} id2 - ID of second window
+ */
 export function setTmpSwap(id1, id2) {
-    let index1 = null
-    let index2 = null;
-
-    for(let i = 0; i < working_windows.length; i++) {
-        let window = working_windows[i];
-        if(window.id === id1 && index1 === null)
-            index1 = i;
-        if(window.id === id2 && index2 === null)
-            index2 = i;
-    }
-    if(index1 !== null && index2 !== null) {
-        if( index1 === index2 ||
-            (tmp_swap[0] === index2 && tmp_swap[1] === index1))
-            return;
-        tmp_swap = [index1, index2];
-    } else
-        console.error("Could not find both indexes for windows");
+    // Store IDs directly instead of converting to indices
+    // This works correctly even with filtered window lists
+    if (id1 === id2 || (tmp_swap[0] === id2 && tmp_swap[1] === id1))
+        return;
+    tmp_swap = [id1, id2];
 }
 
 export function clearTmpSwap() {
@@ -315,8 +330,10 @@ export function applySwaps(workspace, array) {
 }
 
 export function applyTmp(array) {
-    if(tmp_swap.length !== 0)
+    if(tmp_swap.length !== 0) {
+        console.log(`[MOSAIC WM] Applying tmp swap: ${tmp_swap[0]} <-> ${tmp_swap[1]}`);
         swapElements(array, tmp_swap[0], tmp_swap[1]);
+    }
 }
 
 /**
@@ -343,20 +360,24 @@ export function checkValidity(monitor, workspace, window, strict) {
     }
 }
 
-function getWorkingInfo(workspace, window, monitor) {
-    if(!workspace) // Failsafe for undefined workspace
-        return false;
-
-    let current_monitor = null;
-    if(window)
+function getWorkingInfo(workspace, window, _monitor) {
+    let current_monitor = _monitor;
+    if(current_monitor === undefined)
         current_monitor = window.get_monitor();
-    else
-        current_monitor = monitor;
-    if(current_monitor === null || current_monitor === false)
-        return false;
 
+    // Get all windows in this workspace and monitor
     let meta_windows = windowing.getMonitorWorkspaceWindows(workspace, current_monitor);
+    
+    // SNAP AWARENESS: Filter out snapped windows before applying swaps
+    // This ensures swap indices match the windows being tiled
+    const snappedWindows = snap.getSnappedWindows(workspace, current_monitor);
+    const snappedIds = snappedWindows.map(s => s.window.get_id());
+    const nonSnappedMetaWindows = meta_windows.filter(w => !snappedIds.includes(w.get_id()));
+    
+    // If we have snapped windows, use only non-snapped for swap application
+    const windowsForSwaps = snappedWindows.length > 0 ? nonSnappedMetaWindows : meta_windows;
 
+    // Check if any window is maximized or fullscreen
     // If any window is maximized or fullscreen, we cannot tile this workspace
     // These windows should be in their own workspace
     for (const window of meta_windows) {
@@ -365,8 +386,8 @@ function getWorkingInfo(workspace, window, monitor) {
     }
 
     // Put needed window info into an enum so it can be transferred between arrays
-    let _windows = windowsToDescriptors(meta_windows, current_monitor, window);
-    // Apply window layout swaps
+    let _windows = windowsToDescriptors(windowsForSwaps, current_monitor, window);
+    // Apply window layout swaps (only to non-snapped windows if snap is active)
     applySwaps(workspace, _windows);
     working_windows = [];
     _windows.map(window => working_windows.push(window)); // Set working windows before tmp application
@@ -465,7 +486,9 @@ export function tileWorkspaceWindows(workspace, reference_meta_window, _monitor,
     
     // SNAP DETECTION: Check for snapped windows
     // IMPORTANT: Skip snap logic during drag operations to prevent interference
-    const snappedWindows = isDragging ? [] : snap.getSnappedWindows(workspace, monitor);
+    // SNAP DETECTION: Check if there are snapped windows
+    const snappedWindows = snap.getSnappedWindows(workspace, monitor);
+    console.log(`[MOSAIC WM] tileWorkspaceWindows: Found ${snappedWindows.length} snapped windows`);
     
     if (snappedWindows.length > 0) {
         console.log(`[MOSAIC WM] Found ${snappedWindows.length} snapped window(s)`);
@@ -490,7 +513,14 @@ export function tileWorkspaceWindows(workspace, reference_meta_window, _monitor,
         }
         
         // Single snap or quarter snaps - calculate remaining space
+        // Calculate remaining space after snap
         const remainingSpace = snap.calculateRemainingSpace(workspace, monitor);
+        const snappedIds = snappedWindows.map(s => s.window.get_id());
+        const nonSnappedCount = workspace_windows.filter(w => !snappedIds.includes(w.get_id())).length;
+        console.log(`[MOSAIC WM] Remaining space: x=${remainingSpace.x}, y=${remainingSpace.y}, w=${remainingSpace.width}, h=${remainingSpace.height}`);
+        console.log(`[MOSAIC WM] Total workspace windows: ${workspace_windows.length}, Non-snapped: ${nonSnappedCount}`);
+        console.log(`[MOSAIC WM] isDragging: ${isDragging}, has dragRemainingSpace: ${!!dragRemainingSpace}`);
+        
         
         if (remainingSpace) {
             console.log('[MOSAIC WM] Tiling in remaining space after snap');
@@ -516,8 +546,34 @@ export function tileWorkspaceWindows(workspace, reference_meta_window, _monitor,
             // Tile non-snapped windows in remaining space
             if (nonSnappedDescriptors.length > 0) {
                 console.log(`[MOSAIC WM] Tiling ${nonSnappedDescriptors.length} non-snapped windows in remaining space`);
+                
+                // IMPORTANT: Apply swaps to non-snapped windows
+                applySwaps(workspace, nonSnappedDescriptors);
+                applyTmp(nonSnappedDescriptors);
+                
                 const tile_info = tile(nonSnappedDescriptors, remainingSpace);
-                drawTile(tile_info, remainingSpace, meta_windows);
+                
+                // IMPORTANT: Only draw tiles if NOT dragging
+                // During drag, we just calculate positions but don't move windows
+                // This prevents flickering as the window follows the cursor
+                if (!isDragging) {
+                    drawTile(tile_info, remainingSpace, meta_windows);
+                } else {
+                    // During drag: Show preview by applying masks and drawing preview boxes
+                    console.log('[MOSAIC WM] Drawing preview during drag with snap');
+                    
+                    // Apply masks to create preview windows
+                    let previewWindows = [];
+                    for (let window of nonSnappedDescriptors) {
+                        previewWindows.push(getMask(window));
+                    }
+                    
+                    // Create tile info with preview windows
+                    const preview_tile_info = tile(previewWindows, remainingSpace);
+                    
+                    // Draw preview boxes
+                    drawTile(preview_tile_info, remainingSpace, meta_windows);
+                }
             }
             
             return;

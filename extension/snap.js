@@ -134,30 +134,25 @@ export function calculateRemainingSpace(workspace, monitor) {
     // Single half-snap
     if (snappedWindows.length === 1) {
         const zone = snappedWindows[0].zone;
-        console.log(`[MOSAIC WM] Single snap detected - zone: ${zone}, workArea: x=${workArea.x}, y=${workArea.y}, w=${workArea.width}, h=${workArea.height}`);
         
         if (zone === 'left') {
             // Window snapped to LEFT → remaining space is RIGHT half
-            const remaining = {
+            return {
                 x: workArea.x + workArea.width / 2,
                 y: workArea.y,
                 width: workArea.width / 2,
                 height: workArea.height
             };
-            console.log(`[MOSAIC WM] Left snap - calculated remaining: x=${remaining.x}, y=${remaining.y}, w=${remaining.width}, h=${remaining.height}`);
-            return remaining;
         }
         
         if (zone === 'right') {
             // Window snapped to RIGHT → remaining space is LEFT half
-            const remaining = {
+            return {
                 x: workArea.x,
                 y: workArea.y,
                 width: workArea.width / 2,
                 height: workArea.height
             };
-            console.log(`[MOSAIC WM] Right snap - calculated remaining: x=${remaining.x}, y=${remaining.y}, w=${remaining.width}, h=${remaining.height}`);
-            return remaining;
         }
         
         // Quarter snap - for now, return full area

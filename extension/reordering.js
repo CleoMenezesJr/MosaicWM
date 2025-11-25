@@ -86,7 +86,8 @@ export function drag(meta_window, child_frame, id, windows) {
     else
         tiling.setTmpSwap(id, target_id);
 
-    // Re-tile with the temporary swap, clear if it would cause overflow
+    // Re-tile with the temporary swap to show preview
+    // NOTE: This should maintain drag mode to use dragRemainingSpace
     if(tiling.tileWorkspaceWindows(workspace, null, monitor)) {
         tiling.clearTmpSwap();
         tiling.tileWorkspaceWindows(workspace, null, monitor)
@@ -108,25 +109,31 @@ export function startDrag(meta_window) {
     let monitor = meta_window.get_monitor();
     let meta_windows = windowing.getMonitorWorkspaceWindows(workspace, monitor);
     
-    // SNAP AWARENESS: Check for snapped windows BEFORE starting drag
+    // SNAP AWARENESS: Detect snapped windows and calculate remaining space
     const snappedWindows = snap.getSnappedWindows(workspace, monitor);
+    const snappedIds = snappedWindows.map(s => s.window.get_id());
     
-    // TEMPORARY LIMITATION: Disable reordering when snap is active
-    // This is because swap indices don't work correctly with mixed snapped/non-snapped windows
+    // Filter to only non-snapped windows for reordering
+    const nonSnappedMetaWindows = meta_windows.filter(w => !snappedIds.includes(w.get_id()));
+    
+    // Apply swaps only to non-snapped windows
+    tiling.applySwaps(workspace, nonSnappedMetaWindows);
+    
+    // Create descriptors only for non-snapped windows
+    let descriptors = tiling.windowsToDescriptors(nonSnappedMetaWindows, monitor);
+    
+    // Calculate remaining space if there are snaps
+    let remainingSpace = null;
     if (snappedWindows.length > 0) {
-        console.log('[MOSAIC WM] Reordering disabled when snap is active (temporary limitation)');
-        return; // Don't start drag
+        remainingSpace = snap.calculateRemainingSpace(workspace, monitor);
     }
-    
-    tiling.applySwaps(workspace, meta_windows);
-    let descriptors = tiling.windowsToDescriptors(meta_windows, monitor);
 
     // Create visual mask for the dragged window
     tiling.createMask(meta_window);
     tiling.clearTmpSwap();
     
-    // No snap, so no remaining space needed
-    tiling.enableDragMode(null);
+    // Enable drag mode with remaining space
+    tiling.enableDragMode(remainingSpace);
 
     dragStart = true;
     drag(meta_window, meta_window.get_frame_rect(), meta_window.get_id(), JSON.parse(JSON.stringify(descriptors)));
