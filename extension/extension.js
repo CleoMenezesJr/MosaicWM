@@ -46,6 +46,8 @@ export default class WindowMosaicExtension extends Extension {
         this._workspaceManager = global.workspace_manager;
         this._sizeChanged = false;
         this._tileTimeout = null;
+        this._windowWorkspaceSignals = new Map(); // window_id -> signal_id for workspace-changed
+        this._workspaceChangeTimeout = null; // Debounce timeout for manual workspace changes
     }
 
     _tileAllWorkspaces = () => {
@@ -129,6 +131,9 @@ export default class WindowMosaicExtension extends Extension {
                     console.log('[MOSAIC WM] Window fits - adding to tiling');
                     tiling.tileWorkspaceWindows(workspace, window, monitor, false);
                 }
+                
+                // Connect workspace-changed signal to detect manual window movement
+                this._connectWindowWorkspaceSignal(window);
             }
         }, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS);
     }
@@ -136,6 +141,9 @@ export default class WindowMosaicExtension extends Extension {
     _destroyedHandler = (_, win) => {
         let window = win.meta_window;
         let monitor = window.get_monitor();
+        
+        // Disconnect workspace-changed signal
+        this._disconnectWindowWorkspaceSignal(window);
         
         // Only process if window was managed (not excluded/blacklisted)
         if(windowing.isExcluded(window)) {
@@ -179,6 +187,68 @@ export default class WindowMosaicExtension extends Extension {
     
     _switchWorkspaceHandler = (_, win) => {
         tileWindowWorkspace(win.meta_window); // Tile when switching to a workspace. Helps to create a more cohesive experience.
+    }
+
+    /**
+     * Handler for manual window movement between workspaces.
+     * Uses debounce to avoid interrupting rapid navigation.
+     * 
+     * @param {Meta.Window} window - The window that changed workspace
+     */
+    _windowWorkspaceChangedHandler = (window) => {
+        // Clear any existing debounce timeout
+        if (this._workspaceChangeTimeout) {
+            clearTimeout(this._workspaceChangeTimeout);
+        }
+        
+        // Debounce: wait 500ms before checking overflow
+        // This allows user to navigate through multiple workspaces without interruption
+        this._workspaceChangeTimeout = setTimeout(() => {
+            const workspace = window.get_workspace();
+            const monitor = window.get_monitor();
+            
+            // Skip if window is excluded
+            if (windowing.isExcluded(window)) {
+                return;
+            }
+            
+            // Check if window fits in new workspace
+            const canFit = tiling.canFitWindow(window, workspace, monitor);
+            
+            if (!canFit) {
+                console.log('[MOSAIC WM] Manual move: window doesn\'t fit - moving to new workspace');
+                windowing.moveOversizedWindow(window);
+            } else {
+                console.log('[MOSAIC WM] Manual move: window fits - tiling');
+                tiling.tileWorkspaceWindows(workspace, window, monitor, false);
+            }
+        }, 500); // 500ms debounce
+    }
+
+    /**
+     * Connect workspace-changed signal for a window.
+     * 
+     * @param {Meta.Window} window - The window to track
+     */
+    _connectWindowWorkspaceSignal(window) {
+        const signalId = window.connect('workspace-changed', () => {
+            this._windowWorkspaceChangedHandler(window);
+        });
+        this._windowWorkspaceSignals.set(window.get_id(), signalId);
+    }
+
+    /**
+     * Disconnect workspace-changed signal for a window.
+     * 
+     * @param {Meta.Window} window - The window to stop tracking
+     */
+    _disconnectWindowWorkspaceSignal(window) {
+        const windowId = window.get_id();
+        const signalId = this._windowWorkspaceSignals.get(windowId);
+        if (signalId) {
+            window.disconnect(signalId);
+            this._windowWorkspaceSignals.delete(windowId);
+        }
     }
 
     /**
@@ -384,6 +454,21 @@ export default class WindowMosaicExtension extends Extension {
         }
 
         drawing.clearActors();
+
+        // Cleanup workspace-changed signals
+        this._windowWorkspaceSignals.forEach((signalId, windowId) => {
+            const window = global.display.get_window_by_id(windowId);
+            if (window) {
+                window.disconnect(signalId);
+            }
+        });
+        this._windowWorkspaceSignals.clear();
+        
+        // Clear debounce timeout
+        if (this._workspaceChangeTimeout) {
+            clearTimeout(this._workspaceChangeTimeout);
+            this._workspaceChangeTimeout = null;
+        }
 
         // Reset all event ID arrays to prevent memory leaks
         this._wmEventIds = [];
