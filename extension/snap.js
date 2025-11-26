@@ -90,16 +90,22 @@ export function getSnappedWindows(workspace, monitor) {
     const workArea = workspace.get_work_area_for_monitor(monitor);
     const snapped = [];
     
+    console.log(`[MOSAIC WM] getSnappedWindows: Workspace ${workspace.index()}, Monitor ${monitor}, Checking ${windows.length} windows`);
+    
+    
     for (const window of windows) {
+        const frame = window.get_frame_rect();
         const snapState = detectSnap(window, workArea);
+        
+        console.log(`[MOSAIC WM] Window ${window.get_id()}: frame=(x=${frame.x}, y=${frame.y}, w=${frame.width}, h=${frame.height}), snapped=${snapState.snapped}, zone=${snapState.zone}`);
+        
         if (snapState.snapped) {
-            snapped.push({
-                window: window,
-                zone: snapState.zone
-            });
+            snapped.push({ window, zone: snapState.zone });
+            console.log(`[MOSAIC WM] ✓ Window ${window.get_id()} is snapped to ${snapState.zone}`);
         }
     }
     
+    console.log(`[MOSAIC WM] getSnappedWindows: Found ${snapped.length} snapped windows`);
     return snapped;
 }
 

@@ -81,10 +81,13 @@ export function drag(meta_window, child_frame, id, windows) {
     }
 
     // Set up temporary swap if cursor is over a different window
-    if(target_id === id || target_id === null)
+    if(target_id === id || target_id === null) {
         tiling.clearTmpSwap();
-    else
+        console.log('[MOSAIC WM] Drag: No swap (cursor not over another window)');
+    } else {
         tiling.setTmpSwap(id, target_id);
+        console.log(`[MOSAIC WM] Drag: Setting swap ${id} <-> ${target_id}`);
+    }
 
     // Re-tile with the temporary swap to show preview
     // NOTE: This should maintain drag mode to use dragRemainingSpace
@@ -115,6 +118,8 @@ export function startDrag(meta_window) {
     
     // Filter to only non-snapped windows for reordering
     const nonSnappedMetaWindows = meta_windows.filter(w => !snappedIds.includes(w.get_id()));
+    console.log(`[MOSAIC WM] startDrag: Total windows: ${meta_windows.length}, Snapped: ${snappedWindows.length}, Non-snapped: ${nonSnappedMetaWindows.length}`);
+    
     
     // Apply swaps only to non-snapped windows
     tiling.applySwaps(workspace, nonSnappedMetaWindows);
@@ -126,6 +131,7 @@ export function startDrag(meta_window) {
     let remainingSpace = null;
     if (snappedWindows.length > 0) {
         remainingSpace = snap.calculateRemainingSpace(workspace, monitor);
+        console.log(`[MOSAIC WM] startDrag: Remaining space for drag: x=${remainingSpace.x}, y=${remainingSpace.y}, w=${remainingSpace.width}, h=${remainingSpace.height}`);
     }
 
     // Create visual mask for the dragged window
