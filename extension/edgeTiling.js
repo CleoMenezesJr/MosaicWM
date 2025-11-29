@@ -242,6 +242,99 @@ export function getWindowState(window) {
 }
 
 /**
+ * Get all edge-tiled windows in a workspace
+ * Replaces snap.getSnappedWindows()
+ * @param {Meta.Workspace} workspace
+ * @param {number} monitor
+ * @returns {Array<{window: Meta.Window, zone: number}>}
+ */
+export function getEdgeTiledWindows(workspace, monitor) {
+    const windows = workspace.list_windows().filter(w => 
+        w.get_monitor() === monitor && 
+        !w.is_skip_taskbar() &&
+        w.window_type === Meta.WindowType.NORMAL
+    );
+    
+    return windows
+        .map(w => ({window: w, state: getWindowState(w)}))
+        .filter(({state}) => state && state.zone !== TileZone.NONE)
+        .map(({window, state}) => ({window, zone: state.zone}));
+}
+
+/**
+ * Get all non-edge-tiled windows in a workspace
+ * Replaces snap.getNonSnappedWindows()
+ * @param {Meta.Workspace} workspace
+ * @param {number} monitor
+ * @returns {Array<Meta.Window>}
+ */
+export function getNonEdgeTiledWindows(workspace, monitor) {
+    const windows = workspace.list_windows().filter(w => 
+        w.get_monitor() === monitor && 
+        !w.is_skip_taskbar() &&
+        w.window_type === Meta.WindowType.NORMAL
+    );
+    
+    return windows.filter(w => {
+        const state = getWindowState(w);
+        return !state || state.zone === TileZone.NONE;
+    });
+}
+
+/**
+ * Calculate remaining workspace space after edge-tiled windows
+ * Replaces snap.calculateRemainingSpace()
+ * @param {Meta.Workspace} workspace
+ * @param {number} monitor
+ * @returns {Object} Remaining space rectangle {x, y, width, height}
+ */
+export function calculateRemainingSpace(workspace, monitor) {
+    const workArea = workspace.get_work_area_for_monitor(monitor);
+    const edgeTiledWindows = getEdgeTiledWindows(workspace, monitor);
+    
+    if (edgeTiledWindows.length === 0) {
+        return workArea;
+    }
+    
+    // Check for left/right full tiles
+    const hasLeftFull = edgeTiledWindows.some(w => w.zone === TileZone.LEFT_FULL);
+    const hasRightFull = edgeTiledWindows.some(w => w.zone === TileZone.RIGHT_FULL);
+    
+    // Check for quarter tiles
+    const hasLeftQuarters = edgeTiledWindows.some(w => 
+        w.zone === TileZone.TOP_LEFT || w.zone === TileZone.BOTTOM_LEFT
+    );
+    const hasRightQuarters = edgeTiledWindows.some(w => 
+        w.zone === TileZone.TOP_RIGHT || w.zone === TileZone.BOTTOM_RIGHT
+    );
+    
+    const halfWidth = Math.floor(workArea.width / 2);
+    
+    // If left side is occupied (full or quarters), remaining space is on the right
+    if (hasLeftFull || hasLeftQuarters) {
+        return {
+            x: workArea.x + halfWidth,
+            y: workArea.y,
+            width: workArea.width - halfWidth,
+            height: workArea.height
+        };
+    }
+    
+    // If right side is occupied (full or quarters), remaining space is on the left
+    if (hasRightFull || hasRightQuarters) {
+        return {
+            x: workArea.x,
+            y: workArea.y,
+            width: halfWidth,
+            height: workArea.height
+        };
+    }
+    
+    // No full/quarter tiles, return full work area
+    return workArea;
+}
+
+/**
  * Clear saved window state
  * @param {Meta.Window} window
  */
@@ -318,20 +411,26 @@ export function applyTile(window, zone, workArea) {
         return false;
     }
     
-    // Unmaximize first
-    window.unmaximize(); // No arguments needed
+    // Capture winId before callback
+    const winId = window.get_id();
+    
+    // Unmaximize first (no arguments needed)
+    window.unmaximize();
     
     // Apply tile using idle callback for reliability
     GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
         window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
         
+        // Note: Square corners feature deferred - requires GLSL shaders
+        // See interactive_resize_task.md for future implementation
+
         // Update state
-        const state = _windowStates.get(window.get_id());
+        const state = _windowStates.get(winId);
         if (state) {
             state.zone = zone;
         }
         
-        console.log(`[MOSAIC WM] Applied edge tile zone ${zone} to window ${window.get_id()}`);
+        console.log(`[MOSAIC WM] Applied edge tile zone ${zone} to window ${winId}`);
         return GLib.SOURCE_REMOVE;
     });
     
@@ -344,25 +443,29 @@ export function applyTile(window, zone, workArea) {
  * @param {Function} callback - Optional callback to call after restoration completes
  */
 export function removeTile(window, callback = null) {
-    const state = getWindowState(window);
-    if (!state || state.zone === TileZone.NONE) {
-        console.log(`[MOSAIC WM] removeTile: No state or already NONE for window ${window.get_id()}`);
+    const winId = window.get_id();
+    const savedState = _windowStates.get(winId);
+
+    if (!savedState || savedState.zone === TileZone.NONE) {
+        console.log(`[MOSAIC WM] removeTile: Window ${winId} is not edge-tiled`);
         if (callback) callback();
         return;
     }
     
-    console.log(`[MOSAIC WM] removeTile: Removing tile from window ${window.get_id()}, zone=${state.zone}`);
+    console.log(`[MOSAIC WM] removeTile: Removing tile from window ${winId}, zone=${savedState.zone}`);
     
+    // Note: Square corners restoration deferred
+
     // Clear zone BEFORE restoring to prevent hasEdgeTiledWindows from detecting this window
     // Make a copy of the state to preserve dimensions
-    const savedWidth = state.width;
-    const savedHeight = state.height;
-    const savedX = state.x;
-    const savedY = state.y;
+    const savedWidth = savedState.width;
+    const savedHeight = savedState.height;
+    const savedX = savedState.x;
+    const savedY = savedState.y;
     
     console.log(`[MOSAIC WM] removeTile: Saved dimensions: ${savedWidth}x${savedHeight} at (${savedX}, ${savedY})`);
     
-    state.zone = TileZone.NONE;
+    savedState.zone = TileZone.NONE;
     
     // Get current window position before restoration
     const currentFrame = window.get_frame_rect();

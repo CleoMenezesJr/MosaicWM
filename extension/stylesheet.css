@@ -11,3 +11,12 @@
     border-radius: 12px;
     z-index: -1;
 }
+
+/* Edge-tiled windows should have square corners (both 1/2 and 1/4) */
+:edge-tiled {
+    border-radius: 0 !important;
+}
+
+:edge-tiled .window-clone {
+    border-radius: 0 !important;
+}

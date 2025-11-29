@@ -9,7 +9,7 @@
 import * as tiling from './tiling.js';
 import * as windowing from './windowing.js';
 import * as constants from './constants.js';
-import * as snap from './snap.js';
+import * as edgeTiling from './edgeTiling.js';
 
 // Module state for drag operations
 var dragStart = false; // Whether a drag operation is in progress
@@ -51,24 +51,24 @@ export function drag(meta_window, child_frame, id, windows) {
         y: _cursor[1]
     }
     
-    // SNAP AWARENESS: Filter out snapped windows from reordering
-    // Snapped windows stay in place, only non-snapped can be reordered
-    const snappedWindows = snap.getSnappedWindows(workspace, monitor);
-    const snappedIds = snappedWindows.map(s => s.window.get_id());
+    // EDGE TILING AWARENESS: Filter out edge-tiled windows from reordering
+    // Edge-tiled windows stay in place, only non-edge-tiled can be reordered
+    const edgeTiledWindows = edgeTiling.getEdgeTiledWindows(workspace, monitor);
+    const edgeTiledIds = edgeTiledWindows.map(s => s.window.get_id());
     
-    // Filter windows to only non-snapped ones for reordering
-    const reorderableWindows = windows.filter(w => !snappedIds.includes(w.id));
+    // Filter windows to only non-edge-tiled ones for reordering
+    const reorderableWindows = windows.filter(w => !edgeTiledIds.includes(w.id));
     
-    // If dragged window is snapped, don't allow it to be reordered
+    // If dragged window is edge-tiled, don't allow it to be reordered
     // But don't block the entire drag operation
-    if (snappedIds.includes(id)) {
-        // Snapped window can't be reordered, just return without doing anything
+    if (edgeTiledIds.includes(id)) {
+        // Edge-tiled window can't be reordered, just return without doing anything
         if(dragStart)
             dragTimeout = setTimeout(() => { drag(meta_window, child_frame, id, windows); }, constants.DRAG_UPDATE_INTERVAL_MS);
         return;
     }
 
-    // Find the window closest to the cursor (only among non-snapped windows)
+    // Find the window closest to the cursor (only among non-edge-tiled windows)
     let minimum_distance = Infinity;
     let target_id = null;
     for(let window of reorderableWindows) {
@@ -112,25 +112,25 @@ export function startDrag(meta_window) {
     let monitor = meta_window.get_monitor();
     let meta_windows = windowing.getMonitorWorkspaceWindows(workspace, monitor);
     
-    // SNAP AWARENESS: Detect snapped windows and calculate remaining space
-    const snappedWindows = snap.getSnappedWindows(workspace, monitor);
-    const snappedIds = snappedWindows.map(s => s.window.get_id());
+    // EDGE TILING AWARENESS: Detect edge-tiled windows and calculate remaining space
+    const edgeTiledWindows = edgeTiling.getEdgeTiledWindows(workspace, monitor);
+    const edgeTiledIds = edgeTiledWindows.map(s => s.window.get_id());
     
-    // Filter to only non-snapped windows for reordering
-    const nonSnappedMetaWindows = meta_windows.filter(w => !snappedIds.includes(w.get_id()));
-    console.log(`[MOSAIC WM] startDrag: Total windows: ${meta_windows.length}, Snapped: ${snappedWindows.length}, Non-snapped: ${nonSnappedMetaWindows.length}`);
+    // Filter to only non-edge-tiled windows for reordering
+    const nonEdgeTiledMetaWindows = meta_windows.filter(w => !edgeTiledIds.includes(w.get_id()));
+    console.log(`[MOSAIC WM] startDrag: Total windows: ${meta_windows.length}, Edge-tiled: ${edgeTiledWindows.length}, Non-edge-tiled: ${nonEdgeTiledMetaWindows.length}`);
     
     
-    // Apply swaps only to non-snapped windows
-    tiling.applySwaps(workspace, nonSnappedMetaWindows);
+    // Apply swaps only to non-edge-tiled windows
+    tiling.applySwaps(workspace, nonEdgeTiledMetaWindows);
     
-    // Create descriptors only for non-snapped windows
-    let descriptors = tiling.windowsToDescriptors(nonSnappedMetaWindows, monitor);
+    // Create descriptors only for non-edge-tiled windows
+    let descriptors = tiling.windowsToDescriptors(nonEdgeTiledMetaWindows, monitor);
     
-    // Calculate remaining space if there are snaps
+    // Calculate remaining space if there are edge tiles
     let remainingSpace = null;
-    if (snappedWindows.length > 0) {
-        remainingSpace = snap.calculateRemainingSpace(workspace, monitor);
+    if (edgeTiledWindows.length > 0) {
+        remainingSpace = edgeTiling.calculateRemainingSpace(workspace, monitor);
         console.log(`[MOSAIC WM] startDrag: Remaining space for drag: x=${remainingSpace.x}, y=${remainingSpace.y}, w=${remainingSpace.width}, h=${remainingSpace.height}`);
     }
 

@@ -14,14 +14,14 @@ import * as constants from './constants.js';
 import * as windowing from './windowing.js';
 import * as reordering from './reordering.js';
 import * as drawing from './drawing.js';
-import * as snap from './snap.js';
+import * as edgeTiling from './edgeTiling.js';
 
 // Module-level state for tiling operations
 var masks = []; // Visual feedback masks for windows being dragged
 var working_windows = []; // Current set of window descriptors being tiled
 var tmp_swap = []; // Temporary swap for preview during drag
-var isDragging = false; // Flag to disable snap logic during drag
-var dragRemainingSpace = null; // Remaining space to use during drag (when snap is active)
+var isDragging = false; // Flag to track drag state
+var dragRemainingSpace = null; // Remaining space to use during drag (when edge tiling is active)
 
 /**
  * WindowDescriptor class
@@ -377,14 +377,14 @@ function getWorkingInfo(workspace, window, _monitor) {
     // Get all windows in this workspace and monitor
     let meta_windows = windowing.getMonitorWorkspaceWindows(workspace, current_monitor);
     
-    // SNAP AWARENESS: Filter out snapped windows before applying swaps
-    // This ensures swap indices match the windows being tiled
-    const snappedWindows = snap.getSnappedWindows(workspace, current_monitor);
-    const snappedIds = snappedWindows.map(s => s.window.get_id());
-    const nonSnappedMetaWindows = meta_windows.filter(w => !snappedIds.includes(w.get_id()));
-    
-    // If we have snapped windows, use only non-snapped for swap application
-    const windowsForSwaps = snappedWindows.length > 0 ? nonSnappedMetaWindows : meta_windows;
+    // EDGE TILING AWARENESS: Filter out edge-tiled windows before applying swaps
+    // Edge-tiled windows stay in their assigned positions
+    const edgeTiledWindows = edgeTiling.getEdgeTiledWindows(workspace, current_monitor);
+    const edgeTiledIds = edgeTiledWindows.map(s => s.window.get_id());
+    const nonEdgeTiledMetaWindows = meta_windows.filter(w => !edgeTiledIds.includes(w.get_id()));
+
+    // If we have edge-tiled windows, use only non-edge-tiled for swap application
+    const windowsForSwaps = edgeTiledWindows.length > 0 ? nonEdgeTiledMetaWindows : meta_windows;
 
     // Check if any window is maximized or fullscreen
     // If any window is maximized or fullscreen, we cannot tile this workspace
@@ -396,7 +396,7 @@ function getWorkingInfo(workspace, window, _monitor) {
 
     // Put needed window info into an enum so it can be transferred between arrays
     let _windows = windowsToDescriptors(windowsForSwaps, current_monitor, window);
-    // Apply window layout swaps (only to non-snapped windows if snap is active)
+    // Apply window layout swaps (only to non-edge-tiled windows if edge tiling is active)
     applySwaps(workspace, _windows);
     working_windows = [];
     _windows.map(window => working_windows.push(window)); // Set working windows before tmp application
@@ -493,98 +493,58 @@ export function tileWorkspaceWindows(workspace, reference_meta_window, _monitor,
 
     const workspace_windows = windowing.getMonitorWorkspaceWindows(workspace, monitor);
     
-    // SNAP DETECTION: Check for snapped windows
-    // IMPORTANT: Skip snap logic during drag operations to prevent interference
-    // SNAP DETECTION: Check if there are snapped windows
-    const snappedWindows = snap.getSnappedWindows(workspace, monitor);
-    console.log(`[MOSAIC WM] tileWorkspaceWindows: Found ${snappedWindows.length} snapped windows`);
+    // EDGE TILING DETECTION: Check for edge-tiled windows
+    // IMPORTANT: Edge-tiled windows stay in their assigned positions
+    // EDGE TILING DETECTION: Check if there are edge-tiled windows
+    const edgeTiledWindows = edgeTiling.getEdgeTiledWindows(workspace, monitor);
+    console.log(`[MOSAIC WM] tileWorkspaceWindows: Found ${edgeTiledWindows.length} edge-tiled windows`);
     
-    if (snappedWindows.length > 0) {
-        console.log(`[MOSAIC WM] Found ${snappedWindows.length} snapped window(s)`);
+    if (edgeTiledWindows.length > 0) {
+        console.log(`[MOSAIC WM] Found ${edgeTiledWindows.length} edge-tiled window(s)`);
         
-        // Check if we have 2 half-snaps (left + right = fully occupied)
-        const zones = snappedWindows.map(w => w.zone);
-        if (zones.includes('left') && zones.includes('right')) {
-            console.log('[MOSAIC WM] Two half-snaps detected - workspace fully occupied');
+        // Check if we have 2 half-tiles (left + right = fully occupied)
+        const zones = edgeTiledWindows.map(w => w.zone);
+        const hasLeftFull = zones.includes(edgeTiling.TileZone.LEFT_FULL);
+        const hasRightFull = zones.includes(edgeTiling.TileZone.RIGHT_FULL);
+        const hasLeftQuarters = zones.some(z => z === edgeTiling.TileZone.TOP_LEFT || z === edgeTiling.TileZone.BOTTOM_LEFT);
+        const hasRightQuarters = zones.some(z => z === edgeTiling.TileZone.TOP_RIGHT || z === edgeTiling.TileZone.BOTTOM_RIGHT);
+        
+        if ((hasLeftFull || hasLeftQuarters) && (hasRightFull || hasRightQuarters)) {
+            console.log('[MOSAIC WM] Both sides edge-tiled - workspace fully occupied');
             
-            // Get non-snapped windows
-            const nonSnappedMeta = snap.getNonSnappedWindows(workspace, monitor);
+            // Get non-edge-tiled windows
+            const nonEdgeTiledMeta = edgeTiling.getNonEdgeTiledWindows(workspace, monitor);
             
-            // Move all non-snapped windows to new workspace
-            for (const window of nonSnappedMeta) {
+            // Move all non-edge-tiled windows to new workspace
+            for (const window of nonEdgeTiledMeta) {
                 if (!windowing.isExcluded(window)) {
-                    console.log('[MOSAIC WM] Moving non-snapped window to new workspace');
+                    console.log('[MOSAIC WM] Moving non-edge-tiled window to new workspace');
                     windowing.moveOversizedWindow(window);
                 }
             }
             
-            return; // Don't tile, snapped windows stay in place
+            return; // Don't tile, edge-tiled windows stay in place
         }
         
-        // Single snap or quarter snaps - calculate remaining space
-        // Calculate remaining space after snap
-        const remainingSpace = snap.calculateRemainingSpace(workspace, monitor);
-        const snappedIds = snappedWindows.map(s => s.window.get_id());
-        const nonSnappedCount = workspace_windows.filter(w => !snappedIds.includes(w.get_id())).length;
+        // Single tile or quarter tiles - calculate remaining space
+        // Calculate remaining space after edge tiling
+        const remainingSpace = edgeTiling.calculateRemainingSpace(workspace, monitor);
+        const edgeTiledIds = edgeTiledWindows.map(s => s.window.get_id());
+        const nonEdgeTiledCount = workspace_windows.filter(w => !edgeTiledIds.includes(w.get_id())).length;
         console.log(`[MOSAIC WM] Remaining space: x=${remainingSpace.x}, y=${remainingSpace.y}, w=${remainingSpace.width}, h=${remainingSpace.height}`);
-        console.log(`[MOSAIC WM] Total workspace windows: ${workspace_windows.length}, Non-snapped: ${nonSnappedCount}`);
+        console.log(`[MOSAIC WM] Total workspace windows: ${workspace_windows.length}, Non-edge-tiled: ${nonEdgeTiledCount}`);
         console.log(`[MOSAIC WM] isDragging: ${isDragging}, has dragRemainingSpace: ${!!dragRemainingSpace}`);
         
+        // Filter out edge-tiled windows from tiling
+        meta_windows = meta_windows.filter(w => !edgeTiledIds.includes(w.get_id()));
+        console.log(`[MOSAIC WM] After filtering edge-tiled: ${meta_windows.length} windows to tile`);
         
-        if (remainingSpace) {
-            console.log('[MOSAIC WM] Tiling in remaining space after snap');
-            
-            // Get non-snapped windows
-            const nonSnappedMeta = snap.getNonSnappedWindows(workspace, monitor);
-            
-            // Convert to descriptors using createDescriptor
-            const nonSnappedDescriptors = [];
-            for (let i = 0; i < meta_windows.length; i++) {
-                const window = meta_windows[i];
-                const isSnapped = snappedWindows.some(s => s.window.get_id() === window.get_id());
-                
-                if (!isSnapped) {
-                    // Use createDescriptor to properly filter and create descriptor
-                    const descriptor = createDescriptor(window, monitor, i, reference_meta_window);
-                    if (descriptor) {
-                        nonSnappedDescriptors.push(descriptor);
-                    }
-                }
-            }
-            
-            // Tile non-snapped windows in remaining space
-            if (nonSnappedDescriptors.length > 0) {
-                console.log(`[MOSAIC WM] Tiling ${nonSnappedDescriptors.length} non-snapped windows in remaining space`);
-                
-                // IMPORTANT: Apply swaps to non-snapped windows
-                applySwaps(workspace, nonSnappedDescriptors);
-                applyTmp(nonSnappedDescriptors);
-                
-                const tile_info = tile(nonSnappedDescriptors, remainingSpace);
-                
-                // IMPORTANT: Only draw tiles if NOT dragging
-                // During drag, we just calculate positions but don't move windows
-                // This prevents flickering as the window follows the cursor
-                if (!isDragging) {
-                    drawTile(tile_info, remainingSpace, meta_windows);
-                } else {
-                    // During drag: Show preview by applying masks and drawing preview boxes
-                    console.log('[MOSAIC WM] Drawing preview during drag with snap');
-                    
-                    // Apply masks to create preview windows
-                    let previewWindows = [];
-                    for (let window of nonSnappedDescriptors) {
-                        previewWindows.push(getMask(window));
-                    }
-                    
-                    // Create tile info with preview windows
-                    const preview_tile_info = tile(previewWindows, remainingSpace);
-                    
-                    // Draw preview boxes
-                    drawTile(preview_tile_info, remainingSpace, meta_windows);
-                }
-            }
-            
+        // Set work_area to remaining space for tiling calculations
+        work_area = remainingSpace;
+        
+        // If no non-edge-tiled windows, nothing to tile
+        if (meta_windows.length === 0) {
+            console.log('[MOSAIC WM] No non-edge-tiled windows to tile');
             return;
         }
     }
@@ -693,38 +653,44 @@ export function canFitWindow(window, workspace, monitor) {
         }
     }
 
-    // RULE 2: Check for snapped windows and use remaining space
-    const snappedWindows = snap.getSnappedWindows(workspace, monitor);
+
+    // RULE 2: Check for edge-tiled windows and use remaining space
+    const edgeTiledWindows = edgeTiling.getEdgeTiledWindows(workspace, monitor);
     let availableSpace = working_info.work_area;
     
-    console.log(`[MOSAIC WM] canFitWindow: Found ${snappedWindows.length} snapped windows`);
+    console.log(`[MOSAIC WM] canFitWindow: Found ${edgeTiledWindows.length} edge-tiled windows`);
     
-    if (snappedWindows.length > 0) {
-        // Check if workspace is fully occupied by snaps (e.g., left + right)
-        const zones = snappedWindows.map(w => w.zone);
-        if (zones.includes('left') && zones.includes('right')) {
-            console.log('[MOSAIC WM] canFitWindow: Workspace fully occupied by snaps - cannot fit');
+    if (edgeTiledWindows.length > 0) {
+        // Check if workspace is fully occupied by edge tiles (e.g., left + right)
+        const zones = edgeTiledWindows.map(w => w.zone);
+        const hasLeftFull = zones.includes(edgeTiling.TileZone.LEFT_FULL);
+        const hasRightFull = zones.includes(edgeTiling.TileZone.RIGHT_FULL);
+        const hasLeftQuarters = zones.some(z => z === edgeTiling.TileZone.TOP_LEFT || z === edgeTiling.TileZone.BOTTOM_LEFT);
+        const hasRightQuarters = zones.some(z => z === edgeTiling.TileZone.TOP_RIGHT || z === edgeTiling.TileZone.BOTTOM_RIGHT);
+        
+        if ((hasLeftFull || hasLeftQuarters) && (hasRightFull || hasRightQuarters)) {
+            console.log('[MOSAIC WM] canFitWindow: Workspace fully occupied by edge tiles - cannot fit');
             return false; // No space left
         }
         
-        // Calculate remaining space after snap
-        availableSpace = snap.calculateRemainingSpace(workspace, monitor);
+        // Calculate remaining space after edge tiling
+        availableSpace = edgeTiling.calculateRemainingSpace(workspace, monitor);
         console.log(`[MOSAIC WM] canFitWindow: Using remaining space after snap: ${availableSpace.width}x${availableSpace.height}`);
     }
 
     // RULE 3: Try adding window to layout and see if it fits in available space
-    // Only consider non-snapped windows for the layout
-    const snappedIds = snappedWindows.map(s => s.window.get_id());
+    // Only consider non-edge-tiled windows for the layout
+    const edgeTiledIds = edgeTiledWindows.map(s => s.window.get_id());
     
-    // Get all non-snapped windows (including the new window if it's already in the workspace)
+    // Get all non-edge-tiled windows (including the new window if it's already in the workspace)
     // This handles both cases:
     // - window-created: new window not yet in workspace
     // - window-added: new window already in workspace (overview drag-drop)
     let windows = working_info.windows.filter(w => 
-        !snappedIds.includes(w.id)
+        !edgeTiledIds.includes(w.id)
     );
     
-    console.log(`[MOSAIC WM] canFitWindow: Current non-snapped windows: ${windows.length}`);
+    console.log(`[MOSAIC WM] canFitWindow: Current non-edge-tiled windows: ${windows.length}`);
     
     // Check if the window being tested is already in the list
     // (happens with window-added signal from overview drag-drop)

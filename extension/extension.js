@@ -26,10 +26,9 @@ import * as windowing from './windowing.js';
 import * as tiling from './tiling.js';
 import * as drawing from './drawing.js';
 import * as reordering from './reordering.js';
-import * as snap from './snap.js';
+import * as edgeTiling from './edgeTiling.js';
 import * as constants from './constants.js';
 import { SettingsOverrider } from './settingsOverrider.js';
-import * as edgeTiling from './edgeTiling.js';
 
 function tileWindowWorkspace(meta_window) {
     if(!meta_window) return;
@@ -134,22 +133,21 @@ export default class WindowMosaicExtension extends Extension {
                     }
                 }
                 
-                // CASE 2: Check if workspace has exactly one snapped window
+                // CASE 2: Check if workspace has exactly one edge-tiled window
                 // If so, try to tile the new window with it BEFORE checking overflow
                 const workspaceWindows = windowing.getMonitorWorkspaceWindows(workspace, monitor);
-                const snappedWindows = workspaceWindows.filter(w => {
-                    const workArea = workspace.get_work_area_for_monitor(monitor);
-                    const snapState = snap.detectSnap(w, workArea);
-                    return snapState.snapped && w.get_id() !== window.get_id();
+                const edgeTiledWindows = workspaceWindows.filter(w => {
+                    const tileState = edgeTiling.getWindowState(w);
+                    return tileState && tileState.zone !== edgeTiling.TileZone.NONE && w.get_id() !== window.get_id();
                 });
                 
-                if (snappedWindows.length === 1 && workspaceWindows.length === 2) {
-                    // Try to tile with the snapped window
-                    console.log(`[MOSAIC WM] New window: Attempting to tile with snapped window`);
-                    const tileSuccess = windowing.tryTileWithSnappedWindow(window, snappedWindows[0], null);
+                if (edgeTiledWindows.length === 1 && workspaceWindows.length === 2) {
+                    // Try to tile with the edge-tiled window
+                    console.log(`[MOSAIC WM] New window: Attempting to tile with edge-tiled window`);
+                    const tileSuccess = windowing.tryTileWithSnappedWindow(window, edgeTiledWindows[0], null);
                     
                     if (tileSuccess) {
-                        console.log('[MOSAIC WM] New window: Successfully tiled with snapped window');
+                        console.log('[MOSAIC WM] New window: Successfully tiled with edge-tiled window');
                         this._connectWindowWorkspaceSignal(window);
                         return; // Done - don't do overflow check
                     }
@@ -318,25 +316,24 @@ export default class WindowMosaicExtension extends Extension {
             const workspaceWindows = windowing.getMonitorWorkspaceWindows(workspace, monitor);
             console.log(`[MOSAIC WM] Manual move: workspace has ${workspaceWindows.length} windows`);
             
-            const snappedWindows = workspaceWindows.filter(w => {
-                const workArea = workspace.get_work_area_for_monitor(monitor);
-                const snapState = snap.detectSnap(w, workArea);
-                const isSnapped = snapState.snapped && w.get_id() !== window.get_id();
-                console.log(`[MOSAIC WM] Manual move: window ${w.get_id()} snapped=${snapState.snapped}, isTarget=${w.get_id() === window.get_id()}, willInclude=${isSnapped}`);
-                return isSnapped;
+            const edgeTiledWindows = workspaceWindows.filter(w => {
+                const tileState = edgeTiling.getWindowState(w);
+                const isEdgeTiled = tileState && tileState.zone !== edgeTiling.TileZone.NONE && w.get_id() !== window.get_id();
+                console.log(`[MOSAIC WM] Manual move: window ${w.get_id()} edgeTiled=${isEdgeTiled}, isTarget=${w.get_id() === window.get_id()}, willInclude=${isEdgeTiled}`);
+                return isEdgeTiled;
             });
             
-            console.log(`[MOSAIC WM] Manual move: found ${snappedWindows.length} snapped windows, total ${workspaceWindows.length} windows`);
+            console.log(`[MOSAIC WM] Manual move: found ${edgeTiledWindows.length} edge-tiled windows, total ${workspaceWindows.length} windows`);
             
-            if (snappedWindows.length === 1 && workspaceWindows.length === 2) {
-                // Try to tile with the snapped window
-                console.log(`[MOSAIC WM] Manual move: Attempting to tile with snapped window`);
+            if (edgeTiledWindows.length === 1 && workspaceWindows.length === 2) {
+                // Try to tile with the edge-tiled window
+                console.log(`[MOSAIC WM] Manual move: Attempting to tile with edge-tiled window`);
                 const previousWorkspace = previousWorkspaceIndex !== undefined ? 
                     global.workspace_manager.get_workspace_by_index(previousWorkspaceIndex) : null;
-                const tileSuccess = windowing.tryTileWithSnappedWindow(window, snappedWindows[0], previousWorkspace);
+                const tileSuccess = windowing.tryTileWithSnappedWindow(window, edgeTiledWindows[0], previousWorkspace);
                 
                 if (tileSuccess) {
-                    console.log('[MOSAIC WM] Manual move: Successfully tiled with snapped window');
+                    console.log('[MOSAIC WM] Manual move: Successfully tiled with edge-tiled window');
                     return; // Don't do overflow check
                 }
                 // If tiling failed, window was already returned to previous workspace
@@ -450,10 +447,11 @@ export default class WindowMosaicExtension extends Extension {
             let workspace = window.get_workspace();
             let monitor = window.get_monitor();
             
-            // Only check overflow if window is being actively resized (not maximized/snapped)
+            // Only check overflow if window is being actively resized (not maximized/edge-tiled)
             let workArea = workspace.get_work_area_for_monitor(monitor);
-            let snapState = snap.detectSnap(window, workArea);
-            if (!windowing.isMaximizedOrFullscreen(window) && !snapState.snapped) {
+            let tileState = edgeTiling.getWindowState(window);
+            let isEdgeTiled = tileState && tileState.zone !== edgeTiling.TileZone.NONE;
+            if (!windowing.isMaximizedOrFullscreen(window) && !isEdgeTiled) {
                 let canFit = tiling.canFitWindow(window, workspace, monitor);
                 
                 if (!canFit) {
@@ -730,19 +728,18 @@ export default class WindowMosaicExtension extends Extension {
                 if (hasValidDimensions && !windowing.isExcluded(WINDOW) && isOverviewDragDrop) {
                     console.log(`[MOSAIC WM] window-added: Overview drag-drop - window ${WINDOW.get_id()} from workspace ${previousWorkspaceIndex} to ${WORKSPACE.index()}`);
                     
-                    // Check if target workspace has exactly one snapped window
+                    // Check if target workspace has exactly one edge-tiled window
                     const workspaceWindows = windowing.getMonitorWorkspaceWindows(WORKSPACE, MONITOR);
-                    const snappedWindows = workspaceWindows.filter(w => {
-                        const workArea = WORKSPACE.get_work_area_for_monitor(MONITOR);
-                        const snapState = snap.detectSnap(w, workArea);
-                        return snapState.snapped && w.get_id() !== WINDOW.get_id();
+                    const edgeTiledWindows = workspaceWindows.filter(w => {
+                        const tileState = edgeTiling.getWindowState(w);
+                        return tileState && tileState.zone !== edgeTiling.TileZone.NONE && w.get_id() !== WINDOW.get_id();
                     });
                     
-                    if (snappedWindows.length === 1 && workspaceWindows.length === 2) {
-                        // Try to tile with the snapped window
-                        console.log(`[MOSAIC WM] Attempting to tile with snapped window`);
+                    if (edgeTiledWindows.length === 1 && workspaceWindows.length === 2) {
+                        // Try to tile with the edge-tiled window
+                        console.log(`[MOSAIC WM] Attempting to tile with edge-tiled window`);
                         const previousWorkspace = this._workspaceManager.get_workspace_by_index(previousWorkspaceIndex);
-                        const tileSuccess = windowing.tryTileWithSnappedWindow(WINDOW, snappedWindows[0], previousWorkspace);
+                        const tileSuccess = windowing.tryTileWithSnappedWindow(WINDOW, edgeTiledWindows[0], previousWorkspace);
                         
                         if (tileSuccess) {
                             // Clean up tracking

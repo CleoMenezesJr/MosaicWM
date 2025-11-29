@@ -10,7 +10,7 @@
 
 import Meta from 'gi://Meta';
 import * as tiling from './tiling.js';
-import * as snap from './snap.js';
+import * as edgeTiling from './edgeTiling.js';
 
 /**
  * Gets the current timestamp from GNOME Shell.
@@ -137,35 +137,39 @@ export function moveBackWindow(window) {
  * @returns {Meta.Workspace} The new workspace where the window was moved
  */
 /**
- * Attempts to tile a window with an existing snapped window in the workspace.
+ * Attempts to tile a window with an existing edge-tiled window in the workspace.
  * If the window cannot be tiled (e.g., fixed size), returns it to the previous workspace.
  * 
  * @param {Meta.Window} window - The window to tile
- * @param {Meta.Window} snappedWindow - The existing snapped window
+ * @param {Meta.Window} edgeTiledWindow - The existing edge-tiled window
  * @param {Meta.Workspace} previousWorkspace - The workspace to return to if tiling fails
  * @returns {boolean} True if tiling succeeded, false if window was returned
  */
-export function tryTileWithSnappedWindow(window, snappedWindow, previousWorkspace) {
-    // Get the snap state of the existing window
+export function tryTileWithSnappedWindow(window, edgeTiledWindow, previousWorkspace) {
+    // Get the edge tiling state of the existing window
     const workspace = window.get_workspace();
     const monitor = window.get_monitor();
     const workArea = workspace.get_work_area_for_monitor(monitor);
     
-    const snapState = snap.detectSnap(snappedWindow, workArea);
+    const tileState = edgeTiling.getWindowState(edgeTiledWindow);
     
-    if (!snapState.snapped) {
-        console.log('[MOSAIC WM] Existing window is not snapped, cannot tile');
+    if (!tileState || tileState.zone === edgeTiling.TileZone.NONE) {
+        console.log('[MOSAIC WM] Existing window is not edge-tiled, cannot tile');
         return false;
     }
     
-    // Determine opposite side for tiling
+    // Determine opposite side for tiling based on edge tiling zone
     let direction;
-    if (snapState.zone === 'left') {
+    if (tileState.zone === edgeTiling.TileZone.LEFT_FULL ||
+        tileState.zone === edgeTiling.TileZone.TOP_LEFT ||
+        tileState.zone === edgeTiling.TileZone.BOTTOM_LEFT) {
         direction = 'right';
-    } else if (snapState.zone === 'right') {
+    } else if (tileState.zone === edgeTiling.TileZone.RIGHT_FULL ||
+               tileState.zone === edgeTiling.TileZone.TOP_RIGHT ||
+               tileState.zone === edgeTiling.TileZone.BOTTOM_RIGHT) {
         direction = 'left';
     } else {
-        console.log('[MOSAIC WM] Unsupported snap zone for tiling');
+        console.log('[MOSAIC WM] Unsupported edge tile zone for dual-tiling');
         return false;
     }
     
@@ -185,11 +189,26 @@ export function tryTileWithSnappedWindow(window, snappedWindow, previousWorkspac
         targetHeight = workArea.height;
     }
     
+    
     // Tile the window by positioning it
     try {
+        // IMPORTANT: Save window state BEFORE tiling
+        // This allows the auto-tiled window to exit tiling like a drag-and-drop tiled window
+        edgeTiling.saveWindowState(window);
+        
         window.unmaximize();
         window.move_resize_frame(false, targetX, targetY, targetWidth, targetHeight);
-        console.log(`[MOSAIC WM] Successfully tiled window ${window.get_wm_class()} to ${direction} (${targetWidth}x${targetHeight})`);
+        
+        // Update window state to mark it as edge-tiled
+        // This makes it behave exactly like a drag-and-drop tiled window
+        const zone = direction === 'left' ? edgeTiling.TileZone.LEFT_FULL : edgeTiling.TileZone.RIGHT_FULL;
+        const state = edgeTiling.getWindowState(window);
+        if (state) {
+            state.zone = zone;
+            console.log(`[MOSAIC WM] Dual-tiling: Updated window ${window.get_id()} state to zone ${zone}`);
+        }
+        
+        console.log(`[MOSAIC WM] Successfully dual-tiled window ${window.get_wm_class()} to ${direction} (${targetWidth}x${targetHeight})`);
         return true;
     } catch (error) {
         console.log(`[MOSAIC WM] Failed to tile window: ${error.message}`);
