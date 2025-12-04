@@ -373,6 +373,14 @@ function getWorkingInfo(workspace, window, _monitor) {
     // Get all windows in this workspace and monitor
     let meta_windows = windowing.getMonitorWorkspaceWindows(workspace, current_monitor);
     
+    // DRAG MODE: Exclude dragged window from tiling calculation during preview
+    // This ensures mosaic preview shows correct layout without the dragged window
+    if (isDragging && dragRemainingSpace && window) {
+        const draggedId = window.get_id();
+        meta_windows = meta_windows.filter(w => w.get_id() !== draggedId);
+        console.log(`[MOSAIC WM] Excluding dragged window ${draggedId} from mosaic calculation`);
+    }
+    
     // EDGE TILING AWARENESS: Filter out edge-tiled windows before applying swaps
     // Edge-tiled windows stay in their assigned positions
     const edgeTiledWindows = edgeTiling.getEdgeTiledWindows(workspace, current_monitor);
@@ -391,7 +399,9 @@ function getWorkingInfo(workspace, window, _monitor) {
     }
 
     // Put needed window info into an enum so it can be transferred between arrays
+    console.log(`[MOSAIC WM] Creating descriptors for ${windowsForSwaps.length} windows (isDragging=${isDragging}, dragRemainingSpace=${!!dragRemainingSpace})`);
     let _windows = windowsToDescriptors(windowsForSwaps, current_monitor, window);
+    console.log(`[MOSAIC WM] Created ${_windows.length} descriptors`);
     // Apply window layout swaps (only to non-edge-tiled windows if edge tiling is active)
     applySwaps(workspace, _windows);
     working_windows = [];
@@ -698,11 +708,28 @@ export function canFitWindow(window, workspace, monitor) {
     console.log(`[MOSAIC WM] canFitWindow: Tile result overflow: ${tile_result.overflow}`);
     
     // If it caused overflow, doesn't fit
-    if (tile_result.overflow) {
-        console.log('[MOSAIC WM] canFitWindow: Would overflow - cannot fit');
-        return false;
+    const fits = !tile_result.overflow;
+    
+    if (fits) {
+        console.log('[MOSAIC WM] canFitWindow: Window fits!');
+    } else {
+        console.log('[MOSAIC WM] canFitWindow: Window does NOT fit (overflow)');
     }
     
-    console.log('[MOSAIC WM] canFitWindow: Window fits!');
-    return true;
+    return fits;
+}
+
+/**
+ * Set remaining space to use during drag (for mosaic preview)
+ * @param {Object} space - Remaining space rectangle {x, y, width, height}
+ */
+export function setDragRemainingSpace(space) {
+    dragRemainingSpace = space;
+}
+
+/**
+ * Clear drag remaining space (return to normal tiling)
+ */
+export function clearDragRemainingSpace() {
+    dragRemainingSpace = null;
 }

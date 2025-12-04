@@ -90,10 +90,10 @@ export function drag(meta_window, child_frame, id, windows) {
     }
 
     // Re-tile with the temporary swap to show preview
-    // NOTE: This should maintain drag mode to use dragRemainingSpace
-    if(tiling.tileWorkspaceWindows(workspace, null, monitor)) {
+    // IMPORTANT: Pass meta_window so dragged window is excluded from mosaic calculation
+    if(tiling.tileWorkspaceWindows(workspace, meta_window, monitor)) {
         tiling.clearTmpSwap();
-        tiling.tileWorkspaceWindows(workspace, null, monitor)
+        tiling.tileWorkspaceWindows(workspace, meta_window, monitor)
     }
 
     // Continue drag loop if still dragging

@@ -630,12 +630,25 @@ export default class WindowMosaicExtension extends Extension {
                     this._currentZone = zone;
                     edgeTiling.setEdgeTilingActive(true, this._draggedWindow);
                     drawing.showTilePreview(zone, workArea, this._draggedWindow);
+                    
+                    // MOSAIC PREVIEW: Tile mosaic windows to remaining space during preview
+                    // Pass dragged window so it can be excluded from calculation
+                    const remainingSpace = edgeTiling.calculateRemainingSpaceForZone(zone, workArea);
+                    console.log(`[MOSAIC WM] Preview: tiling mosaic to remaining space x=${remainingSpace.x}, w=${remainingSpace.width}`);
+                    tiling.setDragRemainingSpace(remainingSpace);
+                    tiling.tileWorkspaceWindows(workspace, this._draggedWindow, monitor, false);
                 } else if (zone === edgeTiling.TileZone.NONE && this._currentZone !== edgeTiling.TileZone.NONE) {
                     // Exiting edge tiling zone
                     console.log(`[MOSAIC WM] Edge tiling: exiting zone, wasInEdgeTiling=${wasInEdgeTiling}`);
                     this._currentZone = edgeTiling.TileZone.NONE;
                     edgeTiling.setEdgeTilingActive(false, null);
                     drawing.hideTilePreview();
+                    
+                    // MOSAIC PREVIEW: Return mosaic to full workspace when preview cancelled
+                    // Pass dragged window so it can be excluded from calculation
+                    console.log(`[MOSAIC WM] Preview cancelled: returning mosaic to full workspace`);
+                    tiling.clearDragRemainingSpace();
+                    tiling.tileWorkspaceWindows(workspace, this._draggedWindow, monitor, false);
                     
                     // If window was previously in edge tiling, restore it now
                     if (wasInEdgeTiling) {
@@ -731,10 +744,12 @@ export default class WindowMosaicExtension extends Extension {
             // Note: Window restoration from edge tiling now happens during drag
             // in the polling loop, not here on release
             
-            
             drawing.hideTilePreview();
             this._draggedWindow = null;
             this._currentZone = edgeTiling.TileZone.NONE;
+            
+            // Clear drag remaining space (mosaic preview cleanup)
+            tiling.clearDragRemainingSpace();
             
             // Clear edge tiling active state
             edgeTiling.setEdgeTilingActive(false, null);
