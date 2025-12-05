@@ -20,6 +20,23 @@ let _isDragging = false; // Track if user is dragging a window
 let _animatingWindows = new Set(); // Track windows currently being animated
 let _initialWindowPositions = new Map(); // Track initial positions for new windows
 let _justEndedDrag = false; // Track if we just ended a drag (for smooth drop animation)
+let _resizingWindowId = null; // Track window being resized
+
+/**
+ * Set which window is currently being resized
+ * @param {number|null} windowId
+ */
+export function setResizingWindow(windowId) {
+    _resizingWindowId = windowId;
+}
+
+/**
+ * Get the ID of window currently being resized
+ * @returns {number|null}
+ */
+export function getResizingWindowId() {
+    return _resizingWindowId;
+}
 
 /**
  * Set dragging state

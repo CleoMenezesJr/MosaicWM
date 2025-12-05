@@ -572,6 +572,13 @@ export default class WindowMosaicExtension extends Extension {
      * @param {number} grabpo - The grab operation type
      */
     _grabOpBeginHandler = (_, window, grabpo) => {
+        // Track window being resized (4097, 8193, 20481, 32769, 16385, 40961 are resize ops)
+        const isResizeOp = [4097, 8193, 20481, 32769, 16385, 40961].includes(grabpo);
+        if (isResizeOp) {
+            animations.setResizingWindow(window.get_id());
+            console.log(`[MOSAIC WM] Tracking resize for window ${window.get_id()}, grabpo=${grabpo}`);
+        }
+        
         // Edge tiling: start polling cursor position
         if (grabpo === 1 && !windowing.isExcluded(window)) {
             console.log(`[MOSAIC WM] Edge tiling: grab begin`);
@@ -765,7 +772,13 @@ export default class WindowMosaicExtension extends Extension {
             console.log(`[MOSAIC WM] Grab operation ended: ${grabpo}`);
             
             // Handle resize end for all resize grab operations (4097, 8193, 20481)
-            const isResizeEnd = (grabpo === 4097 || grabpo === 8193 || grabpo === 20481 || grabpo === 32769 || grabpo === 16385);
+            const isResizeEnd = (grabpo === 4097 || grabpo === 8193 || grabpo === 20481 || grabpo === 32769 || grabpo === 16385 || grabpo === 40961);
+            
+            // Clear resize tracking
+            if (isResizeEnd) {
+                animations.setResizingWindow(null);
+                console.log(`[MOSAIC WM] Cleared resize tracking for window ${window.get_id()}`);
+            }
             
             if(isResizeEnd) {
                 // Check if this is an edge-tiled window

@@ -95,7 +95,7 @@ draw(meta_windows, x, y) {
             }
             // If position hasn't changed, do nothing (window is already there)
         } else {
-            // Normal immediate positioning (for Mask/preview)
+            // Normal immediate positioning (for Mask/preview or grabbed window)
             window.move_frame(false, x, y);
         }
     } else {
@@ -538,6 +538,12 @@ export function disableDragMode() {
 function animateTileLayout(tile_info, work_area, meta_windows, draggedWindow = null) {
     console.log(`[MOSAIC WM] animateTileLayout called: ${meta_windows.length} windows, isDragging=${isDragging}`);
     
+    // Get window being actively resized (tracked by grab-op-begin callback)
+    const resizingWindowId = animations.getResizingWindowId();
+    if (resizingWindowId) {
+        console.log(`[MOSAIC WM] Window ${resizingWindowId} is being resized, will skip animation for it`);
+    }
+    
     const levels = tile_info.levels;
     const _x = tile_info.x;
     const _y = tile_info.y;
@@ -558,15 +564,22 @@ function animateTileLayout(tile_info, work_area, meta_windows, draggedWindow = n
                 
                 const window = meta_windows.find(w => w.get_id() === windowDesc.id);
                 if (window) {
-                    windowLayouts.push({
-                        window: window,
-                        rect: {
-                            x: x,
-                            y: y + y_offset,
-                            width: windowDesc.width,
-                            height: windowDesc.height
-                        }
-                    });
+                    // Skip animation for window being actively resized
+                    if (windowDesc.id === resizingWindowId) {
+                        console.log(`[MOSAIC WM] Skipping animation for resizing window ${windowDesc.id}`);
+                        // Just position it without animation
+                        window.move_frame(false, x, y + y_offset);
+                    } else {
+                        windowLayouts.push({
+                            window: window,
+                            rect: {
+                                x: x,
+                                y: y + y_offset,
+                                width: windowDesc.width,
+                                height: windowDesc.height
+                            }
+                        });
+                    }
                 }
                 x += windowDesc.width + constants.WINDOW_SPACING;
             }
@@ -580,15 +593,21 @@ function animateTileLayout(tile_info, work_area, meta_windows, draggedWindow = n
             for (let windowDesc of level.windows) {
                 const window = meta_windows.find(w => w.get_id() === windowDesc.id);
                 if (window) {
-                    windowLayouts.push({
-                        window: window,
-                        rect: {
-                            x: x,
-                            y: y,
-                            width: windowDesc.width,
-                            height: windowDesc.height
-                        }
-                    });
+                    // Skip animation for window being actively resized
+                    if (windowDesc.id === resizingWindowId) {
+                        console.log(`[MOSAIC WM] Skipping animation for resizing window ${windowDesc.id}`);
+                        window.move_frame(false, x, y);
+                    } else {
+                        windowLayouts.push({
+                            window: window,
+                            rect: {
+                                x: x,
+                                y: y,
+                                width: windowDesc.width,
+                                height: windowDesc.height
+                            }
+                        });
+                    }
                 }
                 y += windowDesc.height + constants.WINDOW_SPACING;
             }
@@ -596,7 +615,7 @@ function animateTileLayout(tile_info, work_area, meta_windows, draggedWindow = n
         }
     }
     
-    // Animate all windows
+    // Animate all windows (except the grabbed one)
     console.log(`[MOSAIC WM] Calling animateReTiling with ${windowLayouts.length} windows`);
     animations.animateReTiling(windowLayouts, draggedWindow);
     
