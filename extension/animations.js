@@ -197,6 +197,21 @@ export function animateWindow(window, targetRect, options = {}) {
     windowActor.set_scale(scaleX, scaleY);
     windowActor.set_translation(translateX, translateY, 0);
     
+    // Safety timeout: remove from set if animation doesn't complete
+    const safetyTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, duration + 100, () => {
+        if (_animatingWindows.has(windowId)) {
+            console.log(`[MOSAIC WM] Safety timeout: removing stuck window ${windowId}`);
+            _animatingWindows.delete(windowId);
+            try {
+                windowActor.set_scale(1.0, 1.0);
+                windowActor.set_translation(0, 0, 0);
+            } catch (e) {
+                console.log(`[MOSAIC WM] Safety cleanup error (window may be destroyed): ${e}`);
+            }
+        }
+        return GLib.SOURCE_REMOVE;
+    });
+    
     // Animate back to normal (scale 1.0, translation 0)
     windowActor.ease({
         scale_x: 1.0,
@@ -206,6 +221,9 @@ export function animateWindow(window, targetRect, options = {}) {
         duration: duration,
         mode: animationMode,
         onComplete: () => {
+            // Cancel safety timeout
+            GLib.source_remove(safetyTimeout);
+            
             // Reset transform
             windowActor.set_scale(1.0, 1.0);
             windowActor.set_translation(0, 0, 0);
