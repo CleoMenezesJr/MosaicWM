@@ -62,11 +62,6 @@ export class AnimationsManager {
         return pos;
     }
 
-    isAnimationAllowed() {
-        // Always allow animations for other windows, just not the dragged one
-        return true;
-    }
-
     shouldAnimateWindow(window, draggedWindow = null) {
         // Don't animate the window being dragged
         if (draggedWindow && window.get_id() === draggedWindow.get_id()) {
