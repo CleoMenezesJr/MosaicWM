@@ -2,6 +2,7 @@
   "name": "Mosaic WM",
   "description": "Rethinking window management for GNOME Shell",
   "uuid": "mosaicwm@cleomenezesjr.github.io",
+  "url": "https://github.com/CleoMenezesJr/MosaicWM",
   "shell-version": [
     "49"
   ]
