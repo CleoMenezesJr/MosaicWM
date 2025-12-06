@@ -731,7 +731,7 @@ export function tileWorkspaceWindows(workspace, reference_meta_window, _monitor,
     // SPECIAL CASE: If dragging and no windows to tile, still draw the mask preview
     if (isDragging && windows.length === 0 && reference_meta_window) {
         const mask = getMask(reference_meta_window);
-        if (mask) {
+        if (mask && typeof mask.draw === 'function') {
             console.log(`[MOSAIC WM] Drawing mask preview for dragged window (no other windows)`);
             // Calculate where the dragged window would go (full remaining space)
             const x = tileArea.x + tileArea.width / 2 - mask.width / 2;
