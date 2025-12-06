@@ -60,6 +60,8 @@ export default class WindowMosaicExtension extends Extension {
         this._windowPreviousWorkspace = new Map(); // window_id -> previous_workspace_index for overview drag-drop
         this._windowRemovedTimestamp = new Map(); // window_id -> timestamp when removed
         this._manualWorkspaceMove = new Map(); // window_id -> true if manual move (workspace-changed fired)
+        this._currentWorkspaceIndex = null; // Track current workspace index
+        this._lastVisitedWorkspace = null; // Track last visited workspace for smart navigation
         
         // Edge tiling state
         this._settingsOverrider = null;
@@ -265,15 +267,34 @@ export default class WindowMosaicExtension extends Extension {
                 const workspaceManager = global.workspace_manager;
                 const currentIndex = workspace.index();
                 
-                // Only navigate away if:
-                // 1. We're not in workspace 0 (first workspace), OR
-                // 2. There's a non-empty workspace to navigate to
+                // ALWAYS stay in workspace 0 when it becomes empty
+                if (currentIndex === 0) {
+                    console.log('[MOSAIC WM] Workspace 0 is now empty - staying in workspace 0');
+                    return;
+                }
                 
-                // Check if there's a previous non-empty workspace
+                // For other workspaces: navigate to last visited or fallback to previous/next
                 let shouldNavigate = false;
                 let targetWorkspace = null;
                 
-                if (currentIndex > 0) {
+                // PRIORITY 1: Try last visited workspace (smart navigation)
+                if (this._lastVisitedWorkspace !== null && 
+                    this._lastVisitedWorkspace !== currentIndex) {
+                    const lastWorkspace = workspaceManager.get_workspace_by_index(this._lastVisitedWorkspace);
+                    if (lastWorkspace) {
+                        const lastWindows = windowing.getMonitorWorkspaceWindows(lastWorkspace, monitor);
+                        const lastManagedWindows = lastWindows.filter(w => !windowing.isExcluded(w));
+                        
+                        if (lastManagedWindows.length > 0) {
+                            shouldNavigate = true;
+                            targetWorkspace = lastWorkspace;
+                            console.log(`[MOSAIC WM] Navigating to last visited workspace ${this._lastVisitedWorkspace}`);
+                        }
+                    }
+                }
+                
+                // PRIORITY 2: Try previous workspace (fallback)
+                if (!shouldNavigate) {
                     // Try to navigate to previous workspace
                     const previousWorkspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
                     if (previousWorkspace && previousWorkspace.index() !== currentIndex) {
@@ -288,8 +309,8 @@ export default class WindowMosaicExtension extends Extension {
                     }
                 }
                 
-                // If no previous non-empty workspace, check next (but only if we're not in workspace 0)
-                if (!shouldNavigate && currentIndex > 0) {
+                // PRIORITY 3: Try next workspace (last fallback)
+                if (!shouldNavigate) {
                     const nextWorkspace = workspace.get_neighbor(Meta.MotionDirection.RIGHT);
                     if (nextWorkspace && nextWorkspace.index() !== currentIndex) {
                         const nextWindows = windowing.getMonitorWorkspaceWindows(nextWorkspace, monitor);
@@ -307,7 +328,7 @@ export default class WindowMosaicExtension extends Extension {
                     targetWorkspace.activate(global.get_current_time());
                     console.log(`[MOSAIC WM] Navigated to workspace ${targetWorkspace.index()}`);
                 } else {
-                    console.log('[MOSAIC WM] Staying in current workspace (workspace 0 or no non-empty workspaces available)');
+                    console.log('[MOSAIC WM] No non-empty workspace available to navigate to');
                 }
             }
         }
@@ -315,6 +336,24 @@ export default class WindowMosaicExtension extends Extension {
     
     _switchWorkspaceHandler = (_, win) => {
         tileWindowWorkspace(win.meta_window); // Tile when switching to a workspace. Helps to create a more cohesive experience.
+    }
+    
+    /**
+     * Handler for active workspace changes.
+     * Tracks the previous workspace to enable smart navigation when workspaces become empty.
+     */
+    _workspaceSwitchedHandler = () => {
+        const newWorkspace = this._workspaceManager.get_active_workspace();
+        const newIndex = newWorkspace.index();
+        
+        // If we're switching workspaces, save the OLD workspace as last visited
+        if (this._currentWorkspaceIndex !== null && this._currentWorkspaceIndex !== newIndex) {
+            this._lastVisitedWorkspace = this._currentWorkspaceIndex;
+            console.log(`[MOSAIC WM] Workspace switched from ${this._currentWorkspaceIndex} to ${newIndex}, saved ${this._currentWorkspaceIndex} as last visited`);
+        }
+        
+        // Update current workspace tracker
+        this._currentWorkspaceIndex = newIndex;
     }
 
     /**
@@ -1047,6 +1086,9 @@ export default class WindowMosaicExtension extends Extension {
         this._wmEventIds.push(global.window_manager.connect('destroy', this._destroyedHandler));
         this._displayEventIds.push(global.display.connect("grab-op-begin", this._grabOpBeginHandler));
         this._displayEventIds.push(global.display.connect("grab-op-end", this._grabOpEndHandler));
+        
+        // Track workspace switches for smart navigation
+        this._workspaceManEventIds.push(global.workspace_manager.connect("active-workspace-changed", this._workspaceSwitchedHandler));
         
         // Edge tiling is now integrated into _grabOpBeginHandler and _grabOpEndHandler
         
