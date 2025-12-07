@@ -102,7 +102,6 @@ export class TilingManager {
 
     applyTmp(array) {
         if(this.tmp_swap.length !== 0) {
-            Logger.log(`[MOSAIC WM] Applying tmp swap: ${this.tmp_swap[0]} <-> ${this.tmp_swap[1]}`);
             this._swapElements(array, this.tmp_swap[0], this.tmp_swap[1]);
         }
     }
@@ -613,28 +612,38 @@ class WindowDescriptor {
         this.id = meta_window.get_id();
     }
     
-    draw(meta_windows, x, y, masks, isDragging) {
+    draw(meta_windows, x, y, masks, isDragging, drawingManager) {
         const window = meta_windows.find(w => w.get_id() === this.id);
         if (window) {
             const isMask = masks[this.id];
             
-            if (isDragging && !isMask) {
-                const currentRect = window.get_frame_rect();
-                const positionChanged = Math.abs(currentRect.x - x) > 5 || Math.abs(currentRect.y - y) > 5;
-                
-                if (positionChanged) {
-                    window.move_frame(false, x, y);
-                    const windowActor = window.get_compositor_private();
-                    if (windowActor) {
-                        const translateX = currentRect.x - x;
-                        const translateY = currentRect.y - y;
-                        windowActor.set_translation(translateX, translateY, 0);
-                        windowActor.ease({
-                            translation_x: 0,
-                            opacity: 255,
-                            duration: constants.ANIMATION_DURATION_MS,
-                            mode: Clutter.AnimationMode.EASE_OUT_QUAD
-                        });
+            if (isDragging) {
+                if (isMask) {
+                    // This is the dragged window - draw preview at its target position
+                    if (drawingManager) {
+                        drawingManager.rect(x, y, this.width, this.height);
+                    }
+                } else {
+                    // This is NOT the dragged window - reposition it
+                    const currentRect = window.get_frame_rect();
+                    const positionChanged = Math.abs(currentRect.x - x) > 5 || Math.abs(currentRect.y - y) > 5;
+                    const sizeChanged = Math.abs(currentRect.width - this.width) > 5 || Math.abs(currentRect.height - this.height) > 5;
+                    
+                    if (positionChanged || sizeChanged) {
+                        window.move_resize_frame(false, x, y, this.width, this.height);
+                        const windowActor = window.get_compositor_private();
+                        if (windowActor) {
+                            const translateX = currentRect.x - x;
+                            const translateY = currentRect.y - y;
+                            windowActor.set_translation(translateX, translateY, 0);
+                            windowActor.ease({
+                                translation_x: 0,
+                                translation_y: 0,
+                                opacity: 255,
+                                duration: constants.ANIMATION_DURATION_MS,
+                                mode: Clutter.AnimationMode.EASE_OUT_QUAD
+                            });
+                        }
                     }
                 }
             } else {
