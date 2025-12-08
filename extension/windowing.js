@@ -175,32 +175,28 @@ export class WindowingManager {
         
         const newWorkspace = target_workspace;
         const insertPosition = currentIndex + 1;
-        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            workspaceManager.reorder_workspace(newWorkspace, insertPosition);
-            return GLib.SOURCE_REMOVE;
-        });
+        const switchFocusToMovedWindow = previous_workspace.active;
+        const startRect = window.get_frame_rect();
         
         strategy = `new workspace at position ${insertPosition}`;
         Logger.log(`[MOSAIC WM] Created new workspace at position ${insertPosition}`);
-
         Logger.log(`[MOSAIC WM] Moving overflow window ${window.get_id()} from workspace ${currentIndex} to ${target_workspace.index()} (strategy: ${strategy})`);
-
-        const startRect = window.get_frame_rect();
-
-        window.change_workspace(target_workspace);
         
-        let switchFocusToMovedWindow = previous_workspace.active;
-        if (switchFocusToMovedWindow) {
-            target_workspace.activate(this.getTimestamp());
-        }
-        
-        if (this._animationsManager) {
-            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            workspaceManager.reorder_workspace(newWorkspace, insertPosition);
+            window.change_workspace(newWorkspace);
+            
+            if (switchFocusToMovedWindow) {
+                newWorkspace.activate(global.get_current_time());
+            }
+            
+            if (this._animationsManager) {
                 const endRect = window.get_frame_rect();
                 this._animationsManager.animateWindowMove(window, startRect, endRect);
-                return GLib.SOURCE_REMOVE;
-            });
-        }
+            }
+            
+            return GLib.SOURCE_REMOVE;
+        });
 
         return target_workspace;
     }
