@@ -446,9 +446,7 @@ export class TilingManager {
         
         // Calculate optimal grid dimensions
         const { rows: numRows, windowsPerRow } = this._calculateOptimalGrid(
-            windows.length,
-            avgWidth,
-            avgHeight,
+            windows,
             work_area
         );
         
@@ -529,43 +527,100 @@ export class TilingManager {
     }
     
     /**
-     * Calculate optimal grid dimensions for balanced layout
-     * Aims for a square-ish layout (aspect ratio close to 1:1)
+     * Calculate optimal grid dimensions for balanced layout.
+     * Uses actual window sizes to check for overflow (ROBUST).
      */
-    _calculateOptimalGrid(windowCount, avgWidth, avgHeight, work_area) {
+    _calculateOptimalGrid(windows, work_area) {
+        const windowCount = windows.length;
         if (windowCount <= 0) return { rows: 0, windowsPerRow: [] };
         if (windowCount === 1) return { rows: 1, windowsPerRow: [1] };
         if (windowCount === 2) return { rows: 1, windowsPerRow: [2] };
         
         const spacing = constants.WINDOW_SPACING;
-        
-        const maxPerRow = Math.floor((work_area.width + spacing) / (avgWidth + spacing));
         const workspaceAspect = work_area.width / work_area.height;
         
         let bestRows = 1;
         let bestScore = Infinity;
+        let bestOverflow = true; // Start assuming everything overflows
         
+        // Try different row counts
         for (let rows = 1; rows <= windowCount; rows++) {
             const cols = Math.ceil(windowCount / rows);
             
-            if (cols > maxPerRow) continue;
+            // Distribute windows logic (symmetric)
+            const windowsPerRow = new Array(rows).fill(0);
+            const basePerRow = Math.floor(windowCount / rows);
+            let remainder = windowCount % rows;
 
-            const layoutWidth = cols * avgWidth + (cols - 1) * spacing;
-            const layoutHeight = rows * avgHeight + (rows - 1) * spacing;
-            if (layoutWidth > work_area.width || layoutHeight > work_area.height) continue;
+            for (let r = 0; r < rows; r++) windowsPerRow[r] = basePerRow;
+
+            if (remainder > 0) {
+                const centerIndex = Math.floor(rows / 2);
+                let left = centerIndex;
+                let right = centerIndex;
+                
+                while (remainder > 0) {
+                    if (left >= 0 && left < rows) { windowsPerRow[left]++; remainder--; }
+                    if (remainder > 0 && right !== left && right >= 0 && right < rows) { windowsPerRow[right]++; remainder--; }
+                    left--;
+                    right++;
+                }
+            }
             
+            // SIMULATE ACTUAL PLACEMENT to check fit
+            let totalHeight = 0;
+            let maxRowWidth = 0;
+            let windowIndex = 0;
+            let currentRowHeight = 0;
+            let currentRowWidth = 0;
+            let overflow = false;
+            
+            for (let r = 0; r < rows; r++) {
+                currentRowHeight = 0;
+                currentRowWidth = 0;
+                const count = windowsPerRow[r];
+                
+                for (let i = 0; i < count; i++) {
+                    if (windowIndex < windows.length) {
+                        const w = windows[windowIndex++];
+                        currentRowWidth += w.width + (currentRowWidth > 0 ? spacing : 0);
+                        currentRowHeight = Math.max(currentRowHeight, w.height);
+                    }
+                }
+                
+                if (currentRowWidth > work_area.width) overflow = true;
+                maxRowWidth = Math.max(maxRowWidth, currentRowWidth);
+                
+                totalHeight += currentRowHeight + (r > 0 ? spacing : 0);
+            }
+            
+            if (totalHeight > work_area.height) overflow = true;
+            
+            // Calculate score (Aspect ratio + Empty spaces)
+            const layoutWidth = maxRowWidth;
+            const layoutHeight = totalHeight;
             const layoutAspect = layoutWidth / layoutHeight;
             const aspectDiff = Math.abs(layoutAspect - workspaceAspect);
             const emptySpaces = rows * cols - windowCount;
-            const score = aspectDiff + emptySpaces * 0.3;
+            // Heavily penalize overflow
+            const score = aspectDiff + emptySpaces * 0.3 + (overflow ? 1000 : 0);
             
-            if (score < bestScore) {
+            // Prefer valid layouts over invalid ones
+            if (!overflow && bestOverflow) {
+                // Found first valid layout!
                 bestScore = score;
                 bestRows = rows;
+                bestOverflow = false;
+            } else if (overflow === bestOverflow) {
+                // Determine best among same validity status
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestRows = rows;
+                }
             }
         }
         
-        // Distribute windows symmetrically (extras go to center rows)
+        // Re-generate windowsPerRow for the best result
         const windowsPerRow = new Array(bestRows).fill(0);
         const basePerRow = Math.floor(windowCount / bestRows);
         let remainder = windowCount % bestRows;
