@@ -42,6 +42,7 @@ export default class WindowMosaicExtension extends Extension {
         this._windowPreviousWorkspace = new Map();
         this._windowRemovedTimestamp = new Map();
         this._manualWorkspaceMove = new Map();
+        this._overflowMoveTimestamps = new Map();  // Track windows recently moved due to overflow
         this._currentWorkspaceIndex = null;
         this._lastVisitedWorkspace = null;
         
@@ -310,7 +311,18 @@ export default class WindowMosaicExtension extends Extension {
         const timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.DEBOUNCE_DELAY_MS, () => {
             this._workspaceChangeDebounce.delete(windowId);
             
+            // Guard: Skip if window was recently moved due to overflow (prevents infinite loop)
+            const lastOverflowMove = this._overflowMoveTimestamps.get(windowId);
+            if (lastOverflowMove && (Date.now() - lastOverflowMove) < 2000) {
+                Logger.log(`[MOSAIC WM] Skipping overflow check - window ${windowId} was recently moved for overflow`);
+                return GLib.SOURCE_REMOVE;
+            }
+            
             const currentWorkspace = window.get_workspace();
+            if (!currentWorkspace) {
+                Logger.log(`[MOSAIC WM] Debounce: window ${windowId} has no workspace, skipping`);
+                return GLib.SOURCE_REMOVE;
+            }
             const currentWorkspaceIndex = currentWorkspace.index();
             
             Logger.log(`[MOSAIC WM] Debounce complete - checking overflow for window ${windowId} in workspace ${currentWorkspaceIndex}`);
@@ -357,6 +369,7 @@ export default class WindowMosaicExtension extends Extension {
             
             if (!canFit) {
                 Logger.log('[MOSAIC WM] Manual move: window doesn\'t fit - moving to new workspace');
+                this._overflowMoveTimestamps.set(windowId, Date.now());  // Track to prevent re-processing
                 this.windowingManager.moveOversizedWindow(window);
             } else {
                 Logger.log('[MOSAIC WM] Manual move: window fits - tiling workspace');

@@ -600,6 +600,12 @@ export class TilingManager {
         
         Logger.log(`[MOSAIC WM] canFitWindow: Current non-edge-tiled windows: ${windows.length}`);
         
+        // A single window should always fit - prevents infinite loop for large windows
+        if (windows.length <= 1) {
+            Logger.log('[MOSAIC WM] canFitWindow: Only 1 window - always fits');
+            return true;
+        }
+        
         const newWindowId = window.get_id();
         const windowAlreadyInWorkspace = windows.some(w => w.id === newWindowId);
         
