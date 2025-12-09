@@ -1024,14 +1024,16 @@ export class TilingManager {
         const windowAlreadyInWorkspace = windows.some(w => w.id === newWindowId);
         
         if (!windowAlreadyInWorkspace) {
-            Logger.log('[MOSAIC WM] canFitWindow: Window not in workspace yet - adding test window');
+            // Use real window dimensions instead of estimate
+            const frame = window.get_frame_rect();
+            const realWidth = Math.max(frame.width, 200);   // Fallback to 200 if no geometry yet
+            const realHeight = Math.max(frame.height, 200);
             
-            const estimatedWidth = 200;
-            const estimatedHeight = 200;
+            Logger.log(`[MOSAIC WM] canFitWindow: Window not in workspace - using real size ${realWidth}x${realHeight}`);
             
             const newWindowDescriptor = new WindowDescriptor(window, windows.length);
-            newWindowDescriptor.width = estimatedWidth;
-            newWindowDescriptor.height = estimatedHeight;
+            newWindowDescriptor.width = realWidth;
+            newWindowDescriptor.height = realHeight;
             
             windows.push(newWindowDescriptor);
         } else {

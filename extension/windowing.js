@@ -37,7 +37,7 @@ export class WindowingManager {
     }
 
     getPrimaryMonitor() {
-        return global.display.getPrimaryMonitor();
+        return global.display.get_primary_monitor();
     }
 
     getWorkspace() {
@@ -163,36 +163,64 @@ export class WindowingManager {
     }
 
     /**
-     * Moves a window that doesn't fit into a new workspace.
-     * Creates a new workspace right after the current one.
-     * Uses the injected AnimationsManager for move animations.
+     * Moves a window that doesn't fit into another workspace.
+     * Tries the next workspace first, creates new if needed.
      * @param {Meta.Window} window The window to move
      * @returns {Meta.Workspace} The target workspace
      */
     moveOversizedWindow(window) {
-        const previous_workspace = window.get_workspace();
         const workspaceManager = global.workspace_manager;
-        const currentIndex = previous_workspace.index();
-        const insertPosition = currentIndex + 1;
+        const monitor = this.getPrimaryMonitor();
         
-        // Create new workspace at the end
-        const target_workspace = workspaceManager.append_new_workspace(false, this.getTimestamp());
+        // Track origin workspace across multiple calls
+        const currentIndex = window._overflowOriginWorkspace ?? window.get_workspace().index();
+        window._overflowOriginWorkspace = currentIndex;
         
-        // IMMEDIATELY reorder to correct position BEFORE moving window
-        // This prevents race conditions with workspace-changed/window-added events
-        workspaceManager.reorder_workspace(target_workspace, insertPosition);
+        const nextIndex = currentIndex + 1;
         
+        Logger.log(`[MOSAIC WM] moveOversizedWindow: origin=${currentIndex}, next=${nextIndex}`);
+        
+        let target_workspace = null;
+        
+        // Check if next workspace exists and can fit this window
+        if (nextIndex < workspaceManager.get_n_workspaces()) {
+            const nextWorkspace = workspaceManager.get_workspace_by_index(nextIndex);
+            
+            Logger.log(`[MOSAIC WM] Checking if window ${window.get_id()} fits in workspace ${nextIndex}`);
+            
+            if (this._tilingManager && this._tilingManager.canFitWindow(window, nextWorkspace, monitor)) {
+                target_workspace = nextWorkspace;
+                Logger.log(`[MOSAIC WM] Window fits in existing workspace ${nextIndex}`);
+            } else {
+                Logger.log(`[MOSAIC WM] Window does NOT fit in workspace ${nextIndex} - creating new`);
+            }
+        } else {
+            Logger.log(`[MOSAIC WM] No workspace at index ${nextIndex} - creating new`);
+        }
+        
+        // Create new workspace if next doesn't exist or can't fit
+        if (!target_workspace) {
+            target_workspace = workspaceManager.append_new_workspace(false, this.getTimestamp());
+            workspaceManager.reorder_workspace(target_workspace, nextIndex);
+            Logger.log(`[MOSAIC WM] Created workspace at position ${nextIndex}`);
+        }
+        
+        const previous_workspace = window.get_workspace();
         const switchFocusToMovedWindow = previous_workspace.active;
         const startRect = window.get_frame_rect();
         
-        Logger.log(`[MOSAIC WM] Created workspace at position ${insertPosition}, moving window ${window.get_id()}`);
-        
-        // Move window to the already-reordered workspace
+        window._movedByOverflow = true;
         window.change_workspace(target_workspace);
         
-        // Defer only activation and animation
+        // Clear flags after settling
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+            window._movedByOverflow = false;
+            delete window._overflowOriginWorkspace;
+            return GLib.SOURCE_REMOVE;
+        });
+        
+        // Defer activation and animation
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
-            // Verify workspace still exists
             const workspaceIndex = target_workspace.index();
             if (workspaceIndex < 0 || workspaceIndex >= workspaceManager.get_n_workspaces()) {
                 Logger.warn(`[MOSAIC WM] Workspace no longer valid: ${workspaceIndex}`);

@@ -166,11 +166,15 @@ export default class WindowMosaicExtension extends Extension {
                 
                 const canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
                 
-                if(!canFit) {
+                if(!canFit && !window._movedByOverflow) {
                     Logger.log('[MOSAIC WM] Window doesn\'t fit - moving to new workspace');
                     this.windowingManager.moveOversizedWindow(window);
                 } else {
-                    Logger.log('[MOSAIC WM] Window fits - adding to tiling');
+                    if (window._movedByOverflow) {
+                        Logger.log('[MOSAIC WM] Skipping overflow - window was just moved');
+                    } else {
+                        Logger.log('[MOSAIC WM] Window fits - adding to tiling');
+                    }
                     this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
                 }
                 
@@ -1038,6 +1042,7 @@ export default class WindowMosaicExtension extends Extension {
         // Wire up dependencies
         this.windowingManager.setEdgeTilingManager(this.edgeTilingManager);
         this.windowingManager.setAnimationsManager(this.animationsManager);
+        this.windowingManager.setTilingManager(this.tilingManager);
         
         this.tilingManager.setEdgeTilingManager(this.edgeTilingManager);
         this.tilingManager.setDrawingManager(this.drawingManager);
