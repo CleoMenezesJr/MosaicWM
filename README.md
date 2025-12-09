@@ -46,13 +46,6 @@ gnome-extensions enable mosaicwm@cleomenezesjr.github.io
 # Log out and log back in
 ```
 
-### Manual Installation
-
-1. Download the latest release
-2. Extract to `~/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/`
-3. Restart GNOME Shell (log out and log back in)
-4. Enable via Extensions app or: `gnome-extensions enable mosaicwm@cleomenezesjr.github.io`
-
 ## 🎮 Usage
 
 Once enabled, the extension works automatically:
@@ -63,54 +56,27 @@ Once enabled, the extension works automatically:
 - **Minimize**: Window is excluded from tiling
 - **Too many windows**: Overflow windows move to new workspace
 
-## 🛠️ Configuration
-
-The extension uses sensible defaults, but you can customize constants in `extension/constants.js`:
-
-```javascript
-export const WINDOW_SPACING = 8;           // Space between windows (px)
-export const TILE_INTERVAL_MS = 300000;    // Re-tile interval (5 min)
-export const DRAG_UPDATE_INTERVAL_MS = 50; // Drag smoothness (ms)
-```
-
-## 🏗️ Architecture
-
-```
-extension/
-├── extension.js    # Main extension class, event handlers
-├── tiling.js       # Core tiling algorithm
-├── windowing.js    # Window management utilities
-├── reordering.js   # Drag-and-drop functionality
-├── drawing.js      # Visual feedback rendering
-├── constants.js    # Configuration constants
-└── stylesheet.css  # Visual styles
-```
-
-### Key Components
-
-- **WindowDescriptor**: Lightweight window representation for layout calculations
-- **Level**: Horizontal row of windows in the tiling layout
-- **Tiling Algorithm**: Distributes windows across levels to fit workspace
-
-## 🧪 Development
-
 ### Prerequisites
 
 - GNOME Shell 49+
 - Git
-- Basic JavaScript/GJS knowledge
 
 ### Building & Testing
 
 ```bash
-# Test syntax
-find extension -name "*.js" -exec gjs -c {} \;
-
-# Install for testing
+# Install the extension
 ./install.sh
 
-# Restart GNOME Shell
-# Log out and log back in
+# Test in a nested GNOME Shell session
+./run-gnome-shell.sh
+```
+
+### Enable Debug Logging
+
+To enable verbose debug logs, edit `extension/logger.js` and set:
+
+```javascript
+const DEBUG_ENABLED = true;
 ```
 
 ### Debugging
@@ -145,24 +111,14 @@ For more information on GNOME Shell extension development:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please:
+> [!NOTE]
+> This project is in early development with rapidly changing code. Code contributions are not currently accepted due to the high velocity of changes.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+**Best ways to contribute right now:**
 
-### Commit Convention
-
-We follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-- `feat:` New features
-- `fix:` Bug fixes
-- `docs:` Documentation changes
-- `refactor:` Code refactoring
-- `test:` Test additions
-- `chore:` Maintenance tasks
+- 🧪 **Testing**: Try the extension and explore edge cases
+- 🐛 **Bug Reports**: Open issues with detailed reproduction steps
+- 💡 **Feature Ideas**: Share suggestions in GitHub Issues
 
 ## 📝 License
 
@@ -175,24 +131,15 @@ This project is licensed under the GNU General Public License v2.0 or later - se
 - GNOME Shell team for the excellent extension API
 - Contributors and testers
 
-## 📧 Contact
-
-- **Author**: Cleo Menezes Jr
-- **GitHub**: [@CleoMenezesJr](https://github.com/CleoMenezesJr)
-- **Repository**: [MosaicWM](https://github.com/CleoMenezesJr/MosaicWM)
-
 ## 🐛 Known Issues
 
-- None currently! Report issues on GitHub.
+> [!CAUTION]
+> The interaction between mosaic layout and quarter tiling (edge tiling) is highly experimental and may not work as expected.
 
-## 🗺️ Roadmap
+**Open issues:**
 
-- [ ] Settings panel for configuration
-- [ ] Custom keyboard shortcuts
-- [ ] Window gaps customization
-- [ ] Animation improvements
-- [ ] Per-workspace tiling rules
-- [ ] Integration with GNOME's future window management improvements
+- Overview drag-drop may crash in some scenarios
+- Edge tiling overflow preview not yet animated
 
 ---
 
