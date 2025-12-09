@@ -650,6 +650,7 @@ export class EdgeTilingManager {
         let fullToQuarterConversion = null;
         
         if (zone === TileZone.BOTTOM_LEFT || zone === TileZone.TOP_LEFT) {
+            Logger.log(`[MOSAIC WM] Checking for LEFT_FULL conversion, zone=${zone}`);
             const workspaceWindows = workspace.list_windows().filter(w => 
                 w.get_monitor() === monitor &&
                 w.get_id() !== window.get_id() &&
@@ -657,14 +658,20 @@ export class EdgeTilingManager {
                 w.get_window_type() === Meta.WindowType.NORMAL
             );
             
+            Logger.log(`[MOSAIC WM] Found ${workspaceWindows.length} potential windows`);
+            
             const leftFullWindow = workspaceWindows.find(w => {
                 const state = this.getWindowState(w);
+                Logger.log(`[MOSAIC WM] Window ${w.get_id()} state: ${state ? `zone=${state.zone}` : 'no state'}`);
                 return state && state.zone === TileZone.LEFT_FULL;
             });
             
             if (leftFullWindow) {
+                Logger.log(`[MOSAIC WM] Found LEFT_FULL window ${leftFullWindow.get_id()} for conversion`);
                 const newZone = (zone === TileZone.BOTTOM_LEFT) ? TileZone.TOP_LEFT : TileZone.BOTTOM_LEFT;
                 fullToQuarterConversion = { window: leftFullWindow, newZone };
+            } else {
+                Logger.log(`[MOSAIC WM] No LEFT_FULL window found for conversion`);
             }
         } else if (zone === TileZone.BOTTOM_RIGHT || zone === TileZone.TOP_RIGHT) {
             const workspaceWindows = workspace.list_windows().filter(w => 
@@ -724,24 +731,32 @@ export class EdgeTilingManager {
                 
                 const halfHeight = Math.floor(workArea.height / 2);
                 
-                animations.animateWindow(fullToQuarterConversion.window, {
-                    x: convertedRect.x,
-                    y: convertedRect.y,
-                    width: convertedRect.width,
-                    height: halfHeight
-                }, { subtle: true });
-                
-                animations.animateWindow(window, {
-                    x: rect.x,
-                    y: rect.y,
-                    width: rect.width,
-                    height: halfHeight
-                });
+                if (this._animationsManager) {
+                    this._animationsManager.animateWindow(fullToQuarterConversion.window, {
+                        x: convertedRect.x,
+                        y: convertedRect.y,
+                        width: convertedRect.width,
+                        height: halfHeight
+                    }, { subtle: true });
+                    
+                    this._animationsManager.animateWindow(window, {
+                        x: rect.x,
+                        y: rect.y,
+                        width: rect.width,
+                        height: halfHeight
+                    });
+                } else {
+                    fullToQuarterConversion.window.move_resize_frame(false, convertedRect.x, convertedRect.y, convertedRect.width, halfHeight);
+                    window.move_resize_frame(false, rect.x, rect.y, rect.width, halfHeight);
+                }
                 
                 Logger.log(`[MOSAIC WM] Applied quarter tiles with halfHeight=${halfHeight}px, width=${savedFullTileWidth}px`);
                 
                 const convertedState = this._windowStates.get(fullToQuarterConversion.window.get_id());
-                if (convertedState) convertedState.zone = fullToQuarterConversion.newZone;
+                if (convertedState) {
+                    Logger.log(`[MOSAIC WM] Converted window original state: ${convertedState.width}x${convertedState.height} (preserving for restore)`);
+                    convertedState.zone = fullToQuarterConversion.newZone;
+                }
                 
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.POLL_INTERVAL_MS, () => {
                     const actualConvertedFrame = fullToQuarterConversion.window.get_frame_rect();
@@ -806,6 +821,7 @@ export class EdgeTilingManager {
         }
         
         Logger.log(`[MOSAIC WM] removeTile: Removing tile from window ${winId}, zone=${savedState.zone}`);
+        Logger.log(`[MOSAIC WM] removeTile: Saved state to restore: ${savedState.width}x${savedState.height} at (${savedState.x}, ${savedState.y})`);
         
         this._removeResizeListener(window);
         
@@ -855,9 +871,11 @@ export class EdgeTilingManager {
         const restoredX = cursorX - (savedWidth / 2);
         const restoredY = cursorY - 20;
         
-        Logger.log(`[MOSAIC WM] removeTile: Restoring to cursor position (${restoredX}, ${restoredY})`);
+        Logger.log(`[MOSAIC WM] removeTile: Restoring window ${winId} to size ${savedWidth}x${savedHeight} at cursor (${restoredX}, ${restoredY})`);
         window.move_resize_frame(false, restoredX, restoredY, savedWidth, savedHeight);
         
+        // Mark this window as "coming from edge tile" - overflow will be checked on grab-op-end
+        // The window will participate in drag and overflow will be handled when released
         if (callback) {
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.RETILE_DELAY_MS, () => {
                 callback();
@@ -873,7 +891,7 @@ export class EdgeTilingManager {
      * @param {number} zone
      */
     _handleMosaicOverflow(tiledWindow, zone) {
-        if (zone !== TileZone.LEFT_FULL && zone !== TileZone.RIGHT_FULL) return;
+        Logger.log(`[MOSAIC WM] _handleMosaicOverflow: called for zone=${zone}`);
         
         const workspace = tiledWindow.get_workspace();
         const monitor = tiledWindow.get_monitor();
@@ -921,7 +939,8 @@ export class EdgeTilingManager {
             const frame = mosaicWindow.get_frame_rect();
             const widthThreshold = remainingSpace.width * 0.8;
             
-            if (frame.width >= widthThreshold) {
+            // Only auto-tile to opposite side for FULL zones
+            if ((zone === TileZone.LEFT_FULL || zone === TileZone.RIGHT_FULL) && frame.width >= widthThreshold) {
                 const oppositeZone = (zone === TileZone.LEFT_FULL) ? TileZone.RIGHT_FULL : TileZone.LEFT_FULL;
                 
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
@@ -937,21 +956,23 @@ export class EdgeTilingManager {
             }
         }
         
-        // Check if mosaic windows overflow remaining space
-        let totalMosaicArea = 0;
-        for (const w of mosaicWindows) {
-            const frame = w.get_frame_rect();
-            totalMosaicArea += frame.width * frame.height;
-        }
+        // Use tiling manager to check if mosaic windows fit in remaining space
+        if (!this._tilingManager) return;
         
-        const remainingArea = remainingSpace.width * remainingSpace.height;
-        const areaThreshold = remainingArea * 0.7;
+        // Try to tile and check for overflow
+        const testTileInfo = this._tilingManager._tile(
+            mosaicWindows.map((w, i) => ({
+                index: i,
+                width: w.get_frame_rect().width,
+                height: w.get_frame_rect().height
+            })),
+            remainingSpace
+        );
         
-        if (totalMosaicArea > areaThreshold) {
+        if (testTileInfo.overflow) {
+            Logger.log(`[MOSAIC WM] Mosaic overflow detected - moving ${mosaicWindows.length} windows to new workspace`);
             const workspaceManager = global.workspace_manager;
             const newWorkspace = workspaceManager.append_new_workspace(false, global.get_current_time());
-            
-            Logger.log(`[MOSAIC WM] Created new workspace ${newWorkspace.index()} for ${mosaicWindows.length} mosaic windows`);
             
             for (const mosaicWindow of mosaicWindows) {
                 mosaicWindow.change_workspace(newWorkspace);
