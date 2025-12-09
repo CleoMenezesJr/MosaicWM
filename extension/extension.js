@@ -464,13 +464,21 @@ export default class WindowMosaicExtension extends Extension {
             if (!this.windowingManager.isMaximizedOrFullscreen(window)) {
                 const isManualResize = this._currentGrabOp && constants.RESIZE_GRAB_OPS.includes(this._currentGrabOp);
                 
-                if (isManualResize) {
+                // Also detect resize without grabOp (context menu/keyboard resize)
+                // by checking for continuous size-changed events
+                const windowId = window.get_id();
+                const resizeNow = Date.now();
+                const isActiveResize = isManualResize || 
+                    (this._lastResizeWindow === windowId && (resizeNow - this._lastResizeTime) < 300);
+                this._lastResizeWindow = windowId;
+                this._lastResizeTime = resizeNow;
+                
+                if (isActiveResize) {
                     if (this._resizeDebounceTimeout) {
                         GLib.source_remove(this._resizeDebounceTimeout);
                         this._resizeDebounceTimeout = null;
                     }
                     
-                    // Need some tests how much debounce is needed
                     this._resizeDebounceTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 0, () => {
                         this._resizeDebounceTimeout = null;
                         
@@ -553,7 +561,6 @@ export default class WindowMosaicExtension extends Extension {
 
     _grabOpBeginHandler = (_, window, grabpo) => {
         this._currentGrabOp = grabpo;
-        
         const isResizeOp = constants.RESIZE_GRAB_OPS.includes(grabpo);
         if (isResizeOp) {
             this._resizeInOverflow = false;

@@ -38,15 +38,26 @@ export const ANIMATION_DIFF_THRESHOLD = 10;
 
 // Grab Operation IDs (Legacy replacements/Helpers if Meta doesn't expose them cleanly)
 // These match common Meta.GrabOp values for resizing.
-export const GRAB_OP_RESIZING_NW = 4097;  // Top-Left
-export const GRAB_OP_RESIZING_N  = 8193;  // Top
-export const GRAB_OP_RESIZING_NE = 20481; // Top-Right
-export const GRAB_OP_RESIZING_W  = 32769; // Left
-export const GRAB_OP_RESIZING_E  = 16385; // Right
-export const GRAB_OP_RESIZING_SW = 40961; // Bottom-Left
-export const GRAB_OP_RESIZING_S  = 61441; // Bottom (Guessing/Example) - wait, let's just list the ones we use
-// The ones used in code: 4097, 8193, 20481, 32769, 16385, 40961, 36865
-export const RESIZE_GRAB_OPS = [4097, 8193, 20481, 32769, 16385, 40961, 24577, 36865];
+// Resize grab operations (empirically discovered, not officially documented)
+// Pattern: base value + direction flags
+// Mouse resize operations:
+export const GRAB_OP_RESIZING_NW = 36865;  // Top-Left corner
+export const GRAB_OP_RESIZING_N  = 4097;   // Top edge
+export const GRAB_OP_RESIZING_NE = 8193;   // Top-Right corner
+export const GRAB_OP_RESIZING_E  = 16385;  // Right edge
+export const GRAB_OP_RESIZING_SE = 20481;  // Bottom-Right corner
+export const GRAB_OP_RESIZING_S  = 24577;  // Bottom edge
+export const GRAB_OP_RESIZING_SW = 40961;  // Bottom-Left corner
+export const GRAB_OP_RESIZING_W  = 32769;  // Left edge
+// Keyboard/menu resize operations:
+export const GRAB_OP_KEYBOARD_RESIZING = 41217;  // Context menu "Resize" or keyboard resize
 
+export const RESIZE_GRAB_OPS = [
+    GRAB_OP_RESIZING_NW, GRAB_OP_RESIZING_N, GRAB_OP_RESIZING_NE,
+    GRAB_OP_RESIZING_E, GRAB_OP_RESIZING_SE, GRAB_OP_RESIZING_S,
+    GRAB_OP_RESIZING_SW, GRAB_OP_RESIZING_W, GRAB_OP_KEYBOARD_RESIZING
+];
+
+// Move grab operations:
 export const GRAB_OP_MOVING = 1;
 export const GRAB_OP_KEYBOARD_MOVING = 1025;
