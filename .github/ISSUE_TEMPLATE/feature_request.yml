@@ -1,0 +1,48 @@
+name: Feature Request
+description: Suggest a new feature for Mosaic WM
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Use Case
+      description: Is this related to a problem? Describe the context.
+      placeholder: I often find myself needing to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this to work?
+      placeholder: Describe your ideal solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered other solutions?
+      placeholder: Other approaches you've thought about
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this for your workflow?
+      options:
+        - Nice to have
+        - Would improve my experience
+        - Critical for my workflow
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any mockups, examples from other window managers, etc.

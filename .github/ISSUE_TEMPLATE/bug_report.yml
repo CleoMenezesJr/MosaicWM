@@ -1,0 +1,91 @@
+name: Bug Report
+description: Report a bug in Mosaic WM
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!IMPORTANT]
+        > Enable debugging and reproduce the issue before submitting.
+        > Run: `journalctl -f -o cat /usr/bin/gnome-shell | grep -i mosaic`
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened? What did you expect to happen?
+      placeholder: Describe the bug clearly and concisely
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Open application X
+        2. Drag window to edge
+        3. See error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Affected Feature
+      description: Which feature is affected?
+      options:
+        - Mosaic/Tiling layout
+        - Edge Tiling (snap to edges)
+        - Window Overflow
+        - Resize detection
+        - Drag and Drop
+        - Workspace navigation
+        - Window animations
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Please provide relevant logs. Run:
+        `journalctl -f -o cat /usr/bin/gnome-shell | grep -i mosaic`
+      render: shell
+      placeholder: Paste logs here
+
+  - type: input
+    id: gnome-version
+    attributes:
+      label: GNOME Version
+      description: Run `gnome-shell --version`
+      placeholder: "GNOME Shell 49"
+    validations:
+      required: true
+
+  - type: input
+    id: distro
+    attributes:
+      label: Linux Distribution
+      placeholder: "Fedora 41, Ubuntu 24.04, etc."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: session
+    attributes:
+      label: Session Type
+      description: This extension only supports Wayland
+      options:
+        - label: I am using Wayland session
+          required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or screen recordings
