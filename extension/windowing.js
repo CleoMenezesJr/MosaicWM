@@ -253,10 +253,15 @@ export class WindowingManager {
             // Re-tile after window has settled to ensure correct positioning
             // Wait for window to have correct geometry before tiling
             if (this._tilingManager) {
+                let attempts = 0;
+                const maxAttempts = constants.GEOMETRY_WAIT_MAX_ATTEMPTS;
+                
                 const waitForWindowGeometry = () => {
+                    attempts++;
                     const frame = window.get_frame_rect();
-                    // Check if window has real dimensions (not 0x0 or inherited from previous)
-                    if (frame.width > 0 && frame.height > 0 && frame.width < 1000) {
+                    
+                    // Check if window has real dimensions (not 0x0)
+                    if (frame.width > 0 && frame.height > 0) {
                         Logger.log(`[MOSAIC WM] moveOversizedWindow: window geometry ready (${frame.width}x${frame.height}), retiling`);
                         this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
                         
@@ -288,6 +293,17 @@ export class WindowingManager {
                         
                         return GLib.SOURCE_REMOVE;
                     }
+                    
+                    // Prevent infinite loop - give up after max attempts
+                    if (attempts >= maxAttempts) {
+                        Logger.log(`[MOSAIC WM] moveOversizedWindow: timeout waiting for geometry, forcing retile`);
+                        this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
+                        if (this._overflowEndCallback) {
+                            this._overflowEndCallback();
+                        }
+                        return GLib.SOURCE_REMOVE;
+                    }
+                    
                     Logger.log(`[MOSAIC WM] moveOversizedWindow: waiting for geometry (${frame.width}x${frame.height})`);
                     return GLib.SOURCE_CONTINUE;
                 };
