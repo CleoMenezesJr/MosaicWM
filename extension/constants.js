@@ -40,22 +40,29 @@ export const ANIMATION_DIFF_THRESHOLD = 10;
 // These match common Meta.GrabOp values for resizing.
 // Resize grab operations (empirically discovered, not officially documented)
 // Pattern: base value + direction flags
-// Mouse resize operations:
-export const GRAB_OP_RESIZING_NW = 36865;  // Top-Left corner
-export const GRAB_OP_RESIZING_N  = 4097;   // Top edge
-export const GRAB_OP_RESIZING_NE = 8193;   // Top-Right corner
-export const GRAB_OP_RESIZING_E  = 16385;  // Right edge
-export const GRAB_OP_RESIZING_SE = 20481;  // Bottom-Right corner
-export const GRAB_OP_RESIZING_S  = 24577;  // Bottom edge
-export const GRAB_OP_RESIZING_SW = 40961;  // Bottom-Left corner
-export const GRAB_OP_RESIZING_W  = 32769;  // Left edge
-// Keyboard/menu resize operations:
-export const GRAB_OP_KEYBOARD_RESIZING = 41217;  // Context menu "Resize" or keyboard resize
+// Mouse resize operations (edge/corner drag):
+export const GRAB_OP_RESIZING_NW = 36865;
+export const GRAB_OP_RESIZING_N  = 4097;
+export const GRAB_OP_RESIZING_NE = 8193;
+export const GRAB_OP_RESIZING_E  = 16385;
+export const GRAB_OP_RESIZING_SE = 20481;
+export const GRAB_OP_RESIZING_S  = 24577;
+export const GRAB_OP_RESIZING_SW = 40961;
+export const GRAB_OP_RESIZING_W  = 32769;
+
+// Alternative resize operations (Super+click, menu, keyboard):
+export const GRAB_OP_KEYBOARD_RESIZING = 41217;
+export const GRAB_OP_SUPER_SECONDARY_CLICK = 37889;
+export const GRAB_OP_SUPER_RESIZE_S = 25601;
+export const GRAB_OP_SUPER_RESIZE_SE = 24833;
+export const GRAB_OP_COMPOSITOR_RESIZE = 769;
 
 export const RESIZE_GRAB_OPS = [
     GRAB_OP_RESIZING_NW, GRAB_OP_RESIZING_N, GRAB_OP_RESIZING_NE,
     GRAB_OP_RESIZING_E, GRAB_OP_RESIZING_SE, GRAB_OP_RESIZING_S,
-    GRAB_OP_RESIZING_SW, GRAB_OP_RESIZING_W, GRAB_OP_KEYBOARD_RESIZING
+    GRAB_OP_RESIZING_SW, GRAB_OP_RESIZING_W,
+    GRAB_OP_KEYBOARD_RESIZING, GRAB_OP_SUPER_SECONDARY_CLICK,
+    GRAB_OP_SUPER_RESIZE_S, GRAB_OP_SUPER_RESIZE_SE, GRAB_OP_COMPOSITOR_RESIZE
 ];
 
 // Move grab operations:
