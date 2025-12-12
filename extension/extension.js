@@ -23,59 +23,7 @@ import { ReorderingManager } from './reordering.js';
 import { SwappingManager } from './swapping.js';
 import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
-
-// Custom LayoutStrategy for Overview that preserves mosaic window positions
-// Instead of reorganizing windows, it simply scales down the current layout
-class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
-    computeLayout(windows, _params) {
-        return { windows };
-    }
-
-    computeWindowSlots(layout, area) {
-        const clones = layout.windows;
-        if (clones.length === 0)
-            return [];
-
-        // Get bounding box of all windows
-        let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
-        for (const clone of clones) {
-            const rect = clone.boundingBox;
-            minX = Math.min(minX, rect.x);
-            minY = Math.min(minY, rect.y);
-            maxX = Math.max(maxX, rect.x + rect.width);
-            maxY = Math.max(maxY, rect.y + rect.height);
-        }
-
-        const mosaicWidth = maxX - minX;
-        const mosaicHeight = maxY - minY;
-
-        // Calculate uniform scale to fit in overview area
-        const scale = Math.min(
-            area.width / mosaicWidth,
-            area.height / mosaicHeight,
-            1.0
-        );
-
-        // Center the scaled layout
-        const scaledWidth = mosaicWidth * scale;
-        const scaledHeight = mosaicHeight * scale;
-        const offsetX = (area.width - scaledWidth) / 2;
-        const offsetY = (area.height - scaledHeight) / 2;
-
-        // Return slots with preserved relative positions
-        const slots = [];
-        for (const clone of clones) {
-            const rect = clone.boundingBox;
-            const x = (rect.x - minX) * scale + area.x + offsetX;
-            const y = (rect.y - minY) * scale + area.y + offsetY;
-            const w = rect.width * scale;
-            const h = rect.height * scale;
-            slots.push([x, y, w, h, clone]);
-        }
-
-        return slots;
-    }
-}
+import { MosaicLayoutStrategy } from './overviewLayout.js';
 
 export default class WindowMosaicExtension extends Extension {
     constructor(metadata) {
