@@ -326,7 +326,6 @@ export class EdgeTilingManager {
         }
     }
 
-
     saveWindowState(window) {
         const winId = window.get_id();
         const existingState = this._windowStates.get(winId);
@@ -407,19 +406,37 @@ export class EdgeTilingManager {
         const halfWidth = Math.floor(workArea.width / 2);
         
         if (hasLeftFull || hasLeftQuarters) {
+            // Find the rightmost edge of all left-tiled windows
+            let maxRight = workArea.x;
+            edgeTiledWindows.forEach(w => {
+                 if (w.zone === TileZone.LEFT_FULL || w.zone === TileZone.TOP_LEFT || w.zone === TileZone.BOTTOM_LEFT) {
+                     const rect = w.window.get_frame_rect();
+                     maxRight = Math.max(maxRight, rect.x + rect.width);
+                 }
+            });
+            
             return {
-                x: workArea.x + halfWidth,
+                x: maxRight,
                 y: workArea.y,
-                width: workArea.width - halfWidth,
+                width: (workArea.x + workArea.width) - maxRight,
                 height: workArea.height
             };
         }
         
         if (hasRightFull || hasRightQuarters) {
+            // Find the leftmost edge of all right-tiled windows
+            let minLeft = workArea.x + workArea.width;
+            edgeTiledWindows.forEach(w => {
+                 if (w.zone === TileZone.RIGHT_FULL || w.zone === TileZone.TOP_RIGHT || w.zone === TileZone.BOTTOM_RIGHT) {
+                     const rect = w.window.get_frame_rect();
+                     minLeft = Math.min(minLeft, rect.x);
+                 }
+            });
+
             return {
                 x: workArea.x,
                 y: workArea.y,
-                width: halfWidth,
+                width: minLeft - workArea.x,
                 height: workArea.height
             };
         }
@@ -592,7 +609,6 @@ export class EdgeTilingManager {
         }
         return null;
     }
-
 
     setTilingManager(tilingManager) {
         this._tilingManager = tilingManager;
@@ -953,7 +969,7 @@ export class EdgeTilingManager {
                 mosaicWindow.change_workspace(newWorkspace);
             }
             
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
                 if (this._tilingManager) {
                     this._tilingManager.tileWorkspaceWindows(workspace, null, monitor);
                 }
@@ -1010,7 +1026,7 @@ export class EdgeTilingManager {
                 mosaicWindow.change_workspace(newWorkspace);
             }
             
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
                 if (this._tilingManager) {
                     this._tilingManager.tileWorkspaceWindows(workspace, null, monitor);
                 }
@@ -1020,7 +1036,6 @@ export class EdgeTilingManager {
             newWorkspace.activate(global.get_current_time());
         }
     }
-
 
     /**
      * Setup resize listener for edge-tiled window
@@ -1083,9 +1098,8 @@ export class EdgeTilingManager {
         const adjacentWindow = this._getAdjacentWindow(window, workspace, monitor, zone);
         
         if (!adjacentWindow) {
-            if (!this._isResizing) {
-                this._handleResizeWithMosaic(window, workspace, monitor);
-            }
+            // No adjacent edge tile - retile mosaic to adapt to new edge tile size
+            this._handleResizeWithMosaic(window, workspace, monitor);
             return;
         }
         
@@ -1149,7 +1163,7 @@ export class EdgeTilingManager {
                 this._previousSizes.set(resizedId, { width: resizedFrame.width, height: resizedFrame.height, y: resizedY });
             }
         } finally {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ISRESIZING_FLAG_RESET_MS, () => {
                 this._isResizing = false;
                 return GLib.SOURCE_REMOVE;
             });
@@ -1202,7 +1216,7 @@ export class EdgeTilingManager {
                 this._previousSizes.set(resizedId, { width: resizedFrame.width, height: workArea.height, x: workArea.x + newAdjacentWidth });
             }
         } finally {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ISRESIZING_FLAG_RESET_MS, () => {
                 this._isResizing = false;
                 return GLib.SOURCE_REMOVE;
             });
@@ -1210,8 +1224,11 @@ export class EdgeTilingManager {
     }
 
     _handleResizeWithMosaic(window, workspace, monitor) {
+        // During resize: just retile mosaic to use remaining space
+        // The edge tile and mosaic "fight" for space dynamically
+        // Constraint (min 400px for mosaic) is enforced in fixMosaicAfterEdgeResize on grab-op-end
         if (this._tilingManager) {
-            Logger.log(`[MOSAIC WM] Edge-tiled window resized - re-tiling mosaic`);
+            Logger.log(`[MOSAIC WM] Edge-tiled window resizing - retiling mosaic to adapt`);
             this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
         }
     }
@@ -1299,6 +1316,99 @@ export class EdgeTilingManager {
                     return GLib.SOURCE_REMOVE;
                 });
             }
+        }
+    }
+
+    /**
+     * Fix edge tile size and retile mosaic after resize ends (when no adjacent edge tile)
+     * @param {Meta.Window} edgeTiledWindow
+     * @param {number} zone
+     */
+    fixMosaicAfterEdgeResize(edgeTiledWindow, zone) {
+        const workspace = edgeTiledWindow.get_workspace();
+        const monitor = edgeTiledWindow.get_monitor();
+        const workArea = workspace.get_work_area_for_monitor(monitor);
+        const edgeFrame = edgeTiledWindow.get_frame_rect();
+        
+        // Get mosaic windows that need space
+        const mosaicWindows = this.getNonEdgeTiledWindows(workspace, monitor);
+        if (mosaicWindows.length === 0) {
+            // No mosaic windows - MUST leave 400px free (User Request 1)
+            const minFreeSpace = 400;
+            const maxWidth = workArea.width - minFreeSpace;
+            
+            if (edgeFrame.width > maxWidth) {
+                 this._isResizing = true;
+                try {
+                    const isLeft = (zone === TileZone.LEFT_FULL);
+                    const x = isLeft ? workArea.x : (workArea.x + workArea.width - maxWidth);
+                    edgeTiledWindow.move_resize_frame(false, x, workArea.y, maxWidth, workArea.height);
+                } finally {
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+                        this._isResizing = false;
+                        return GLib.SOURCE_REMOVE;
+                    });
+                }
+            }
+            return;
+        }
+        
+        // With mosaic windows: edge tile's max is workArea - actualMosaicWidth
+        // "O tamanho maximo de um tiling pode chegar é o tamanho do mosaico"
+        
+        // Calculate actual mosaic bounds
+        let mosaicMinX = Infinity;
+        let mosaicMaxX = 0;
+        for (const w of mosaicWindows) {
+            const f = w.get_frame_rect();
+            mosaicMinX = Math.min(mosaicMinX, f.x);
+            mosaicMaxX = Math.max(mosaicMaxX, f.x + f.width);
+        }
+        const actualMosaicWidth = mosaicMaxX - mosaicMinX;
+        
+        // Edge tile max = workArea - actualMosaicWidth
+        // This means edge tile cannot exceed the space NOT occupied by mosaic
+        const isLeft = (zone === TileZone.LEFT_FULL);
+        let maxEdgeWidth;
+        
+        if (isLeft) {
+            // Left edge tile: max = mosaicMinX - workArea.x (space before mosaic)
+            maxEdgeWidth = mosaicMinX - workArea.x;
+        } else {
+            // Right edge tile: max = (workArea.x + workArea.width) - mosaicMaxX (space after mosaic)
+            maxEdgeWidth = (workArea.x + workArea.width) - mosaicMaxX;
+        }
+        
+        // Use 400px as fallback if mosaic width is somehow 0
+        if (maxEdgeWidth <= 0) {
+            maxEdgeWidth = workArea.width - 400;
+        }
+        
+        if (edgeFrame.width > maxEdgeWidth) {
+            Logger.log(`[MOSAIC WM] Edge tile exceeds max (${edgeFrame.width} > ${maxEdgeWidth}) - constraining to mosaic boundary`);
+            this._isResizing = true;
+            try {
+                if (isLeft) {
+                    edgeTiledWindow.move_resize_frame(false, workArea.x, workArea.y, maxEdgeWidth, workArea.height);
+                } else {
+                    const newX = workArea.x + workArea.width - maxEdgeWidth;
+                    edgeTiledWindow.move_resize_frame(false, newX, workArea.y, maxEdgeWidth, workArea.height);
+                }
+            } finally {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+                    this._isResizing = false;
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+        }
+        
+        // Always retile mosaic to adapt to new available space
+        if (this._tilingManager) {
+            Logger.log(`[MOSAIC WM] Retiling mosaic after edge tile resize`);
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
+                return GLib.SOURCE_REMOVE;
+            });
         }
     }
     

@@ -24,6 +24,12 @@ export class TilingManager {
         this._drawingManager = null;
         this._animationsManager = null;
         this._windowingManager = null;
+        
+        // Track original window sizes for smart resize before overflow
+        this._originalSizes = new Map();  // windowId -> { width, height } - size before current resize session
+        
+        // Track window opening sizes for reverse smart resize (restore on window close)
+        this._openingSizes = new Map();   // windowId -> { width, height } - size when window first opened
     }
 
     setEdgeTilingManager(manager) {
@@ -880,6 +886,13 @@ export class TilingManager {
                 meta_windows = meta_windows.filter(w => !edgeTiledIds.includes(w.get_id()));
                 Logger.log(`[MOSAIC WM] After filtering edge-tiled: ${meta_windows.length} windows to tile`);
                 
+                // Also filter out maximized/fullscreen windows (SACRED - never touch them)
+                const beforeMaxFilter = meta_windows.length;
+                meta_windows = meta_windows.filter(w => !this._windowingManager.isMaximizedOrFullscreen(w));
+                if (meta_windows.length < beforeMaxFilter) {
+                    Logger.log(`[MOSAIC WM] Filtered ${beforeMaxFilter - meta_windows.length} maximized/fullscreen (sacred) windows`);
+                }
+                
                 // Set work_area to remaining space for tiling calculations
                 work_area = remainingSpace;
                 
@@ -889,6 +902,25 @@ export class TilingManager {
                     return;
                 }
             }
+        }
+        
+        // GLOBAL: Filter out maximized/fullscreen windows (SACRED - never touch them)
+        const isSacredWindow = (w) => {
+            // Check flags only (Maximized or Fullscreen)
+            return this._windowingManager.isMaximizedOrFullscreen(w);
+        };
+        
+        const sacredCount = meta_windows.filter(isSacredWindow).length;
+        if (sacredCount > 0) {
+            Logger.log(`[MOSAIC WM] Excluding ${sacredCount} SACRED windows from tiling`);
+            meta_windows = meta_windows.filter(w => !isSacredWindow(w));
+            windows = windows.filter((_, idx) => !isSacredWindow(working_info.meta_windows[idx]));
+        }
+        
+        // If no windows left to tile, return early
+        if (meta_windows.length === 0) {
+            Logger.log('[MOSAIC WM] No windows left to tile after filtering sacred windows');
+            return;
         }
         
         const tileArea = this.isDragging && this.dragRemainingSpace ? this.dragRemainingSpace : work_area;
@@ -914,16 +946,27 @@ export class TilingManager {
         const canOverflow = !hasEdgeTiledWindows || !referenceIsEdgeTiled;
         
         if(overflow && !keep_oversized_windows && reference_meta_window && canOverflow && !this.isDragging) {
-            let id = reference_meta_window.get_id();
-            let _windows = windows;
-            for(let i = 0; i < _windows.length; i++) {
-                if(meta_windows[_windows[i].index].get_id() === id) {
-                    _windows.splice(i, 1);
-                    break;
+            // SAFETY: Only overflow windows that are genuinely new (added within last 2 seconds)
+            // This prevents incorrectly expelling existing windows during resize retiling
+            const isNewlyAdded = reference_meta_window._windowAddedTime && 
+                (Date.now() - reference_meta_window._windowAddedTime) < 2000;
+            
+            if (!isNewlyAdded && !reference_meta_window._forceOverflow) {
+                Logger.log(`[MOSAIC WM] Skipping overflow for ${reference_meta_window.get_id()} - not a new window`);
+            } else if (reference_meta_window._isSmartResizing) {
+                Logger.log(`[MOSAIC WM] Skipping overflow for ${reference_meta_window.get_id()} - smart resize in progress`);
+            } else {
+                let id = reference_meta_window.get_id();
+                let _windows = windows;
+                for(let i = 0; i < _windows.length; i++) {
+                    if(meta_windows[_windows[i].index].get_id() === id) {
+                        _windows.splice(i, 1);
+                        break;
+                    }
                 }
+                this._windowingManager.moveOversizedWindow(reference_meta_window);
+                tile_info = this._tile(_windows, tileArea);
             }
-            this._windowingManager.moveOversizedWindow(reference_meta_window);
-            tile_info = this._tile(_windows, tileArea);
         }
         
         Logger.log(`[MOSAIC WM] Drawing tiles - isDragging: ${this.isDragging}, using tileArea: x=${tileArea.x}, y=${tileArea.y}`);
@@ -1012,6 +1055,20 @@ export class TilingManager {
             !edgeTiledIds.includes(w.id)
         );
         
+        // CRITICAL: Update dimensions of existing windows from reality!
+        // We might have just resized them in tryFitWithResize, but the working_info cache
+        // hasn't updated yet because size-changed signals might be blocked or pending.
+        const workspaceWindows = workspace.list_windows();
+        
+        for (const w of windows) {
+            const realWindow = workspaceWindows.find(win => win.get_id() === w.id);
+            if (realWindow) {
+                const realFrame = realWindow.get_frame_rect();
+                w.width = realFrame.width;
+                w.height = realFrame.height;
+            }
+        }
+        
         Logger.log(`[MOSAIC WM] canFitWindow: Current non-edge-tiled windows: ${windows.length}`);
         
         const newWindowId = window.get_id();
@@ -1045,7 +1102,7 @@ export class TilingManager {
         
         Logger.log(`[MOSAIC WM] canFitWindow: Tile result overflow: ${tile_result.overflow}`);
         
-        const fits = !tile_result.overflow;
+        let fits = !tile_result.overflow;
         
         if (fits) {
             Logger.log('[MOSAIC WM] canFitWindow: Window fits!');
@@ -1054,6 +1111,725 @@ export class TilingManager {
         }
         
         return fits;
+    }
+
+    /**
+     * Save original size of a window before resizing
+     * @param {Meta.Window} window
+     */
+    saveOriginalSize(window) {
+        const winId = window.get_id();
+        if (!this._originalSizes.has(winId)) {
+            const frame = window.get_frame_rect();
+            this._originalSizes.set(winId, { width: frame.width, height: frame.height });
+            Logger.log(`[MOSAIC WM] saveOriginalSize: Saved ${winId} as ${frame.width}x${frame.height}`);
+        }
+    }
+
+    /**
+     * Save the opening size of a window (called once when window first appears)
+     * This is the MAXIMUM size the window can be restored to
+     * @param {Meta.Window} window
+     */
+    saveOpeningSize(window) {
+        const winId = window.get_id();
+        if (!this._openingSizes.has(winId)) {
+            const frame = window.get_frame_rect();
+            if (frame.width > 0 && frame.height > 0) {
+                this._openingSizes.set(winId, { width: frame.width, height: frame.height });
+                Logger.log(`[MOSAIC WM] saveOpeningSize: Window ${winId} opened at ${frame.width}x${frame.height}`);
+            }
+        }
+    }
+    
+    /**
+     * Clear opening size when window is destroyed
+     * @param {number} windowId
+     */
+    clearOpeningSize(windowId) {
+        if (this._openingSizes.has(windowId)) {
+            this._openingSizes.delete(windowId);
+            Logger.log(`[MOSAIC WM] clearOpeningSize: Removed ${windowId}`);
+        }
+    }
+
+    /**
+     * Get opening size for a window
+     * @param {number} windowId
+     * @returns {Object|null} { width, height } or null if not found
+     */
+    getOpeningSize(windowId) {
+        return this._openingSizes.get(windowId) || null;
+    }
+
+    /**
+     * Try to restore windows toward their original opening sizes when space is freed
+     * @param {Meta.Window[]} windows - Remaining windows in workspace
+     * @param {Object} workArea - Available work area
+     * @param {number} freedWidth - Width freed by removed window
+     * @param {number} freedHeight - Height freed by removed window
+     * @param {Meta.Workspace} workspace - Current workspace for fit validation
+     * @param {number} monitor - Monitor index for fit validation
+     * @returns {boolean} True if any windows were resized
+     */
+    tryRestoreWindowSizes(windows, workArea, freedWidth, freedHeight, workspace, monitor) {
+        Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: ${freedWidth}px width and ${freedHeight}px height freed`);
+        
+        // Find windows that were shrunk (current size < opening size)
+        const shrunkWindows = [];
+        for (const window of windows) {
+            const winId = window.get_id();
+            const openingSize = this._openingSizes.get(winId);
+            if (!openingSize) continue;
+            
+            const frame = window.get_frame_rect();
+            const widthDiff = openingSize.width - frame.width;
+            const heightDiff = openingSize.height - frame.height;
+            
+            // Window was shrunk if it's smaller than opening size
+            if (widthDiff > 10 || heightDiff > 10) {
+                shrunkWindows.push({
+                    window,
+                    currentWidth: frame.width,
+                    currentHeight: frame.height,
+                    openingWidth: openingSize.width,
+                    openingHeight: openingSize.height,
+                    widthDeficit: Math.max(0, widthDiff),
+                    heightDeficit: Math.max(0, heightDiff)
+                });
+            }
+        }
+        
+        if (shrunkWindows.length === 0) {
+            Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore`);
+            return false;
+        }
+        
+        Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: Found ${shrunkWindows.length} shrunk windows`);
+        
+        // Determine orientation (use width for landscape, height for portrait)
+        const isLandscape = workArea.width > workArea.height;
+        
+        // The freedSpace IS the available space (the removed window's space is now free)
+        const freedSpace = isLandscape ? freedWidth : freedHeight;
+        
+        Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: freedSpace=${freedSpace}`);
+        
+        if (freedSpace <= 10) {
+            Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: Not enough space to distribute`);
+            return false;
+        }
+        
+        // Calculate total deficit (how much windows want to grow)
+        const totalDeficit = shrunkWindows.reduce((sum, w) => 
+            sum + (isLandscape ? w.widthDeficit : w.heightDeficit), 0);
+        
+        if (totalDeficit <= 0) {
+            Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: No deficit to fill`);
+            return false;
+        }
+        
+        // Distribute freed space proportionally based on how much each window was shrunk
+        const spaceToDistribute = Math.min(freedSpace, totalDeficit);
+        let restored = false;
+        
+        for (const shrunkWindow of shrunkWindows) {
+            const deficit = isLandscape ? shrunkWindow.widthDeficit : shrunkWindow.heightDeficit;
+            const proportion = deficit / totalDeficit;
+            const gain = Math.floor(spaceToDistribute * proportion);
+            
+            if (gain <= 0) continue;
+            
+            const frame = shrunkWindow.window.get_frame_rect();
+            let newWidth = frame.width;
+            let newHeight = frame.height;
+            
+            if (isLandscape) {
+                newWidth = Math.min(frame.width + gain, shrunkWindow.openingWidth);
+            } else {
+                newHeight = Math.min(frame.height + gain, shrunkWindow.openingHeight);
+            }
+            
+            // Only resize if there's a meaningful change
+            if (newWidth !== frame.width || newHeight !== frame.height) {
+                // Calculate max available space for this window
+                // by determining effective space occupied by other windows.
+                // We must handle stacked windows (same column/row) by grouping them,
+                // otherwise we double-count their width/height.
+                
+                let occupiedSpace = 0;
+                
+                if (isLandscape) {
+                    // Landscape: Check Width usage. Group by X coordinate (Columns)
+                    const columns = [];
+                    for (const w of windows) {
+                        if (w.get_id() === shrunkWindow.window.get_id()) continue;
+                        
+                        const f = w.get_frame_rect();
+                        // Find matching column (approximate X)
+                        const col = columns.find(c => Math.abs(c.x - f.x) < constants.COLUMN_ALIGNMENT_TOLERANCE);
+                        if (col) {
+                            col.width = Math.max(col.width, f.width);
+                        } else {
+                            columns.push({ x: f.x, width: f.width });
+                        }
+                    }
+                    occupiedSpace = columns.reduce((sum, c) => sum + c.width, 0);
+                } else {
+                    // Portrait: Check Height usage. Group by Y coordinate (Rows)
+                    const rows = [];
+                    for (const w of windows) {
+                        if (w.get_id() === shrunkWindow.window.get_id()) continue;
+                        
+                        const f = w.get_frame_rect();
+                        // Find matching row (approximate Y)
+                        const row = rows.find(r => Math.abs(r.y - f.y) < constants.COLUMN_ALIGNMENT_TOLERANCE);
+                        if (row) {
+                            row.height = Math.max(row.height, f.height);
+                        } else {
+                            rows.push({ y: f.y, height: f.height });
+                        }
+                    }
+                    occupiedSpace = rows.reduce((sum, r) => sum + r.height, 0);
+                }
+                
+                // Add margins for each gap between columns/rows + outer margins if applicable?
+                // The workArea includes outer margins usually.
+                // We just need to subtract the gap between the window and "others".
+                // Simple approximation: (number of groups) * 8px
+                // If there are 0 other groups, margin is 0.
+                const groupCount = isLandscape ? 
+                    (occupiedSpace > 0 ? 1 : 0) : // Simplification: we assume 1 block of "others" usually
+                    (occupiedSpace > 0 ? 1 : 0);
+                
+                // Better margin calc: (Total Windows - 1) * 8 is the total gap space in the layout.
+                // But we don't know how many gaps are "active".
+                // Safest is to use standard formula:
+                const margin = (windows.length - 1) * 8;
+                
+                const maxAvailable = (isLandscape ? workArea.width : workArea.height) - margin - occupiedSpace;
+                
+                // Limit growth to what actually fits right now
+                if (isLandscape && newWidth > maxAvailable) {
+                    Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: Limiting ${shrunkWindow.window.get_id()} from ${newWidth}px to maxAvailable ${maxAvailable}px (others effectively occupy ${occupiedSpace}px)`);
+                    newWidth = maxAvailable;
+                }
+                if (!isLandscape && newHeight > maxAvailable) {
+                    newHeight = maxAvailable;
+                }
+                
+                // Skip if no meaningful growth after limiting
+                if ((isLandscape && newWidth <= frame.width) || (!isLandscape && newHeight <= frame.height)) {
+                    continue;
+                }
+                
+                // Simple approach: grow by freedSpace proportionally, up to openingSize and maxAvailable
+                // The flag prevents overflow detection, and tiling will redistribute other windows
+                
+                Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: Restoring ${shrunkWindow.window.get_id()} from ${frame.width}x${frame.height} to ${newWidth}x${newHeight} (max: ${shrunkWindow.openingWidth}x${shrunkWindow.openingHeight})`);
+                
+                // Set flag to prevent overflow detection during reverse smart resize
+                shrunkWindow.window._isReverseSmartResizing = true;
+                
+                shrunkWindow.window.move_resize_frame(
+                    true,  // userOp
+                    frame.x,
+                    frame.y,
+                    newWidth,
+                    newHeight
+                );
+                
+                // Clear flag after a delay to allow resize to complete
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
+                    shrunkWindow.window._isReverseSmartResizing = false;
+                    Logger.log(`[MOSAIC WM] Reverse smart resize complete for window ${shrunkWindow.window.get_id()}`);
+                    return GLib.SOURCE_REMOVE;
+                });
+                
+                restored = true;
+            }
+        }
+        
+        return restored;
+    }
+
+    /**
+     * Legacy: Restore windows to their original sizes if possible
+     * @param {Meta.Window[]} windows
+     * @param {Object} workArea
+     * @deprecated Use tryRestoreWindowSizes instead
+     */
+    restoreOriginalSizes(windows, workArea) {
+        for (const window of windows) {
+            const winId = window.get_id();
+            const originalSize = this._originalSizes.get(winId);
+            if (originalSize) {
+                const frame = window.get_frame_rect();
+                // Only restore if current size is smaller than original
+                if (frame.width < originalSize.width || frame.height < originalSize.height) {
+                    Logger.log(`[MOSAIC WM] restoreOriginalSizes: Restoring ${winId} to ${originalSize.width}x${originalSize.height}`);
+                    window.move_resize_frame(false, frame.x, frame.y, originalSize.width, originalSize.height);
+                }
+                this._originalSizes.delete(winId);
+            }
+        }
+    }
+
+    /**
+     * Calculate window area as ratio of workspace area
+     * @param {Object} frame - Window frame rect
+     * @param {Object} workArea - Workspace area
+     * @returns {number} Ratio (0-1)
+     */
+    getWindowAreaRatio(frame, workArea) {
+        const windowArea = frame.width * frame.height;
+        const workspaceArea = workArea.width * workArea.height;
+        return windowArea / workspaceArea;
+    }
+
+    /**
+     * Helper to get usable work area considering edge tiles
+     */
+    getUsableWorkArea(workspace, monitor) {
+        if (this._edgeTilingManager) {
+            const edgeTiledWindows = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
+            if (edgeTiledWindows.length > 0) {
+                // If the workspace is fully occupied (left + right), return zero/empty rect
+                const zones = edgeTiledWindows.map(w => w.zone);
+                const hasLeft = zones.some(z => [TileZone.LEFT_FULL, TileZone.TOP_LEFT, TileZone.BOTTOM_LEFT].includes(z));
+                const hasRight = zones.some(z => [TileZone.RIGHT_FULL, TileZone.TOP_RIGHT, TileZone.BOTTOM_RIGHT].includes(z));
+                
+                if (hasLeft && hasRight) {
+                    return { x: 0, y: 0, width: 0, height: 0 };
+                }
+                
+                return this._edgeTilingManager.calculateRemainingSpace(workspace, monitor);
+            }
+        }
+        return workspace.get_work_area_for_monitor(monitor);
+    }
+
+    /**
+     * Try to fit a new window by resizing existing windows
+     * @param {Meta.Window} newWindow - The window trying to fit
+     * @param {Meta.Window[]} existingWindows - Windows already in workspace
+     * @param {Object} workArea - Available workspace area
+     * @returns {boolean} True if fit was successful
+     */
+    tryFitWithResize(newWindow, existingWindows, workArea) {
+        Logger.log(`[MOSAIC WM] tryFitWithResize: Attempting to fit window by resizing ${existingWindows.length} existing windows`);
+        
+        // Filter out non-resizable windows
+        // Note: Most windows are resizable, only special windows like dialogs may not be
+        const resizableWindows = existingWindows.filter(w => {
+            // Check if window has resize constraints that prevent resizing
+            const isResizable = w.resizeable !== false;
+            if (!isResizable) {
+                Logger.log(`[MOSAIC WM] tryFitWithResize: Window ${w.get_id()} is not resizable`);
+            }
+            return isResizable;
+        });
+        
+        Logger.log(`[MOSAIC WM] tryFitWithResize: ${resizableWindows.length} resizable windows found`);
+        
+        if (resizableWindows.length === 0) {
+            Logger.log(`[MOSAIC WM] tryFitWithResize: No resizable windows`);
+            return false;
+        }
+        
+        // NOTE: We NO LONGER clear learned minimums between sessions.
+        // The cached _cachedMinWidth/_cachedMinHeight values persist permanently,
+        // allowing instant capacity calculations on subsequent resize attempts.
+        
+        const newFrame = newWindow.get_frame_rect();
+        const newWindowRatio = this.getWindowAreaRatio(newFrame, workArea);
+        
+        // Classify windows by size
+        const largeWindows = [];
+        const smallWindows = [];
+        
+        for (const window of resizableWindows) {
+            const frame = window.get_frame_rect();
+            const ratio = this.getWindowAreaRatio(frame, workArea);
+            
+            if (ratio > constants.LARGE_WINDOW_THRESHOLD) {
+                largeWindows.push({ window, frame, ratio });
+            } else if (ratio < constants.SMALL_WINDOW_THRESHOLD) {
+                smallWindows.push({ window, frame, ratio });
+            } else {
+                // Medium windows - treat as SMALL/FIXED for resize purposes
+                // This prevents trying to shrink windows that are likely already near their min size
+                smallWindows.push({ window, frame, ratio });
+            }
+        }
+        
+        Logger.log(`[MOSAIC WM] tryFitWithResize: Large=${largeWindows.length}, Small=${smallWindows.length}, NewRatio=${newWindowRatio.toFixed(2)}`);
+        
+        // Detect orientation - if width > height, we likely tile horizontally (windows side-by-side)
+        // If height > width, we likely tile vertically (windows stacked)
+        const isLandscape = workArea.width > workArea.height;
+        const dim = isLandscape ? 'width' : 'height'; // Dimension to check
+        
+        Logger.log(`[MOSAIC WM] tryFitWithResize: Orientation is ${isLandscape ? 'LANDSCAPE (using width)' : 'PORTRAIT (using height)'}`);
+
+        const workspaceMargin = 2; // Safety margin
+        const usableSpace = workArea[dim] - (workspaceMargin * 2);
+        
+        let resizeRatio = 1.0;
+        
+        const totalWindows = resizableWindows.length + 1;
+        const spacing = (totalWindows - 1) * constants.WINDOW_SPACING;
+        
+        let smallWindowsSpace = smallWindows.reduce((sum, item) => sum + item.frame[dim], 0);
+        let largeWindowsSpace = largeWindows.reduce((sum, item) => sum + item.frame[dim], 0);
+        
+        // Assume new window is resizable by default
+        let fixedSpace = smallWindowsSpace;
+        let resizableSpace = largeWindowsSpace + newFrame[dim];
+        
+        // EXPERIMENTAL: If new window is NOT Large (> 60%), treat it as 'fixed' for calculation purposes.
+        if (newWindowRatio < constants.LARGE_WINDOW_THRESHOLD) {
+            Logger.log(`[MOSAIC WM] tryFitWithResize: New window is not Large (${newWindowRatio.toFixed(2)}), treating as fixed constraint`);
+            fixedSpace += newFrame[dim];
+            resizableSpace -= newFrame[dim];
+        } else {
+             // It's large, verify if we have ANY fixed constraints (e.g. edge tiles effectively reducing usable space)
+             // If resizableSpace is huge but usableSpace is tiny, ratio will handle it.
+        }
+
+        const availableForResizable = usableSpace - spacing - fixedSpace;
+        
+        if (resizableSpace > 0) {
+            resizeRatio = availableForResizable / resizableSpace;
+        } else {
+            // No resizable windows - check if we can still fit
+            if (fixedSpace + spacing <= usableSpace) {
+                Logger.log(`[MOSAIC WM] tryFitWithResize: No resizable windows but fixed windows fit - returning true`);
+                return true;
+            } else {
+                Logger.log(`[MOSAIC WM] tryFitWithResize: No resizable windows and fixed windows don't fit - proceeding to fallback check`);
+                resizeRatio = 1.0; // Will fail validity check and trigger fallback
+            }
+        }
+
+        const totalSpaceNeeded = fixedSpace + resizableSpace + spacing;
+
+        if (totalSpaceNeeded <= usableSpace) {
+            Logger.log(`[MOSAIC WM] tryFitWithResize: No resize needed (dimensions fit) - returning true`);
+            return true;
+        }
+
+        // If we need resize, resizeRatio is already calculated above.
+        // Just verify min ratio.
+
+        
+        // Check if resize ratio is valid
+        if (resizeRatio >= 1.0) {
+            // If we have overflow (checked above) and ratio >= 1.0, it means standard resize failed.
+            // If largeWindows are present, this is a legit failure.
+            // If NO large windows, we want to fall through to FALLBACK logic below.
+            if (largeWindows.length > 0) {
+                Logger.log(`[MOSAIC WM] tryFitWithResize: Ratio >= 1.0 but space needed > usable (and large windows exist) - something wrong, returning false`);
+                return false;
+            } else {
+                 Logger.log(`[MOSAIC WM] tryFitWithResize: Standard resize N/A (ratio >= 1.0), falling through to fallback strategy`);
+            }
+        }
+        
+
+        
+        // Check minimum safety ratio (don't shrink to invisible)
+        // Check minimum safety ratio (don't shrink to invisible)
+        if (resizeRatio < constants.MIN_RESIZE_RATIO) {
+            if (largeWindows.length > 0) {
+                Logger.log(`[MOSAIC WM] tryFitWithResize: Ratio too small (${resizeRatio.toFixed(2)}), below min ${constants.MIN_RESIZE_RATIO}`);
+                return false;
+            } else {
+                 Logger.log(`[MOSAIC WM] tryFitWithResize: Ratio too small (${resizeRatio.toFixed(2)}) but no Large windows - forcing fallback check`);
+            }
+        }
+        
+        Logger.log(`[MOSAIC WM] tryFitWithResize: Resize ratio needed: ${resizeRatio.toFixed(2)}`);
+        
+        // Special case: If no large EXISTING windows but new window is large, we need to resize the new window
+        const newWindowIsLarge = newWindowRatio >= constants.LARGE_WINDOW_THRESHOLD;
+        let newWindowFitSuccess = false;
+
+        if (largeWindows.length === 0) {
+            if (newWindowIsLarge) {
+                Logger.log(`[MOSAIC WM] tryFitWithResize: No large existing windows - trying to fit NEW window (${newWindowRatio.toFixed(2)}) alone`);
+                
+                // Calculate how much space is available for the new window
+                const existingSmallSpace = smallWindows.reduce((sum, item) => sum + item.frame[dim], 0);
+                const availableForNew = usableSpace - existingSmallSpace - spacing;
+                
+                const newDimension = newFrame[dim];
+                const shrinkRatio = availableForNew / newDimension;
+                
+                if (shrinkRatio >= constants.MIN_RESIZE_RATIO && shrinkRatio < 1.0) {
+                    const targetWidth = Math.floor(newFrame.width * shrinkRatio);
+                    const targetHeight = Math.floor(newFrame.height * shrinkRatio);
+                    
+                    // CHECK MIN SIZE
+                    const hints = newWindow.get_size_hints ? newWindow.get_size_hints() : null;
+                    const minSize = hints ? (dim === 'width' ? hints.min_width : hints.min_height) : 50;
+                    const targetDim = dim === 'width' ? targetWidth : targetHeight;
+                    
+                    if (targetDim < minSize) {
+                         Logger.log(`[MOSAIC WM] tryFitWithResize: Target ${targetDim} < Min ${minSize} for NEW window. Aborting single resize to try Fallback.`);
+                         // Fallthrough to Fallback
+                    } else {
+                        Logger.log(`[MOSAIC WM] tryFitWithResize: Shrinking NEW window from ${newFrame.width}x${newFrame.height} to ${targetWidth}x${targetHeight} (ratio: ${shrinkRatio.toFixed(2)})`);
+                        
+                        // Protect new window
+                        newWindow._isSmartResizing = true;
+                        GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.RESIZE_VERIFICATION_DELAY_MS, () => {
+                             newWindow._isSmartResizing = false;
+                             return GLib.SOURCE_REMOVE;
+                        });
+                        
+                        GLib.idle_add(GLib.PRIORITY_HIGH, () => {
+                            newWindow.move_resize_frame(true, newFrame.x, newFrame.y, targetWidth, targetHeight);
+                            Logger.log(`[MOSAIC WM] tryFitWithResize: Async resize applied to NEW window ${newWindow.get_id()}`);
+                            return GLib.SOURCE_REMOVE;
+                        });
+                        
+                        newWindowFitSuccess = true;
+                        return true;
+                    }
+                } else {
+                     Logger.log(`[MOSAIC WM] tryFitWithResize: New window shrink ratio ${shrinkRatio.toFixed(2)} too small/invalid. Falling through to Global Resize.`);
+                }
+            } 
+            
+            if (!newWindowFitSuccess) {
+                // FALLBACK STRATEGY: SMART DISTRIBUTION (Democracy of the Capable)
+                // We need to fit 'totalNeeded' into 'usableSpace'.
+                // Instead of shrinking everyone proportionally (which fails if one window is at min size),
+                // we calculate how much "shrinkable fat" each window has and distribute the reduction load
+                // proportionally to that availability.
+                
+                Logger.log(`[MOSAIC WM] tryFitWithResize: No Large windows. Initiating SMART DISTRIBUTION fallback.`);
+                
+                // 1. Promote Small windows to be candidates
+                largeWindows.push(...smallWindows);
+                smallWindows.length = 0;
+                
+                // 2. Identify candidates and their limits
+                // We need to reduce total width by this amount:
+                // Note: newWindowWidth is usually fixed in this logic unless we add it to the pool?
+                // Let's keep newWindow fixed for now to simplify, unless it's huge.
+                // Assuming newWindow fits in usableSpace if alone.
+                
+                const totalCurrentWidth = largeWindows.reduce((sum, item) => sum + item.frame[dim], 0);
+                const newWindowWidth = newFrame[dim];
+                const spaceAvailableForExisting = usableSpace - newWindowWidth - spacing;
+                
+                // How much we need to shave off the existing windows Total
+                const requiredReduction = totalCurrentWidth - spaceAvailableForExisting;
+                
+                Logger.log(`[MOSAIC WM] Smart Distribution: TotalCurrent=${totalCurrentWidth}, Available=${spaceAvailableForExisting}, Need to cut=${requiredReduction}`);
+                
+                if (requiredReduction <= 0) {
+                    // Weird, it should fit without resize?
+                    resizeRatio = 1.0; 
+                } else {
+                    // 3. Calculate shrinkable capability for each window
+                    let totalShrinkCapacity = 0;
+                    
+                    largeWindows.forEach(item => {
+                        // PRIORITY: Use cached actual minimum if available (persistent from previous attempts)
+                        // Otherwise try get_size_hints, then fallback to 50px
+                        let minSize;
+                        
+                        if (item.window._actualMinWidth && dim === 'width') {
+                            minSize = item.window._actualMinWidth;
+                            Logger.log(`[MOSAIC WM] Window ${item.window.get_id()}: Using CACHED min ${minSize}px`);
+                        } else if (item.window._actualMinHeight && dim === 'height') {
+                            minSize = item.window._actualMinHeight;
+                            Logger.log(`[MOSAIC WM] Window ${item.window.get_id()}: Using CACHED min ${minSize}px`);
+                        } else {
+                            const hints = item.window.get_size_hints ? item.window.get_size_hints() : null;
+                            minSize = hints ? (dim === 'width' ? hints.min_width : hints.min_height) : 50;
+                            if (minSize < 50) minSize = 50; // Safety floor
+                        }
+                        
+                        // How much can this window give?
+                        item.minSize = minSize;
+                        item.shrinkCapacity = Math.max(0, item.frame[dim] - minSize);
+                        
+                        totalShrinkCapacity += item.shrinkCapacity;
+                        Logger.log(`[MOSAIC WM] Window ${item.window.get_id()} (${item.frame[dim]}px): Min=${minSize}, Capacity=${item.shrinkCapacity}`);
+                    });
+                    
+                    if (totalShrinkCapacity < requiredReduction) {
+                        Logger.log(`[MOSAIC WM] Smart Distribution: Existing windows at minimum. Need ${requiredReduction}, have ${totalShrinkCapacity}. Will try shrinking NEW window.`);
+                        
+                        // Calculate how much space is available for the new window
+                        const existingTotalWidth = largeWindows.reduce((sum, item) => sum + item.minSize, 0);
+                        const availableForNew = workArea.width - existingTotalWidth - (28 * largeWindows.length); // spacing
+                        
+                        if (availableForNew > 100) { // At least 100px for new window
+                            const newFrame = newWindow.get_frame_rect();
+                            const targetWidth = Math.max(100, Math.floor(availableForNew));
+                            const targetHeight = newFrame.height; // Keep height unchanged
+                            
+                            Logger.log(`[MOSAIC WM] Resizing NEW window from ${newFrame.width} to ${targetWidth}px (existing windows stay at minimum)`);
+                            
+                            newWindow._isSmartResizing = true;
+                            GLib.idle_add(GLib.PRIORITY_HIGH, () => {
+                                newWindow.move_resize_frame(true, newFrame.x, newFrame.y, targetWidth, targetHeight);
+                                return GLib.SOURCE_REMOVE;
+                            });
+                            
+                            return true; // Enable polling in extension.js
+                        } else {
+                            Logger.log(`[MOSAIC WM] Not enough space for new window (${availableForNew}px) - overflow unavoidable`);
+                            return false;
+                        }
+                    }
+                    
+                    // 4. Distribute the load and Apply
+                    // We calculate a custom target size for each window instead of using a global resizeRatio
+                    
+                    // We need to override the standard loop below because it uses 'resizeRatio'.
+                    // Or we can pre-calculate targetWidth in the item and use it?
+                    // The loop below uses: targetWidth = Math.floor(frame.width * resizeRatio);
+                    
+                    // Let's modify 'frame' in largeWindows? No, frame is current.
+                    // We can set a custom property 'overrideTargetSize' on the item?
+                    
+                    largeWindows.forEach(item => {
+                        if (totalShrinkCapacity > 0) {
+                            // My share of the debt
+                            const myShare = (item.shrinkCapacity / totalShrinkCapacity) * requiredReduction;
+                            item.customTargetSize = Math.floor(item.frame[dim] - myShare);
+                            Logger.log(`[MOSAIC WM] Window ${item.window.get_id()}: Taking load ${Math.floor(myShare)}px -> New Size ${item.customTargetSize}`);
+                        } else {
+                            item.customTargetSize = item.frame[dim];
+                        }
+                    });
+                    
+                    // Set resizeRatio to a dummy value that passes checks, but we will use customTargetSize in loop
+                    resizeRatio = 0.99; // < 1.0 to trigger logic
+                }
+                
+                // IMPORTANT: We must update the loop below to use 'customTargetSize' if present!
+            }
+        }
+        
+        // Save original sizes and apply resize to large windows only
+        const resizedWindows = [];
+        let allResizesSucceeded = true;
+        
+        for (const item of largeWindows) {
+            const { window, frame } = item;
+            try {
+                this.saveOriginalSize(window);
+                
+                // Apply unified proportional ratio or Custom Target (Smart Distribution)
+                let targetWidth, targetHeight;
+                
+                if (item.customTargetSize) {
+                    // Use calculated custom size for the relevant dimension, keep other same(ish)
+                    if (dim === 'width') {
+                        targetWidth = item.customTargetSize;
+                        targetHeight = frame.height; // Maintain height
+                    } else {
+                        targetHeight = item.customTargetSize;
+                        targetWidth = frame.width;   // Maintain width
+                    }
+                } else {
+                    // Only resize the relevant dimension - keep the other unchanged
+                    // This avoids hitting min_height when we only need to shrink width
+                    if (dim === 'width') {
+                        targetWidth = Math.floor(frame.width * resizeRatio);
+                        targetHeight = frame.height; // KEEP HEIGHT UNCHANGED
+                    } else {
+                        targetHeight = Math.floor(frame.height * resizeRatio);
+                        targetWidth = frame.width;  // KEEP WIDTH UNCHANGED
+                    }
+                }
+                
+                // Check if window is maximized and unmaximize first
+                if (window.maximized_horizontally || window.maximized_vertically) {
+                    window.unmaximize(Meta.MaximizeFlags.BOTH);
+                    Logger.log(`[MOSAIC WM] tryFitWithResize: Unmaximized window ${window.get_id()}`);
+                }
+                
+                Logger.log(`[MOSAIC WM] tryFitWithResize: Resizing ${window.get_id()} from ${frame.width}x${frame.height} to ${targetWidth}x${targetHeight}`);
+                
+                // PROTECT EXISTING WINDOWS from false overflow detection during resize
+                window._isSmartResizing = true;
+                // Auto-clear protection after sufficient time (covers resize + polling duration)
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.RESIZE_VERIFICATION_DELAY_MS, () => {
+                     if (window._isSmartResizing) {
+                         window._isSmartResizing = false;
+                         // Logger.log(`[MOSAIC WM] Protection cleared for ${window.get_id()} (timeout)`);
+                     }
+                     return GLib.SOURCE_REMOVE;
+                });
+                
+                // Use animations for smooth transition
+                const targetRect = { x: frame.x, y: frame.y, width: targetWidth, height: targetHeight };
+                
+                // Use idle_add for async resize
+                const winId = window.get_id();
+                GLib.idle_add(GLib.PRIORITY_HIGH, () => {
+                    window.move_resize_frame(true, frame.x, frame.y, targetWidth, targetHeight);
+                    Logger.log(`[MOSAIC WM] tryFitWithResize: Async resize applied to ${winId}`);
+                    
+                    // Verify after next frame
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+                        const checkFrame = window.get_frame_rect();
+                        Logger.log(`[MOSAIC WM] tryFitWithResize: Delayed check: ${checkFrame.width}x${checkFrame.height}`);
+                        return GLib.SOURCE_REMOVE;
+                    });
+                    
+                    return GLib.SOURCE_REMOVE;
+                });
+                
+                // Verify immediately (will likely still show old size)
+                const afterFrame = window.get_frame_rect();
+                Logger.log(`[MOSAIC WM] tryFitWithResize: Immediate result: ${afterFrame.width}x${afterFrame.height}`);
+                
+                resizedWindows.push({ window, targetWidth, targetHeight });
+            } catch (e) {
+                Logger.log(`[MOSAIC WM] tryFitWithResize: Error resizing window ${window.get_id()}: ${e.message}`);
+            }
+        }
+        
+        // Also resize the NEW window if resize needed
+        if (resizeRatio < 1.0) {
+            try {
+                const newTargetWidth = Math.floor(newFrame.width * resizeRatio);
+                const newTargetHeight = Math.floor(newFrame.height * resizeRatio);
+                
+                Logger.log(`[MOSAIC WM] tryFitWithResize: Also resizing NEW window ${newWindow.get_id()} to ${newTargetWidth}x${newTargetHeight}`);
+                
+                // Use animations for new window too (start large -> shrink)
+                 const newTargetRect = { x: newFrame.x, y: newFrame.y, width: newTargetWidth, height: newTargetHeight };
+                 
+                 if (this._animationsManager) {
+                    this._animationsManager.animateWindow(newWindow, newTargetRect, { duration: constants.ANIMATION_DURATION_MS, userOp: true });
+                 } else {
+                    // Apply resize to new window
+                     GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                        newWindow.move_resize_frame(false, newFrame.x, newFrame.y, newTargetWidth, newTargetHeight);
+                        return GLib.SOURCE_REMOVE;
+                    });
+                 }
+                
+            } catch (e) {
+                Logger.log(`[MOSAIC WM] tryFitWithResize: Error resizing new window: ${e.message}`);
+            }
+        }
+        
+        // Trust the animation - no verification needed
+        // The animation manager handles the resize asynchronously
+        Logger.log(`[MOSAIC WM] tryFitWithResize: Resize commands sent for ${resizedWindows.length} windows`);
+        
+        return true;
     }
 
     destroy() {

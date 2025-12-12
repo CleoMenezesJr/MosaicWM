@@ -86,12 +86,14 @@ export class AnimationsManager {
             mode = null,
             onComplete = null,
             draggedWindow = null,
-            subtle = false
+            subtle = false,
+            userOp = false,
+            startRect = null
         } = options;
         
         if (!this.shouldAnimateWindow(window, draggedWindow)) {
             // Apply position immediately without animation
-            window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+            window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
             if (onComplete) onComplete();
             return;
         }
@@ -107,7 +109,7 @@ export class AnimationsManager {
         const windowId = window.get_id();
         this._animatingWindows.add(windowId);
         
-        const currentRect = window.get_frame_rect();
+        const currentRect = startRect || window.get_frame_rect();
         
         // Choose animation mode based on context
         let animationMode;
@@ -132,7 +134,7 @@ export class AnimationsManager {
                                     !isNaN(scaleX) && !isNaN(scaleY);
         
         if (!hasValidDimensions) {
-            window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+            window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
             windowActor.set_translation(translateX, translateY, 0);
             windowActor.ease({
                 translation_x: 0,
@@ -148,8 +150,10 @@ export class AnimationsManager {
             return;
         }
         
-        window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        // Apply new size/position immediately (logical change)
+        window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
         
+        // Setup visual actors to fake the transition
         windowActor.set_pivot_point(0, 0);
         windowActor.set_scale(scaleX, scaleY);
         windowActor.set_translation(translateX, translateY, 0);

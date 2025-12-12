@@ -169,7 +169,243 @@ export default class WindowMosaicExtension extends Extension {
                 const canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
                 
                 if(!canFit && !window._movedByOverflow) {
-                    Logger.log('[MOSAIC WM] Window doesn\'t fit - moving to new workspace');
+                    Logger.log('[MOSAIC WM] Window doesn\'t fit - trying smart resize first');
+                    
+                    // Try smart resize before overflow - use edge-tiling-aware work area
+                    let workArea = workspace.get_work_area_for_monitor(monitor);
+                    if (this.edgeTilingManager) {
+                        const edgeTiledWindows = this.edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
+                        if (edgeTiledWindows.length > 0) {
+                            workArea = this.edgeTilingManager.calculateRemainingSpace(workspace, monitor);
+                        }
+                    }
+                    
+                    // Check for SACRED windows (Maximized/Fullscreen/Full WorkArea)
+                    const allExistingWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
+                        .filter(w => w.get_id() !== window.get_id() && 
+                                !this.edgeTilingManager.isEdgeTiled(w));
+                    
+                    const hasSacredWindow = allExistingWindows.some(w => {
+                        // Check flags only (Maximized or Fullscreen)
+                        return w.maximized_horizontally || w.maximized_vertically || w.is_fullscreen();
+                    });
+                    
+                    if (hasSacredWindow) {
+                        Logger.log('[MOSAIC WM] Sacred window detected - skipping smart resize, forcing overflow');
+                        this.windowingManager.moveOversizedWindow(window);
+                        this._connectWindowWorkspaceSignal(window);
+                        return GLib.SOURCE_REMOVE;
+                    }
+                    
+                    // Filter to resizable windows only (non-sacred)
+                    const existingWindows = allExistingWindows.filter(w => {
+                        return !(w.maximized_horizontally || w.maximized_vertically || w.is_fullscreen());
+                    });
+                    
+                    if (existingWindows.length > 0) {
+                        // Prevent duplicate calls for the SAME NEW WINDOW using workspace-level tracking
+                        if (!workspace._smartResizeProcessedWindows) {
+                            workspace._smartResizeProcessedWindows = new Set();
+                        }
+                        
+                        const windowId = window.get_id();
+                        if (workspace._smartResizeProcessedWindows.has(windowId)) {
+                            Logger.log('[MOSAIC WM] Smart resize already processed for this window - skipping');
+                            this._connectWindowWorkspaceSignal(window);
+                            return GLib.SOURCE_REMOVE;
+                        }
+                        workspace._smartResizeProcessedWindows.add(windowId);
+                        
+                        const resizeSuccess = this.tilingManager.tryFitWithResize(window, existingWindows, workArea);
+                        
+                        if (resizeSuccess) {
+                            Logger.log('[MOSAIC WM] Smart resize applied - starting fit check polling');
+                            
+                            // SET PROTECTION FLAG (Window-level for robustness)
+                            window._isSmartResizing = true;
+                            
+                            // GHOST STATE: Make window semi-transparent while calculating fit
+                            const ghostActor = window.get_compositor_private();
+                            if (ghostActor) {
+                                ghostActor.opacity = 153; // 60% opacity
+                                Logger.log('[MOSAIC WM] Ghost state: Window opacity set to 60%');
+                            }
+                            
+                            // Capture initial sizes for stuck detection
+                            const initialSizes = new Map();
+                            existingWindows.forEach(w => {
+                                const frame = w.get_frame_rect();
+                                initialSizes.set(w.get_id(), { width: frame.width, height: frame.height });
+                            });
+                            
+                            // Track windows that are truly stuck at minimum
+                            const stuckWindows = new Set();
+                            let retryAttempts = 0;
+                            const MAX_RETRIES = 2; // Max times to retry with learned minimums
+                            
+                            // Polling: Check if window fits, retry until success or max attempts
+                            const MAX_ATTEMPTS = 12;
+                            const POLL_INTERVAL = 75; // 75ms * 12 = 900ms max
+                            
+                            // Capture initial workspace to detect moves
+                            const initialWorkspaceIndex = workspace.index();
+                            
+                            let attempts = 0;
+                            const pollForFit = () => {
+                                // CRITICAL CHECK: Abort if window was moved to another workspace (e.g. by overflow protection)
+                                if (window.get_workspace().index() !== initialWorkspaceIndex) {
+                                    Logger.log(`[MOSAIC WM] Window moved to workspace ${window.get_workspace().index()} (expected ${initialWorkspaceIndex}) - aborting smart resize poll`);
+                                    workspace._smartResizeProcessedWindows?.delete(windowId);
+                                    window._isSmartResizing = false;
+                                    return GLib.SOURCE_REMOVE;
+                                }
+                                attempts++;
+                                const canFitNow = this.tilingManager.canFitWindow(window, workspace, monitor);
+                                
+                                if (canFitNow) {
+                                    Logger.log(`[MOSAIC WM] Smart resize successful after ${attempts} polls - window fits now`);
+                                    // Restore opacity from ghost state
+                                    const successActor = window.get_compositor_private();
+                                    if (successActor) successActor.opacity = 255;
+                                    
+                                    workspace._smartResizeProcessedWindows?.delete(windowId);
+                                    window._isSmartResizing = false;
+                                    this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
+                                    return GLib.SOURCE_REMOVE;
+                                }
+                                
+                                // After 4 polls (~300ms), check which windows are stuck
+                                if (attempts === 4 && retryAttempts < MAX_RETRIES) {
+                                    let foundStuck = false;
+                                    
+                                    existingWindows.forEach(w => {
+                                        if (stuckWindows.has(w.get_id())) return; // Already known stuck
+                                        
+                                        const wId = w.get_id();
+                                        const initialSize = initialSizes.get(wId);
+                                        const currentFrame = w.get_frame_rect();
+                                        
+                                        // If window didn't shrink at all, mark as stuck
+                                        if (initialSize && 
+                                            currentFrame.width >= initialSize.width && 
+                                            currentFrame.height >= initialSize.height) {
+                                            stuckWindows.add(wId);
+                                            // Store ACTUAL minimum as current size
+                                            w._actualMinWidth = currentFrame.width;
+                                            w._actualMinHeight = currentFrame.height;
+                                            Logger.log(`[MOSAIC WM] Window ${wId} is STUCK at ${currentFrame.width}x${currentFrame.height} - marking as fixed`);
+                                            foundStuck = true;
+                                        }
+                                    });
+                                    
+                                    // If we found stuck windows, retry resize with updated info
+                                    if (foundStuck && stuckWindows.size < existingWindows.length) {
+                                        retryAttempts++;
+                                        Logger.log(`[MOSAIC WM] Retry ${retryAttempts}: Found ${stuckWindows.size} stuck windows. Redistributing load to ${existingWindows.length - stuckWindows.size} remaining windows.`);
+                                        
+                                        // Filter to only shrinkable windows
+                                        const shrinkableWindows = existingWindows.filter(w => !stuckWindows.has(w.get_id()));
+                                        
+                                        if (shrinkableWindows.length > 0) {
+                                            // Call tryFitWithResize again with only shrinkable windows
+                                            const retrySuccess = this.tilingManager.tryFitWithResize(window, shrinkableWindows, workArea);
+                                            
+                                            if (retrySuccess) {
+                                                // Update initial sizes for next stuck check
+                                                shrinkableWindows.forEach(w => {
+                                                    const frame = w.get_frame_rect();
+                                                    initialSizes.set(w.get_id(), { width: frame.width, height: frame.height });
+                                                });
+                                                
+                                                // Reset attempt counter for new polling cycle
+                                                attempts = 0;
+                                            }
+                                        }
+                                    } else if (foundStuck && stuckWindows.size === existingWindows.length) {
+                                        // ALL existing windows are stuck! Try resizing the NEW window instead
+                                        Logger.log(`[MOSAIC WM] ALL ${existingWindows.length} existing windows are stuck. Trying to resize NEW window to fit.`);
+                                        
+                                        // Calculate available space after stuck windows
+                                        const stuckTotalWidth = existingWindows.reduce((sum, w) => {
+                                            const frame = w.get_frame_rect();
+                                            return sum + frame.width;
+                                        }, 0);
+                                        
+                                        const spacing = (existingWindows.length + 1) * constants.WINDOW_SPACING;
+                                        const availableForNew = workArea.width - stuckTotalWidth - spacing;
+                                        const newFrame = window.get_frame_rect();
+                                        
+                                        // Check if new window already failed to resize (in a previous retry)
+                                        if (window._resizeAttempted && newFrame.width >= (window._originalWidth || newFrame.width) * 0.95) {
+                                            Logger.log(`[MOSAIC WM] NEW window also stuck at ${newFrame.width}px (min=${window._originalWidth}). All windows at minimum - overflow truly unavoidable.`);
+                                            // Force max attempts to trigger overflow immediately
+                                            attempts = MAX_ATTEMPTS; 
+                                        } else if (availableForNew > 50) { // At least 50px for new window
+                                            const shrinkRatio = availableForNew / newFrame.width;
+                                            
+                                            if (shrinkRatio >= 0.20) { // Allow aggressive shrink (20% of original)
+                                                const targetWidth = Math.floor(availableForNew); // Use exact available space
+                                                // KEEP HEIGHT UNCHANGED - window might already be at min height
+                                                const targetHeight = newFrame.height;
+                                                
+                                                Logger.log(`[MOSAIC WM] Shrinking NEW window WIDTH ONLY from ${newFrame.width} to ${targetWidth}px (height stays ${targetHeight}px)`);
+                                                
+                                                // Save original width for stuck detection
+                                                if (!window._originalWidth) {
+                                                    window._originalWidth = newFrame.width;
+                                                }
+                                                window._resizeAttempted = true;
+                                                
+                                                window._isSmartResizing = true;
+                                                GLib.idle_add(GLib.PRIORITY_HIGH, () => {
+                                                    window.move_resize_frame(true, newFrame.x, newFrame.y, targetWidth, targetHeight);
+                                                    return GLib.SOURCE_REMOVE;
+                                                });
+                                                
+                                                // Reset attempt counter to give time for resize
+                                                attempts = 0;
+                                                retryAttempts++;
+                                            } else {
+                                                Logger.log(`[MOSAIC WM] NEW window shrink ratio ${shrinkRatio.toFixed(2)} too small - overflow unavoidable`);
+                                                attempts = MAX_ATTEMPTS; // Force immediate overflow
+                                            }
+                                        } else {
+                                            Logger.log(`[MOSAIC WM] Available space ${availableForNew}px too small for NEW window - overflow unavoidable`);
+                                            attempts = MAX_ATTEMPTS; // Force immediate overflow
+                                        }
+                                    }
+                                }
+                                
+                                if (attempts >= MAX_ATTEMPTS) {
+                                    // CHECK if window was already moved by another process (e.g. manual resize protection)
+                                    if (window._movedByOverflow) {
+                                        Logger.log(`[MOSAIC WM] Smart resize timed out but window already moved - stopping poll`);
+                                    } else {
+                                        Logger.log(`[MOSAIC WM] Smart resize failed after ${attempts} polls - proceeding with overflow`);
+                                        // Restore opacity before overflow (will be visible during move animation)
+                                        const overflowActor = window.get_compositor_private();
+                                        if (overflowActor) overflowActor.opacity = 255;
+                                        this.windowingManager.moveOversizedWindow(window);
+                                    }
+                                    
+                                    workspace._smartResizeProcessedWindows?.delete(windowId);
+                                    window._isSmartResizing = false;
+                                    return GLib.SOURCE_REMOVE;
+                                }
+                                
+                                // Continue polling
+                                GLib.timeout_add(GLib.PRIORITY_DEFAULT, POLL_INTERVAL, pollForFit);
+                                return GLib.SOURCE_REMOVE;
+                            };
+                            
+                            // Start polling after initial delay (let resize start)
+                            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, pollForFit);
+                            this._connectWindowWorkspaceSignal(window);
+                            return GLib.SOURCE_REMOVE;
+                        }
+                    }
+                    
+                    Logger.log('[MOSAIC WM] No smart resize possible - moving to new workspace');
                     this.windowingManager.moveOversizedWindow(window);
                 } else if (window._movedByOverflow) {
                     // Skip tiling here - let the delayed retile in moveOversizedWindow handle it
@@ -345,6 +581,14 @@ export default class WindowMosaicExtension extends Extension {
                 const sourceWorkspace = global.workspace_manager.get_workspace_by_index(previousWorkspaceIndex);
                 if (sourceWorkspace) {
                     Logger.log(`[MOSAIC WM] Re-tiling source workspace ${previousWorkspaceIndex} after window ${windowId} moved to ${currentWorkspaceIndex}`);
+                    
+                    // REVERSE SMART RESIZE: Restore window sizes in origin workspace
+                    // Skip if window was moved by overflow (already handled elsewhere)
+                    if (!window._movedByOverflow) {
+                        Logger.log('[MOSAIC WM] DnD departure: Attempting Reverse Smart Resize on source workspace');
+                        this.tilingManager.tryRestoreWindowSizes(sourceWorkspace, monitor);
+                    }
+                    
                     this.tilingManager.tileWorkspaceWindows(sourceWorkspace, false, monitor, false);
                 }
             }
@@ -378,9 +622,35 @@ export default class WindowMosaicExtension extends Extension {
             const canFit = this.tilingManager.canFitWindow(window, currentWorkspace, monitor);
             
             if (!canFit) {
-                Logger.log('[MOSAIC WM] Manual move: window doesn\'t fit - moving to new workspace');
-                this._overflowMoveTimestamps.set(windowId, Date.now());  // Track to prevent re-processing
-                this.windowingManager.moveOversizedWindow(window);
+                // SMART RESIZE FOR DnD: Try shrinking existing windows before overflow
+                Logger.log(`[MOSAIC WM] Manual move: window doesn't fit - trying Smart Resize first`);
+                
+                const existingWindows = this.windowingManager.getMonitorWorkspaceWindows(currentWorkspace, monitor)
+                    .filter(w => 
+                        w.get_id() !== windowId &&
+                        !this.edgeTilingManager.isEdgeTiled(w) &&
+                        !(w.maximized_horizontally || w.maximized_vertically) &&
+                        !w.is_fullscreen()
+                    );
+                
+                // Use edge-tiling-aware work area
+                let workArea = currentWorkspace.get_work_area_for_monitor(monitor);
+                if (this.edgeTilingManager) {
+                    const edgeTiledWindows = this.edgeTilingManager.getEdgeTiledWindows(currentWorkspace, monitor);
+                    if (edgeTiledWindows.length > 0) {
+                        workArea = this.edgeTilingManager.calculateRemainingSpace(currentWorkspace, monitor);
+                    }
+                }
+                const resizeSuccess = this.tilingManager.tryFitWithResize(window, existingWindows, workArea);
+                
+                if (resizeSuccess) {
+                    Logger.log('[MOSAIC WM] DnD arrival: Smart Resize succeeded - tiling workspace');
+                    this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
+                } else {
+                    Logger.log('[MOSAIC WM] DnD arrival: Smart Resize failed - moving to new workspace');
+                    this._overflowMoveTimestamps.set(windowId, Date.now());  // Track to prevent re-processing
+                    this.windowingManager.moveOversizedWindow(window);
+                }
             } else {
                 Logger.log('[MOSAIC WM] Manual move: window fits - tiling workspace');
                 this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
@@ -450,6 +720,34 @@ export default class WindowMosaicExtension extends Extension {
                 return;
             }
             
+            // CRITICAL: Skip if window is being programmatically resized by Smart Resize or Reverse Smart Resize
+            if (window._isSmartResizing || window._isReverseSmartResizing) {
+                Logger.log(`[MOSAIC WM] Skipping resize detection for window ${window.get_id()} - ${window._isSmartResizing ? 'smart' : 'reverse smart'} resize in progress`);
+                this._sizeChanged = false;
+                return;
+            }
+            
+            // CACHE INVALIDATION: If user increased window size beyond cached minimum,
+            // clear the cache to allow future Smart Resize to try shrinking this window
+            if (window._actualMinWidth && rect.width > window._actualMinWidth + 20) {
+                Logger.log(`[MOSAIC WM] Window ${window.get_id()} grew from cached min ${window._actualMinWidth}px to ${rect.width}px - invalidating cache`);
+                delete window._actualMinWidth;
+                delete window._actualMinHeight;
+            }
+            
+            // UPDATE OPENING SIZE: If user manually resizes larger, update the max restore size
+            // This way the new max becomes whatever size the user chose
+            const currentOpeningSize = this.tilingManager._openingSizes.get(window.get_id());
+            if (currentOpeningSize) {
+                if (rect.width > currentOpeningSize.width || rect.height > currentOpeningSize.height) {
+                    this.tilingManager._openingSizes.set(window.get_id(), { 
+                        width: Math.max(rect.width, currentOpeningSize.width), 
+                        height: Math.max(rect.height, currentOpeningSize.height) 
+                    });
+                    Logger.log(`[MOSAIC WM] Manual resize: Updated opening size for ${window.get_id()} to ${rect.width}x${rect.height}`);
+                }
+            }
+            
             if (this._skipNextTiling === window.get_id()) {
                 Logger.log(`[MOSAIC WM] Skipping size change tiling for window ${window.get_id()} (restoring from edge tiling)`);
                 return;
@@ -498,6 +796,12 @@ export default class WindowMosaicExtension extends Extension {
                         let canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
                         
                         if (!canFit && !this._resizeInOverflow) {
+                            // Skip new windows - let waitForGeometry handle them with smart resize
+                            if (window._waitingForGeometry || !window._geometryReady) {
+                                Logger.log('[MOSAIC WM] Manual resize: skipping new window - waiting for geometry');
+                                return GLib.SOURCE_REMOVE;
+                            }
+                            
                             Logger.log('[MOSAIC WM] Manual resize: entering overflow');
                             this._resizeInOverflow = true;
                             this._resizeOverflowWindow = window;
@@ -547,9 +851,23 @@ export default class WindowMosaicExtension extends Extension {
                     return;
                 }
                 
+                // Skip overflow detection if smart resize is in progress
+                if (workspace._smartResizingInProgress || window._isSmartResizing) {
+                    Logger.log('[MOSAIC WM] Skipping overflow check - smart resize in progress');
+                    this._sizeChanged = false;
+                    return;
+                }
+                
                 if (!canFit) {
                     if (this._resizeOverflowWindow !== window) {
-                        Logger.log('[MOSAIC WM] Resize overflow detected (automatic) - moving window immediately');
+                        // Skip new windows - let waitForGeometry handle them with smart resize
+                        if (window._waitingForGeometry || !window._geometryReady) {
+                            Logger.log('[MOSAIC WM] Resize overflow detected but window is new - letting waitForGeometry handle');
+                            this._sizeChanged = false;
+                            return;
+                        }
+                        
+                        Logger.log('[MOSAIC WM] Resize overflow detected (automatic) - moving window');
                         this._resizeOverflowWindow = window;
                         
                         let oldWorkspace = workspace;
@@ -694,6 +1012,14 @@ export default class WindowMosaicExtension extends Extension {
                     this.drawingManager.hideTilePreview();
                     this.tilingManager.clearDragRemainingSpace();
                     this.edgeTilingManager.setEdgeTilingActive(false, null);
+                    
+                    // CRITICAL: Restore opacity if window was marked as overflow
+                    if (this._dragOverflowWindow) {
+                        const overflowActor = this._dragOverflowWindow.get_compositor_private();
+                        if (overflowActor) overflowActor.opacity = 255;
+                        this.tilingManager.clearExcludedWindow();
+                        this._dragOverflowWindow = null;
+                    }
                     
                     const draggedWindow = this._draggedWindow;
                     this._draggedWindow = null;
@@ -890,7 +1216,14 @@ export default class WindowMosaicExtension extends Extension {
                 
                 if (isEdgeTiled && (tileState.zone === TileZone.LEFT_FULL || tileState.zone === TileZone.RIGHT_FULL)) {
                     Logger.log(`[MOSAIC WM] Resize ended (grabpo=${grabpo}) for FULL edge-tiled window - fixing final sizes`);
-                    this.edgeTilingManager.fixTiledPairSizes(window, tileState.zone);
+                    // Check if there's an adjacent edge tile or mosaic windows
+                    const adjacentWindow = this.edgeTilingManager._getAdjacentWindow(window, window.get_workspace(), window.get_monitor(), tileState.zone);
+                    if (adjacentWindow) {
+                        this.edgeTilingManager.fixTiledPairSizes(window, tileState.zone);
+                    } else {
+                        // Edge tile with mosaic - constrain and retile
+                        this.edgeTilingManager.fixMosaicAfterEdgeResize(window, tileState.zone);
+                    }
                 } else if (isEdgeTiled && this.edgeTilingManager.isQuarterZone(tileState.zone)) {
                     Logger.log(`[MOSAIC WM] Resize ended (grabpo=${grabpo}) for QUARTER edge-tiled window - fixing final sizes`);
                     this.edgeTilingManager.fixQuarterPairSizes(window, tileState.zone);
@@ -938,6 +1271,9 @@ export default class WindowMosaicExtension extends Extension {
             return;
         }
         
+        // Mark window as newly added for overflow protection logic
+        window._windowAddedTime = Date.now();
+        
         // Save initial position IMMEDIATELY for animation later
         // This must happen before any tiling to capture the true starting position
         this.animationsManager.saveInitialPosition(window);
@@ -968,69 +1304,43 @@ export default class WindowMosaicExtension extends Extension {
                     } else {
                         Logger.log(`[MOSAIC WM] window-added: Overview drag-drop - window ${WINDOW.get_id()} from workspace ${previousWorkspaceIndex} to ${WORKSPACE.index()}`);
                         
-                        const sourceWorkspace = this._workspaceManager.get_workspace_by_index(previousWorkspaceIndex);
-                        if (sourceWorkspace) {
-                            Logger.log(`[MOSAIC WM] Re-tiling source workspace ${previousWorkspaceIndex} after DnD`);
-                            this.tilingManager.tileWorkspaceWindows(sourceWorkspace, null, MONITOR, false);
-                        }
-                    }
-                    
-                    const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR);
-                    const edgeTiledWindows = workspaceWindows.filter(w => {
-                        const tileState = this.edgeTilingManager.getWindowState(w);
-                        return tileState && tileState.zone !== TileZone.NONE && w.get_id() !== WINDOW.get_id();
-                    });
-                    
-                    if (edgeTiledWindows.length === 1 && workspaceWindows.length === 2) {
-                        Logger.log(`[MOSAIC WM] Attempting to tile with edge-tiled window`);
-                        const previousWorkspace = this._workspaceManager.get_workspace_by_index(previousWorkspaceIndex);
-                        const tileSuccess = this.windowingManager.tryTileWithSnappedWindow(WINDOW, edgeTiledWindows[0], previousWorkspace);
+                        // ACTIVATE destination workspace and EXIT Overview first
+                        // This allows proper window geometry handling
+                        Logger.log(`[MOSAIC WM] DnD: Activating workspace ${WORKSPACE.index()} and exiting Overview`);
+                        WORKSPACE.activate(global.get_current_time());
                         
-                        if (tileSuccess) {
-                            this._windowPreviousWorkspace.delete(WINDOW.get_id());
-                            this._windowRemovedTimestamp.delete(WINDOW.get_id());
-                            this._manualWorkspaceMove.delete(WINDOW.get_id());
-                            return GLib.SOURCE_REMOVE; 
-                        }
-                        return GLib.SOURCE_REMOVE;
-                    }
-                    
-                    // Skip fit check for windows moved by overflow - they should stay in their destination
-                    if (WINDOW._movedByOverflow) {
-                        Logger.log(`[MOSAIC WM] window-added: Skipping fit check - window was moved by overflow`);
-                        this._windowPreviousWorkspace.delete(WINDOW.get_id());
-                        this._windowRemovedTimestamp.delete(WINDOW.get_id());
-                        return GLib.SOURCE_REMOVE;
-                    }
-                    
-                    const canFit = this.tilingManager.canFitWindow(WINDOW, WORKSPACE, MONITOR);
-                    
-                    if (!canFit) {
-                        if (this.windowingManager.isMaximizedOrFullscreen(WINDOW)) {
-                            Logger.log('[MOSAIC WM] window-added: Maximized window doesn\'t fit but keeping in new workspace');
-                            this._windowPreviousWorkspace.delete(WINDOW.get_id());
-                            this._windowRemovedTimestamp.delete(WINDOW.get_id());
-                            return GLib.SOURCE_REMOVE;
+                        if (Main.overview.visible) {
+                            Main.overview.hide();
                         }
                         
-                        Logger.log(`[MOSAIC WM] window-added: Doesn't fit - returning to workspace ${previousWorkspaceIndex}`);
-                        const previousWorkspace = this._workspaceManager.get_workspace_by_index(previousWorkspaceIndex);
-                        if (previousWorkspace) {
-                            WINDOW.change_workspace(previousWorkspace);
-                            this._windowPreviousWorkspace.delete(WINDOW.get_id());
-                            this._windowRemovedTimestamp.delete(WINDOW.get_id());
-                            return GLib.SOURCE_REMOVE; 
-                        }
-                    } else {
+                        // Mark as DnD arrival - will trigger expansion after tiling
+                        WINDOW._arrivedFromDnD = true;
+                        
+                        // Clear DnD tracking - normal flow will handle window
                         this._windowPreviousWorkspace.delete(WINDOW.get_id());
                         this._windowRemovedTimestamp.delete(WINDOW.get_id());
                         this._manualWorkspaceMove.delete(WINDOW.get_id());
+                        
+                        // Let normal waitForGeometry flow handle the window
+                        // It will do Smart Resize, overflow, etc. as needed
                     }
                 }
+                // Mark window as waiting for geometry - prevents premature overflow
+                WINDOW._waitingForGeometry = true;
                 
                 const waitForGeometry = () => {
                     const rect = WINDOW.get_frame_rect();
                     if (rect.width > 0 && rect.height > 0) {
+                        // Geometry ready - clear flag
+                        WINDOW._waitingForGeometry = false;
+                        WINDOW._geometryReady = true;
+                        
+                        // CRITICAL: Skip ALL tiling logic for excluded windows (modals, transients, etc.)
+                        if (this.windowingManager.isExcluded(WINDOW)) {
+                            Logger.log(`[MOSAIC WM] waitForGeometry: Skipping - window is excluded (modal/transient)`);
+                            return GLib.SOURCE_REMOVE;
+                        }
+                        
                         const wa = WORKSPACE.get_work_area_for_monitor(MONITOR);
                         Logger.log(`[MOSAIC WM] Window ${WINDOW.get_id()} ready: size=${rect.width}x${rect.height}, workArea=${wa.width}x${wa.height}`);
                         
@@ -1040,7 +1350,295 @@ export default class WindowMosaicExtension extends Extension {
                             return GLib.SOURCE_REMOVE;
                         }
                         
-                        this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                        // CRITICAL: Save opening size NOW when geometry is ready but BEFORE Smart Resize
+                        // This captures the window's actual size for Reverse Smart Resize
+                        this.tilingManager.saveOpeningSize(WINDOW);
+                        
+                        // Protect against premature overflow during initial tiling/smart resize
+                        WINDOW._isSmartResizing = true;
+                        
+                        // Attempt smart resize first!
+                        // Calculate REAL usable area (subtracting edge tiles)
+                        const workArea = this.tilingManager.getUsableWorkArea(WORKSPACE, MONITOR);
+                        
+                        // If workArea is depleted (e.g. 2 edge tiles), we can't fit anything
+                        if (workArea.width <= 0 || workArea.height <= 0) {
+                             Logger.log('[MOSAIC WM] waitForGeometry: No usable work area (fully edge tiled?)');
+                             // Let standard overflow handling take over
+                        } else {
+                            // Check for "Sacred" Maximized Windows before doing anything
+                            // IMPORTANT: Filter out excluded windows (modals, transients, etc.)
+                            const allWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
+                                .filter(w => !this.windowingManager.isExcluded(w));
+                            
+                            // Use Work Area (excluding docks/panels) for comparison
+                            const workAreaRect = WORKSPACE.get_work_area_for_monitor(MONITOR);
+                            
+                            Logger.log(`[MOSAIC WM] Sacred Check: Analyzing ${allWindows.length} windows in workspace (WorkArea: ${workAreaRect.width}x${workAreaRect.height})`);
+
+                            const hasMaximized = allWindows.some(w => {
+                                if (w.get_id() === WINDOW.get_id()) return false;
+                                
+                                const id = w.get_id();
+                                const isMaximized = w.maximized_horizontally || w.maximized_vertically;
+                                const frame = w.get_frame_rect();
+                                const isEdge = this.edgeTilingManager.isEdgeTiled(w);
+                                
+                                // Debug log for each window
+                                Logger.log(`[MOSAIC WM] Window ${id}: Maximized=${isMaximized}, Rect=${frame.width}x${frame.height}, Edge=${isEdge}`);
+                                
+                                // 1. Check official flags only (Maximized or Fullscreen)
+                                if (isMaximized) {
+                                    Logger.log(`[MOSAIC WM] Window ${id} IS SACRED (Maximized)`);
+                                    return true;
+                                }
+                                
+                                if (w.is_fullscreen()) {
+                                    Logger.log(`[MOSAIC WM] Window ${id} IS SACRED (Fullscreen)`);
+                                    return true;
+                                }
+                                
+                                return false;
+                            });
+                            
+                            if (hasMaximized) {
+                                Logger.log('[MOSAIC WM] waitForGeometry: Sacred Maximized window detected - forcing overflow');
+                                this.windowingManager.moveOversizedWindow(WINDOW);
+                                return GLib.SOURCE_REMOVE;
+                            }
+
+                            const existingWindows = allWindows
+                                .filter(w => w.get_id() !== WINDOW.get_id() && 
+                                        !this.edgeTilingManager.isEdgeTiled(w) && 
+                                        !(w.maximized_horizontally || w.maximized_vertically) &&
+                                        !w.is_fullscreen());
+                            
+                            Logger.log(`[MOSAIC WM] waitForGeometry: existingWindows=${existingWindows.length} (mosaic)`);
+                            
+                            // NOTE: Do NOT call tryFitWithResize here - let _windowAdded handle it with proper polling
+                            // Just track window ID for tile skip decision
+                            if (!WORKSPACE._smartResizeProcessedWindows) {
+                                WORKSPACE._smartResizeProcessedWindows = new Set();
+                            }
+                        }
+                        
+                        // Only call tileWorkspaceWindows if smart resize was NOT processed
+                        // If it was, the delayed callback in _windowAdded will handle tiling
+                        if (!WORKSPACE._smartResizeProcessedWindows?.has(WINDOW.get_id())) {
+                            // PRE-FIT CHECK: Verify window will fit BEFORE tiling to avoid mosaic disruption
+                            const preFitCheck = this.tilingManager.canFitWindow(WINDOW, WORKSPACE, MONITOR);
+                            const mosaicWindowsPreCheck = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
+                                .filter(w => !this.edgeTilingManager.isEdgeTiled(w));
+                            const isSoloPreCheck = mosaicWindowsPreCheck.length <= 1;
+                            
+                            if (!preFitCheck && !isSoloPreCheck) {
+                                Logger.log('[MOSAIC WM] PRE-FIT CHECK: Window will NOT fit - attempting Smart Resize first');
+                                
+                                // Try Smart Resize before giving up
+                                const existingForResize = mosaicWindowsPreCheck.filter(w => 
+                                    w.get_id() !== WINDOW.get_id() &&
+                                    !(w.maximized_horizontally || w.maximized_vertically) &&
+                                    !w.is_fullscreen()
+                                );
+                                
+                                const smartResizeSuccess = this.tilingManager.tryFitWithResize(WINDOW, existingForResize, workArea);
+                                
+                                if (smartResizeSuccess) {
+                                    Logger.log('[MOSAIC WM] PRE-FIT CHECK: Smart Resize initiated - will tile after polling');
+                                    // Mark for smart resize polling
+                                    WORKSPACE._smartResizeProcessedWindows.add(WINDOW.get_id());
+                                    
+                                    // GHOST STATE: Make window semi-transparent while calculating fit
+                                    const actor = WINDOW.get_compositor_private();
+                                    if (actor) {
+                                        actor.opacity = 153; // 60% opacity
+                                        Logger.log('[MOSAIC WM] Ghost state: Window opacity set to 60%');
+                                    }
+                                    
+                                    // Start polling for fit
+                                    const windowId = WINDOW.get_id();
+                                    const initialWorkspaceIndex = WORKSPACE.index();
+                                    let attempts = 0;
+                                    let consecutiveNoChange = 0;
+                                    
+                                    const pollForFit = () => {
+                                        // Abort if window was moved to another workspace
+                                        if (WINDOW.get_workspace().index() !== initialWorkspaceIndex) {
+                                            WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
+                                            WINDOW._isSmartResizing = false;
+                                            return GLib.SOURCE_REMOVE;
+                                        }
+                                        
+                                        attempts++;
+                                        const canFitNow = this.tilingManager.canFitWindow(WINDOW, WORKSPACE, MONITOR);
+                                        
+                                        if (canFitNow) {
+                                            Logger.log(`[MOSAIC WM] PRE-FIT: Smart resize successful after ${attempts} polls`);
+                                            // Restore opacity from ghost state
+                                            const successActor = WINDOW.get_compositor_private();
+                                            if (successActor) successActor.opacity = 255;
+                                            
+                                            WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
+                                            WINDOW._isSmartResizing = false;
+                                            this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                                            
+                                            // After tiling, try to expand windows towards their opening sizes
+                                            // Only if there's available space
+                                            const allWins = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
+                                                .filter(w => !this.edgeTilingManager.isEdgeTiled(w) &&
+                                                             !this.windowingManager.isExcluded(w));
+                                            
+                                            // Calculate current used space and check if there's extra
+                                            const usedWidth = allWins.reduce((sum, w) => sum + w.get_frame_rect().width, 0);
+                                            const totalSpacing = (allWins.length + 1) * constants.WINDOW_SPACING;
+                                            const availableExtra = workArea.width - usedWidth - totalSpacing;
+                                            
+                                            // Logger.log(`[MOSAIC WM] PRE-FIT expansion check: usedWidth=${usedWidth}, workArea.width=${workArea.width}, availableExtra=${availableExtra}`);
+                                            if (availableExtra > 20) { // Only expand if meaningful space available
+                                                Logger.log(`[MOSAIC WM] DnD: Extra space ${availableExtra}px available - trying expansion`);
+                                                this.tilingManager.tryRestoreWindowSizes(allWins, workArea, availableExtra, workArea.height, WORKSPACE, MONITOR);
+                                            }
+                                            
+                                            return GLib.SOURCE_REMOVE;
+                                        }
+                                        
+                                        // SMART DETECTION: Calculate available space to determine if overflow is unavoidable
+                                        const mosaicWins = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
+                                            .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && w.get_id() !== windowId);
+                                        
+                                        const existingTotalWidth = mosaicWins.reduce((sum, w) => sum + w.get_frame_rect().width, 0);
+                                        const spacing = (mosaicWins.length + 1) * constants.WINDOW_SPACING;
+                                        const availableForNew = workArea.width - existingTotalWidth - spacing;
+                                        const newFrame = WINDOW.get_frame_rect();
+                                        
+                                        if (availableForNew <= 50) {
+                                            Logger.log(`[MOSAIC WM] PRE-FIT: Available space ${availableForNew}px <= 50px - overflow unavoidable`);
+                                            // Restore opacity before overflow
+                                            const actor50 = WINDOW.get_compositor_private();
+                                            if (actor50) actor50.opacity = 255;
+                                            WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
+                                            WINDOW._isSmartResizing = false;
+                                            this.windowingManager.moveOversizedWindow(WINDOW);
+                                            return GLib.SOURCE_REMOVE;
+                                        }
+                                        
+                                        // Note: We removed the shrink ratio check here
+                                        // It was causing premature rejection when windows COULD fit
+                                        // Just let the polling continue until it succeeds or times out
+                                        
+                                        if (attempts >= 10) { // Pre-Fit uses max 10 attempts (500ms) for DnD resize
+                                            Logger.log('[MOSAIC WM] PRE-FIT: Smart resize failed after 10 polls - triggering overflow');
+                                            // Restore opacity before overflow
+                                            const actor10 = WINDOW.get_compositor_private();
+                                            if (actor10) actor10.opacity = 255;
+                                            WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
+                                            WINDOW._isSmartResizing = false;
+                                            this.windowingManager.moveOversizedWindow(WINDOW);
+                                            return GLib.SOURCE_REMOVE;
+                                        }
+                                        
+                                        return GLib.SOURCE_CONTINUE;
+                                    };
+                                    
+                                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.POLL_INTERVAL_MS, pollForFit);
+                                    return GLib.SOURCE_REMOVE;
+                                } else {
+                                    // Smart Resize failed immediately - overflow without tiling
+                                    Logger.log('[MOSAIC WM] PRE-FIT CHECK: Smart Resize failed - overflow immediately');
+                                    // Restore opacity before overflow
+                                    const actorImm = WINDOW.get_compositor_private();
+                                    if (actorImm) actorImm.opacity = 255;
+                                    this.windowingManager.moveOversizedWindow(WINDOW);
+                                    return GLib.SOURCE_REMOVE;
+                                }
+                            }
+                            
+                            // Window fits or is solo - tile normally
+                            this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                            
+                            // If window arrived from DnD, try to expand it towards opening size
+                            if (WINDOW._arrivedFromDnD) {
+                                WINDOW._arrivedFromDnD = false;
+                                const monitorWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
+                                    .filter(w => !this.edgeTilingManager.isEdgeTiled(w) &&
+                                                 !this.windowingManager.isExcluded(w));
+                                
+                                // Special handling for solo window (Empty Workspace)
+                                // We want to restore BOTH width and height logic
+                                if (monitorWindows.length === 1) {
+                                    const win = monitorWindows[0];
+                                    const openingSize = this.tilingManager.getOpeningSize(win.get_id());
+                                    
+                                    if (openingSize) {
+                                        const wa = WORKSPACE.get_work_area_for_monitor(MONITOR);
+                                        // Calculate safe dimensions (respecting spacing)
+                                        const targetW = Math.min(openingSize.width, wa.width - constants.WINDOW_SPACING * 2);
+                                        const targetH = Math.min(openingSize.height, wa.height - constants.WINDOW_SPACING * 2);
+                                        
+                                        // Center the window
+                                        const x = wa.x + Math.floor((wa.width - targetW) / 2);
+                                        const y = wa.y + Math.floor((wa.height - targetH) / 2);
+                                        
+                                        Logger.log(`[MOSAIC WM] DnD Solo: Fully restoring window to ${targetW}x${targetH}`);
+                                        win.move_resize_frame(true, x, y, targetW, targetH);
+                                    }
+                                } else {
+                                    // Fallback for multiple windows (Width expansion mostly)
+                                    const usedWidth = monitorWindows.reduce((sum, w) => sum + w.get_frame_rect().width, 0);
+                                    const totalSpacing = (monitorWindows.length + 1) * constants.WINDOW_SPACING;
+                                    const wa = WORKSPACE.get_work_area_for_monitor(MONITOR);
+                                    const availableExtra = wa.width - usedWidth - totalSpacing;
+                                    
+                                    if (availableExtra > 20) {
+                                        Logger.log(`[MOSAIC WM] DnD arrival: Extra space ${availableExtra}px - trying expansion`);
+                                        this.tilingManager.tryRestoreWindowSizes(monitorWindows, wa, availableExtra, wa.height, WORKSPACE, MONITOR);
+                                    }
+                                }
+                            }
+                        } else {
+                            Logger.log('[MOSAIC WM] waitForGeometry: Skipping immediate tile - smart resize in progress');
+                        }
+                        
+                        // Clear protection after delay to allow resizes to settle
+                        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                            // Only clear if NOT managed by _windowAdded polling loop 
+                            // (checked via _smartResizeProcessedWindows existing for this window)
+                            if (!WORKSPACE._smartResizeProcessedWindows?.has(WINDOW.get_id())) {
+                                WINDOW._isSmartResizing = false;
+                                Logger.log('[MOSAIC WM] Smart resize protection cleared (timeout)');
+                            }
+                            
+                            // One final check if things fit now
+                            // SKIP if window was already moved by overflow to prevent double movement
+                            if (WINDOW._movedByOverflow) {
+                                Logger.log('[MOSAIC WM] Skipping final overflow check - window already moved');
+                                return GLib.SOURCE_REMOVE;
+                            }
+                            
+                            // SKIP if smart resize is still running - let pollForFit handle overflow
+                            if (WINDOW._isSmartResizing) {
+                                Logger.log('[MOSAIC WM] Skipping final overflow check - smart resize in progress');
+                                return GLib.SOURCE_REMOVE;
+                            }
+                            
+                            const canFitFinal = this.tilingManager.canFitWindow(WINDOW, WORKSPACE, MONITOR);
+                            // FAILSAFE: Ensure we never move a solo window
+                            const mosaicWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
+                                      .filter(w => !this.edgeTilingManager.isEdgeTiled(w));
+                            const isSolo = mosaicWindows.length <= 1;
+
+                            if (!canFitFinal) {
+                                if (isSolo) {
+                                    Logger.log('[MOSAIC WM] Overflow detected but window is solo - suppressing move (failsafe)');
+                                } else {
+                                    // If still doesn't fit after protection expires, trigger overflow manually
+                                    Logger.log('[MOSAIC WM] Still overflow after protection - triggering manual move');
+                                    this.windowingManager.moveOversizedWindow(WINDOW);
+                                }
+                            }
+                            return GLib.SOURCE_REMOVE;
+                        });
+                        
                         return GLib.SOURCE_REMOVE;
                     }
                     return GLib.SOURCE_CONTINUE;
@@ -1061,17 +1659,63 @@ export default class WindowMosaicExtension extends Extension {
         this._windowPreviousWorkspace.set(window.get_id(), workspace.index());
         this._windowRemovedTimestamp.set(window.get_id(), Date.now());
         
+        // SKIP if window was moved by overflow - don't trigger restore for overflow moves
+        // This prevents cascade: window overflows → restore grows another → that one overflows too
+        const wasMovedByOverflow = window._movedByOverflow;
+        
+        // Capture removed window's size BEFORE any operations (for Reverse Smart Resize)
+        const removedFrame = window.get_frame_rect();
+        const freedWidth = removedFrame.width;
+        const freedHeight = removedFrame.height;
+        
+        // Only clear opening size if window is actually being destroyed (not moved)
+        // Check if window still has an actor (destroyed windows don't)
+        const actor = window.get_compositor_private();
+        if (!actor) {
+            this.tilingManager.clearOpeningSize(window.get_id());
+        } else {
+            Logger.log(`[MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping opening size`);
+        }
+        
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, () => {
             const WORKSPACE = workspace;
-            const WINDOW = window;
             const MONITOR = global.display.get_primary_monitor();
 
-            if (this.tilingManager.checkValidity(MONITOR, WORKSPACE, WINDOW, false)) {
-                this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
-                return GLib.SOURCE_REMOVE;
-            } else {
+            // Check if workspace still exists and has windows
+            if (!WORKSPACE || WORKSPACE.index() < 0) {
                 return GLib.SOURCE_REMOVE;
             }
+            
+            // Get remaining windows in workspace (exclude edge tiles)
+            const remainingWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
+                .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && 
+                             !this.windowingManager.isExcluded(w));
+            
+            Logger.log(`[MOSAIC WM] _windowRemoved: ${remainingWindows.length} remaining windows, freed ${freedWidth}x${freedHeight}, wasOverflowMove=${wasMovedByOverflow}`);
+            
+            // Try to restore window sizes with freed space (Reverse Smart Resize)
+            // SKIP if window was moved by overflow to prevent cascade overflow
+            if (remainingWindows.length > 0 && !wasMovedByOverflow) {
+                const workArea = this.tilingManager.getUsableWorkArea(WORKSPACE, MONITOR);
+                const restored = this.tilingManager.tryRestoreWindowSizes(remainingWindows, workArea, freedWidth, freedHeight, WORKSPACE, MONITOR);
+                
+                if (restored) {
+                    // Delay retile to let the resize command be applied by Mutter
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                        Logger.log('[MOSAIC WM] Retiling after restore delay');
+                        this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                        return GLib.SOURCE_REMOVE;
+                    });
+                } else {
+                    // No restoration, retile immediately
+                    this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                }
+            } else if (remainingWindows.length > 0) {
+                // Just retile without restore for overflow moves
+                this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+            }
+            
+            return GLib.SOURCE_REMOVE;
         });
     }
 

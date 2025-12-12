@@ -1,3 +1,5 @@
 old-tiling.js
 mosaicwm@cleomenezesjr.github.io.zip
 extension/schemas/gschemas.compiled
+# Local working documents
+.local/

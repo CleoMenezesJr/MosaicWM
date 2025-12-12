@@ -25,6 +25,7 @@ export const ABSOLUTE_MIN_HEIGHT = 200;
 
 // Thresholds for edge tiling detection (pixels from screen edge)
 export const EDGE_TILING_THRESHOLD = 10;
+export const COLUMN_ALIGNMENT_TOLERANCE = 50; // Tolerance for grouping windows into virtual columns (Virtual Columns Algorithm)
 
 // Timing constants for polling and delays
 export const POLL_INTERVAL_MS = 50;
@@ -34,9 +35,20 @@ export const GEOMETRY_CHECK_DELAY_MS = 10;
 export const SAFETY_TIMEOUT_BUFFER_MS = 100;
 export const EDGE_TILE_RESTORE_DELAY_MS = 300;  // Delay to prevent false overflow during edge tile restoration
 export const GEOMETRY_WAIT_MAX_ATTEMPTS = 40;   // Max attempts to wait for window geometry (40 * 50ms = 2s)
+export const REVERSE_RESIZE_PROTECTION_MS = 200; // Protection window for reverse smart resize
+export const RESIZE_VERIFICATION_DELAY_MS = 1500; // Delay for resize verification checks
+export const DRAG_SAFETY_TIMEOUT_MS = 10000;     // Safety timeout for drag operations
+export const ISRESIZING_FLAG_RESET_MS = 2;       // Delay to reset isResizing flag
 
 // Threshold for identifying significant changes in window geometry for animations
 export const ANIMATION_DIFF_THRESHOLD = 10;
+
+// Smart resize before overflow thresholds (as percentage of workspace area)
+export const SMALL_WINDOW_THRESHOLD = 0.25;  // Window < 25% of workspace = small
+export const LARGE_WINDOW_THRESHOLD = 0.35;  // Window > 35% of workspace = large (lowered to catch Medium windows)
+export const MIN_RESIZE_RATIO = 0.30;        // Minimum 30% of original size when resizing
+export const SMART_RESIZE_ANIMATION_MS = 400; // Dedicated animation duration for auto-resize (smoother)
+export const SMART_RESIZE_MAX_ATTEMPTS = 20;  // Max polling attempts before giving up on smart resize
 
 // Grab Operation IDs (Legacy replacements/Helpers if Meta doesn't expose them cleanly)
 // These match common Meta.GrabOp values for resizing.
