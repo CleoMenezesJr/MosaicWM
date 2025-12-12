@@ -326,7 +326,6 @@ export class EdgeTilingManager {
         }
     }
 
-
     saveWindowState(window) {
         const winId = window.get_id();
         const existingState = this._windowStates.get(winId);
@@ -592,7 +591,6 @@ export class EdgeTilingManager {
         }
         return null;
     }
-
 
     setTilingManager(tilingManager) {
         this._tilingManager = tilingManager;
@@ -953,7 +951,7 @@ export class EdgeTilingManager {
                 mosaicWindow.change_workspace(newWorkspace);
             }
             
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
                 if (this._tilingManager) {
                     this._tilingManager.tileWorkspaceWindows(workspace, null, monitor);
                 }
@@ -1010,7 +1008,7 @@ export class EdgeTilingManager {
                 mosaicWindow.change_workspace(newWorkspace);
             }
             
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
                 if (this._tilingManager) {
                     this._tilingManager.tileWorkspaceWindows(workspace, null, monitor);
                 }
@@ -1020,7 +1018,6 @@ export class EdgeTilingManager {
             newWorkspace.activate(global.get_current_time());
         }
     }
-
 
     /**
      * Setup resize listener for edge-tiled window
@@ -1149,7 +1146,7 @@ export class EdgeTilingManager {
                 this._previousSizes.set(resizedId, { width: resizedFrame.width, height: resizedFrame.height, y: resizedY });
             }
         } finally {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ISRESIZING_FLAG_RESET_MS, () => {
                 this._isResizing = false;
                 return GLib.SOURCE_REMOVE;
             });
@@ -1202,7 +1199,7 @@ export class EdgeTilingManager {
                 this._previousSizes.set(resizedId, { width: resizedFrame.width, height: workArea.height, x: workArea.x + newAdjacentWidth });
             }
         } finally {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ISRESIZING_FLAG_RESET_MS, () => {
                 this._isResizing = false;
                 return GLib.SOURCE_REMOVE;
             });

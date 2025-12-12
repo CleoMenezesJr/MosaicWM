@@ -35,6 +35,10 @@ export const GEOMETRY_CHECK_DELAY_MS = 10;
 export const SAFETY_TIMEOUT_BUFFER_MS = 100;
 export const EDGE_TILE_RESTORE_DELAY_MS = 300;  // Delay to prevent false overflow during edge tile restoration
 export const GEOMETRY_WAIT_MAX_ATTEMPTS = 40;   // Max attempts to wait for window geometry (40 * 50ms = 2s)
+export const REVERSE_RESIZE_PROTECTION_MS = 200; // Protection window for reverse smart resize
+export const RESIZE_VERIFICATION_DELAY_MS = 1500; // Delay for resize verification checks
+export const DRAG_SAFETY_TIMEOUT_MS = 10000;     // Safety timeout for drag operations
+export const ISRESIZING_FLAG_RESET_MS = 2;       // Delay to reset isResizing flag
 
 // Threshold for identifying significant changes in window geometry for animations
 export const ANIMATION_DIFF_THRESHOLD = 10;

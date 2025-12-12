@@ -169,7 +169,7 @@ export class ReorderingManager {
             GLib.source_remove(this._dragSafetyTimeout);
             this._dragSafetyTimeout = 0;
         }
-        this._dragSafetyTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10000, () => {
+        this._dragSafetyTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.DRAG_SAFETY_TIMEOUT_MS, () => {
             if (this.dragStart) {
                 Logger.error(`[MOSAIC WM] SAFETY: Force-stopping drag loop after 10 seconds`);
                 this.stopDrag(meta_window, true, false);

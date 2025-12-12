@@ -5,7 +5,6 @@
 import * as Logger from './logger.js';
 import { TileZone } from './edgeTiling.js';
 
-
 export class SwappingManager {
     constructor() {
         this._tilingManager = null;

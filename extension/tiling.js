@@ -1154,6 +1154,15 @@ export class TilingManager {
     }
 
     /**
+     * Get opening size for a window
+     * @param {number} windowId
+     * @returns {Object|null} { width, height } or null if not found
+     */
+    getOpeningSize(windowId) {
+        return this._openingSizes.get(windowId) || null;
+    }
+
+    /**
      * Try to restore windows toward their original opening sizes when space is freed
      * @param {Meta.Window[]} windows - Remaining windows in workspace
      * @param {Object} workArea - Available work area
@@ -1331,7 +1340,7 @@ export class TilingManager {
                 );
                 
                 // Clear flag after a delay to allow resize to complete
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
                     shrunkWindow.window._isReverseSmartResizing = false;
                     Logger.log(`[MOSAIC WM] Reverse smart resize complete for window ${shrunkWindow.window.get_id()}`);
                     return GLib.SOURCE_REMOVE;
@@ -1574,7 +1583,7 @@ export class TilingManager {
                         
                         // Protect new window
                         newWindow._isSmartResizing = true;
-                        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => {
+                        GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.RESIZE_VERIFICATION_DELAY_MS, () => {
                              newWindow._isSmartResizing = false;
                              return GLib.SOURCE_REMOVE;
                         });
@@ -1753,7 +1762,7 @@ export class TilingManager {
                 // PROTECT EXISTING WINDOWS from false overflow detection during resize
                 window._isSmartResizing = true;
                 // Auto-clear protection after sufficient time (covers resize + polling duration)
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.RESIZE_VERIFICATION_DELAY_MS, () => {
                      if (window._isSmartResizing) {
                          window._isSmartResizing = false;
                          // Logger.log(`[MOSAIC WM] Protection cleared for ${window.get_id()} (timeout)`);

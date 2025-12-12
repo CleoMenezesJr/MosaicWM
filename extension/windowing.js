@@ -228,7 +228,7 @@ export class WindowingManager {
         window.change_workspace(target_workspace);
         
         // Clear flags after settling
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
             window._movedByOverflow = false;
             delete window._overflowOriginWorkspace;
             return GLib.SOURCE_REMOVE;
