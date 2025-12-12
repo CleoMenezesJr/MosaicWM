@@ -77,6 +77,21 @@ export default class WindowMosaicExtension extends Extension {
 
     _tileAllWorkspaces = () => {
         let nWorkspaces = this._workspaceManager.get_n_workspaces();
+        
+        // Check exclusion state changes for all windows (fallback polling)
+        for(let i = 0; i < nWorkspaces; i++) {
+            let workspace = this._workspaceManager.get_workspace_by_index(i);
+            if (!workspace) continue;
+            let windows = workspace.list_windows();
+            if (!windows) continue;
+            for (let window of windows) {
+                // Check all NORMAL windows (not just 'related') to catch sticky/above state changes
+                if (this.windowingManager && window.window_type === Meta.WindowType.NORMAL) {
+                    this._handleExclusionStateChange(window);
+                }
+            }
+        }
+        
         for(let i = 0; i < nWorkspaces; i++) {
             let workspace = this._workspaceManager.get_workspace_by_index(i);
             let nMonitors = global.display.get_n_monitors();
@@ -340,7 +355,7 @@ export default class WindowMosaicExtension extends Extension {
                                             Logger.log(`[MOSAIC WM] NEW window also stuck at ${newFrame.width}px (min=${window._originalWidth}). All windows at minimum - overflow truly unavoidable.`);
                                             // Force max attempts to trigger overflow immediately
                                             attempts = MAX_ATTEMPTS; 
-                                        } else if (availableForNew > 50) { // At least 50px for new window
+                                        } else if (availableForNew > constants.MIN_AVAILABLE_SPACE_PX) { // At least 50px for new window
                                             const shrinkRatio = availableForNew / newFrame.width;
                                             
                                             if (shrinkRatio >= 0.20) { // Allow aggressive shrink (20% of original)
@@ -669,10 +684,125 @@ export default class WindowMosaicExtension extends Extension {
         });
         this._windowWorkspaceSignals.set(windowId, signalId);
         
+        // Listen for always-on-top state change
+        const aboveSignalId = window.connect('notify::above', () => {
+            Logger.log(`[MOSAIC WM] notify::above triggered for window ${window.get_id()}`);
+            this._handleExclusionStateChange(window);
+        });
+        this._windowAboveSignals = this._windowAboveSignals || new Map();
+        this._windowAboveSignals.set(windowId, aboveSignalId);
+        Logger.log(`[MOSAIC WM] Connected notify::above signal for window ${windowId}`);
+        
+        // Listen for sticky/on-all-workspaces state change
+        const stickySignalId = window.connect('notify::on-all-workspaces', () => {
+            this._handleExclusionStateChange(window);
+        });
+        this._windowStickySignals = this._windowStickySignals || new Map();
+        this._windowStickySignals.set(windowId, stickySignalId);
+        
+        // Initialize previous exclusion state for transition tracking
+        this._windowPreviousExclusionState = this._windowPreviousExclusionState || new Map();
+        this._windowPreviousExclusionState.set(windowId, this.windowingManager.isExcluded(window));
+        Logger.log(`[MOSAIC WM] Initialized exclusion state for window ${windowId}: ${this._windowPreviousExclusionState.get(windowId)}`);
+        
         const currentWorkspace = window.get_workspace();
         if (currentWorkspace) {
             this._windowPreviousWorkspace.set(windowId, currentWorkspace.index());
             Logger.log(`[MOSAIC WM] Initialized workspace tracker for window ${windowId} at workspace ${currentWorkspace.index()}`);
+        }
+    }
+    
+    _handleExclusionStateChange(window) {
+        const windowId = window.get_id();
+        const workspace = window.get_workspace();
+        const monitor = window.get_monitor();
+        
+        const isNowExcluded = this.windowingManager.isExcluded(window);
+        
+        // Track previous exclusion state to avoid redundant operations
+        this._windowPreviousExclusionState = this._windowPreviousExclusionState || new Map();
+        const wasExcluded = this._windowPreviousExclusionState.get(windowId) || false;
+        this._windowPreviousExclusionState.set(windowId, isNowExcluded);
+        
+        Logger.log(`[MOSAIC WM] State change check: Window ${windowId}, Was: ${wasExcluded}, Now: ${isNowExcluded}`);
+        
+        // Only act on actual state transitions
+        if (wasExcluded === isNowExcluded) {
+            Logger.log(`[MOSAIC WM] Window ${windowId} exclusion unchanged (${isNowExcluded}) - skipping`);
+            return;
+        }
+        
+        if (isNowExcluded) {
+            Logger.log(`[MOSAIC WM] Window ${windowId} became excluded - retiling without it`);
+            // Just retile without this window
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
+                return GLib.SOURCE_REMOVE;
+            });
+        } else {
+            Logger.log(`[MOSAIC WM] Window ${windowId} became included - treating as new window arrival`);
+            // Treat exactly like a new window - use Pre-Fit Check with smart resize polling
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                const workArea = this.edgeTilingManager.calculateRemainingSpace(workspace, monitor);
+                const existingWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
+                    .filter(w => w.get_id() !== window.get_id() && !this.windowingManager.isExcluded(w));
+                
+                // Check if window fits without resize
+                if (this.tilingManager.canFitWindow(window, workspace, monitor)) {
+                    Logger.log(`[MOSAIC WM] Re-included window fits without resize`);
+                    this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
+                    return GLib.SOURCE_REMOVE;
+                }
+                
+                // Try smart resize
+                const resizeSuccess = this.tilingManager.tryFitWithResize(window, existingWindows, workArea);
+                
+                if (resizeSuccess) {
+                    Logger.log('[MOSAIC WM] Re-include: Smart resize applied - starting fit check polling');
+                    window._isSmartResizing = true;
+                    
+                    const initialWorkspaceIndex = workspace.index();
+                    const MAX_ATTEMPTS = 12;
+                    const POLL_INTERVAL = 75;
+                    let attempts = 0;
+                    
+                    const pollForFit = () => {
+                        if (window.get_workspace()?.index() !== initialWorkspaceIndex) {
+                            Logger.log(`[MOSAIC WM] Re-include: Window moved workspace - aborting poll`);
+                            window._isSmartResizing = false;
+                            return GLib.SOURCE_REMOVE;
+                        }
+                        
+                        attempts++;
+                        const canFitNow = this.tilingManager.canFitWindow(window, workspace, monitor);
+                        
+                        if (canFitNow) {
+                            Logger.log(`[MOSAIC WM] Re-include: Smart resize success after ${attempts} polls`);
+                            window._isSmartResizing = false;
+                            this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
+                            return GLib.SOURCE_REMOVE;
+                        }
+                        
+                        if (attempts >= MAX_ATTEMPTS) {
+                            Logger.log('[MOSAIC WM] Re-include: Smart resize failed - moving to overflow');
+                            window._isSmartResizing = false;
+                            this.windowingManager.moveOversizedWindow(window);
+                            return GLib.SOURCE_REMOVE;
+                        }
+                        
+                        // Retry resize attempt
+                        this.tilingManager.tryFitWithResize(window, existingWindows, workArea);
+                        return GLib.SOURCE_CONTINUE;
+                    };
+                    
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, POLL_INTERVAL, pollForFit);
+                } else {
+                    Logger.log(`[MOSAIC WM] Re-include: Smart resize not applicable - moving to overflow`);
+                    this.windowingManager.moveOversizedWindow(window);
+                }
+                
+                return GLib.SOURCE_REMOVE;
+            });
         }
     }
 
@@ -1336,8 +1466,10 @@ export default class WindowMosaicExtension extends Extension {
                         WINDOW._geometryReady = true;
                         
                         // CRITICAL: Skip ALL tiling logic for excluded windows (modals, transients, etc.)
+                        // BUT still connect signals to track status changes (e.g. Always on Top)
                         if (this.windowingManager.isExcluded(WINDOW)) {
-                            Logger.log(`[MOSAIC WM] waitForGeometry: Skipping - window is excluded (modal/transient)`);
+                            Logger.log(`[MOSAIC WM] waitForGeometry: Window is excluded (modal/transient) - connecting signals but skipping tiling`);
+                            this._connectWindowWorkspaceSignal(WINDOW);
                             return GLib.SOURCE_REMOVE;
                         }
                         
@@ -1511,7 +1643,7 @@ export default class WindowMosaicExtension extends Extension {
                                         const availableForNew = workArea.width - existingTotalWidth - spacing;
                                         const newFrame = WINDOW.get_frame_rect();
                                         
-                                        if (availableForNew <= 50) {
+                                        if (availableForNew <= constants.MIN_AVAILABLE_SPACE_PX) {
                                             Logger.log(`[MOSAIC WM] PRE-FIT: Available space ${availableForNew}px <= 50px - overflow unavoidable`);
                                             // Restore opacity before overflow
                                             const actor50 = WINDOW.get_compositor_private();
@@ -1813,9 +1945,8 @@ export default class WindowMosaicExtension extends Extension {
             let workspace = this._workspaceManager.get_workspace_by_index(i);
             let windows = workspace.list_windows();
             for (let window of windows) {
-                if (!this.windowingManager.isExcluded(window)) {
-                    this._connectWindowWorkspaceSignal(window);
-                }
+                // Always connect exclusion signals, even if excluded
+                this._connectWindowWorkspaceSignal(window);
             }
         }
 
@@ -1832,6 +1963,33 @@ export default class WindowMosaicExtension extends Extension {
         this._tileTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.TILE_INTERVAL_MS, () => {
             this._tileAllWorkspaces();
             return GLib.SOURCE_CONTINUE;
+        });
+        
+        // FALLBACK: Polling for exclusion state changes (Signal reliability robustness)
+        // Added HERE after all managers are wired up
+        Logger.log('[MOSAIC WM] About to register exclusion poll');
+        if (this._exclusionPoll) {
+             GLib.source_remove(this._exclusionPoll);
+        }
+        Logger.log('[MOSAIC WM] Registering exclusion poll NOW');
+        this._exclusionPoll = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.EXCLUSION_POLL_INTERVAL_MS, () => {
+             try {
+                 if (!this.windowingManager) return GLib.SOURCE_CONTINUE; // Not ready yet
+                 const nWorkspaces = global.workspace_manager.get_n_workspaces();
+                 for(let i = 0; i < nWorkspaces; i++) {
+                     let workspace = global.workspace_manager.get_workspace_by_index(i);
+                     if (!workspace) continue;
+                     let windows = workspace.list_windows();
+                     if (!windows) continue;
+                     for (let window of windows) {
+                         if (!this.windowingManager.isRelated(window)) continue; // Skip non-related
+                         this._handleExclusionStateChange(window);
+                     }
+                 }
+             } catch (e) {
+                 Logger.log(`[MOSAIC WM] Exclusion poll error: ${e.message}`);
+             }
+             return GLib.SOURCE_CONTINUE;
         });
     }
     
@@ -1946,6 +2104,11 @@ export default class WindowMosaicExtension extends Extension {
         if (this._edgeTilingPollId) {
             GLib.source_remove(this._edgeTilingPollId);
             this._edgeTilingPollId = null;
+        }
+
+        if (this._exclusionPoll) {
+             GLib.source_remove(this._exclusionPoll);
+             this._exclusionPoll = null;
         }
         
         if (this.edgeTilingManager) this.edgeTilingManager.destroy();

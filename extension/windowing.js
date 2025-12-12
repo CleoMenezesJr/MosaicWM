@@ -329,6 +329,18 @@ export class WindowingManager {
             return true;
         }
         
+        // Always on top ("sempre na frente de outras janelas")
+        if (meta_window.is_above()) {
+            Logger.log(`[MOSAIC WM] Window excluded (always on top): ${meta_window.get_wm_class()}`);
+            return true;
+        }
+        
+        // Sticky / on all workspaces ("sempre na area de trabalho visivel")
+        if (meta_window.is_on_all_workspaces()) {
+            Logger.log(`[MOSAIC WM] Window excluded (on all workspaces): ${meta_window.get_wm_class()}`);
+            return true;
+        }
+        
         const wmClass = meta_window.get_wm_class();
         if (wmClass && BLACKLISTED_WM_CLASSES.includes(wmClass)) {
             Logger.log(`[MOSAIC WM] Window excluded (blacklisted): ${wmClass}`);

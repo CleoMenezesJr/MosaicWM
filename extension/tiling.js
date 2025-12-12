@@ -667,6 +667,10 @@ export class TilingManager {
 
         let meta_windows = this._windowingManager.getMonitorWorkspaceWindows(workspace, current_monitor);
         
+        // CRITICAL: Filter out excluded windows (always on top, sticky, etc.) early
+        // This prevents them from being counted in layout calculations
+        meta_windows = meta_windows.filter(w => !this._windowingManager.isExcluded(w));
+        
         // Exclude the reference window only if explicitly requested (for overflow scenarios)
         if (window && excludeFromTiling && !this.isDragging) {
             const windowId = window.get_id();

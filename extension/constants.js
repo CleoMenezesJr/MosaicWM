@@ -39,6 +39,8 @@ export const REVERSE_RESIZE_PROTECTION_MS = 200; // Protection window for revers
 export const RESIZE_VERIFICATION_DELAY_MS = 1500; // Delay for resize verification checks
 export const DRAG_SAFETY_TIMEOUT_MS = 10000;     // Safety timeout for drag operations
 export const ISRESIZING_FLAG_RESET_MS = 2;       // Delay to reset isResizing flag
+export const EXCLUSION_POLL_INTERVAL_MS = 1000;  // Interval for polling exclusion state changes
+export const MIN_AVAILABLE_SPACE_PX = 50;        // Minimum available space threshold for smart resize
 
 // Threshold for identifying significant changes in window geometry for animations
 export const ANIMATION_DIFF_THRESHOLD = 10;
