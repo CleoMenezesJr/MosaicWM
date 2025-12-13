@@ -451,11 +451,29 @@ export default class WindowMosaicExtension extends Extension {
 
         const actor = window.get_compositor_private();
         if (actor) {
-            const signalId = actor.connect('first-frame', () => {
-                actor.disconnect(signalId);
+            let signalId = null;
+            let timeoutId = null;
+            let processed = false;
+            
+            const processOnce = () => {
+                if (processed) return;
+                processed = true;
+                
+                if (signalId) actor.disconnect(signalId);
+                if (timeoutId) GLib.source_remove(timeoutId);
+                
                 if (processWindowCallback() === GLib.SOURCE_CONTINUE) {
                     GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, processWindowCallback);
                 }
+            };
+            
+            signalId = actor.connect('first-frame', processOnce);
+            
+            // Safety timeout: if first-frame doesn't fire within 500ms, start polling anyway
+            timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                Logger.log('[MOSAIC WM] first-frame timeout - falling back to polling');
+                processOnce();
+                return GLib.SOURCE_REMOVE;
             });
         } else {
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, processWindowCallback);
