@@ -52,6 +52,9 @@ export const MIN_RESIZE_RATIO = 0.30;        // Minimum 30% of original size whe
 export const SMART_RESIZE_ANIMATION_MS = 400; // Dedicated animation duration for auto-resize (smoother)
 export const SMART_RESIZE_MAX_ATTEMPTS = 20;  // Max polling attempts before giving up on smart resize
 
+// Slide-in animation for new windows
+export const SLIDE_IN_OFFSET_PX = 60;         // Offset in pixels for new window slide-in animation
+
 // Grab Operation IDs (Legacy replacements/Helpers if Meta doesn't expose them cleanly)
 // These match common Meta.GrabOp values for resizing.
 // Resize grab operations (empirically discovered, not officially documented)
