@@ -978,7 +978,8 @@ export class TilingManager {
         // ANIMATIONS
         let animationsHandledPositioning = false;
         if (!this.isDragging && tile_info && tile_info.levels && tile_info.levels.length > 0) {
-            animationsHandledPositioning = this._animateTileLayout(tile_info, tileArea, meta_windows, reference_meta_window);
+            // Pass null as draggedWindow to ensure all windows (including the triggering one) are animated
+            animationsHandledPositioning = this._animateTileLayout(tile_info, tileArea, meta_windows, null);
         }
         
         if (this.isDragging && windows.length === 0 && reference_meta_window) {
