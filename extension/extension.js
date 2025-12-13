@@ -24,7 +24,7 @@ import { SwappingManager } from './swapping.js';
 import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
 import { MosaicLayoutStrategy } from './overviewLayout.js';
-import { TimeoutRegistry, afterWorkspaceSwitch, afterAnimations } from './async.js';
+import { TimeoutRegistry, afterWorkspaceSwitch, afterAnimations } from './timing.js';
 
 export default class WindowMosaicExtension extends Extension {
     constructor(metadata) {
@@ -1415,7 +1415,9 @@ export default class WindowMosaicExtension extends Extension {
                     let oldWorkspace = window.get_workspace();
                     let newWorkspace = this.windowingManager.moveOversizedWindow(window);
                     if (newWorkspace) {
-                        this.tilingManager.tileWorkspaceWindows(oldWorkspace, false, window.get_monitor(), false);
+                        afterAnimations(this.animationsManager, () => {
+                            this.tilingManager.tileWorkspaceWindows(oldWorkspace, false, window.get_monitor(), false);
+                        }, this._timeoutRegistry);
                     }
                     this._resizeOverflowWindow = null;
                 } else if (!isEdgeTiled) {
