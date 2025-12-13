@@ -823,6 +823,7 @@ export default class WindowMosaicExtension extends Extension {
                 // Check if window fits without resize
                 if (this.tilingManager.canFitWindow(window, workspace, monitor)) {
                     Logger.log(`[MOSAIC WM] Re-included window fits without resize`);
+                    window._justReturnedFromExclusion = true;
                     this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
                     return GLib.SOURCE_REMOVE;
                 }
@@ -852,6 +853,7 @@ export default class WindowMosaicExtension extends Extension {
                         if (canFitNow) {
                             Logger.log(`[MOSAIC WM] Re-include: Smart resize success after ${attempts} polls`);
                             window._isSmartResizing = false;
+                            window._justReturnedFromExclusion = true;
                             this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
                             return GLib.SOURCE_REMOVE;
                         }
@@ -1776,7 +1778,10 @@ export default class WindowMosaicExtension extends Extension {
                             const isDnDArrival = WINDOW._arrivedFromDnD;
                             
                             const performTiling = () => {
-                                this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                                // If arriving from DnD, pass null to enable animation (since default suppresses)
+                                // If new window, pass WINDOW to suppress animation (default behavior for new windows)
+                                const refWindow = isDnDArrival ? null : WINDOW;
+                                this.tilingManager.tileWorkspaceWindows(WORKSPACE, refWindow, MONITOR, true);
                                 
                                 // If window arrived from DnD, try to expand it towards opening size
                                 if (isDnDArrival) {
