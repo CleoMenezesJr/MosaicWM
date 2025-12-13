@@ -978,8 +978,16 @@ export class TilingManager {
         // ANIMATIONS
         let animationsHandledPositioning = false;
         if (!this.isDragging && tile_info && tile_info.levels && tile_info.levels.length > 0) {
-            // Pass null as draggedWindow to ensure all windows (including the triggering one) are animated
-            animationsHandledPositioning = this._animateTileLayout(tile_info, tileArea, meta_windows, null);
+            let draggedWindow = reference_meta_window;
+            
+            // Allow animation for windows returning from excluded state
+            if (reference_meta_window && reference_meta_window._justReturnedFromExclusion) {
+                Logger.log(`[MOSAIC WM] Allowing animation for returning excluded window ${reference_meta_window.get_id()}`);
+                draggedWindow = null;
+                delete reference_meta_window._justReturnedFromExclusion;
+            }
+            
+            animationsHandledPositioning = this._animateTileLayout(tile_info, tileArea, meta_windows, draggedWindow);
         }
         
         if (this.isDragging && windows.length === 0 && reference_meta_window) {
