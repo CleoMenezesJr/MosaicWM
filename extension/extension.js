@@ -24,7 +24,7 @@ import { SwappingManager } from './swapping.js';
 import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
 import { MosaicLayoutStrategy } from './overviewLayout.js';
-import { TimeoutRegistry, afterWorkspaceSwitch, afterAnimations } from './timing.js';
+import { TimeoutRegistry, afterWorkspaceSwitch, afterAnimations, afterWindowClose } from './timing.js';
 
 export default class WindowMosaicExtension extends Extension {
     constructor(metadata) {
@@ -502,8 +502,10 @@ export default class WindowMosaicExtension extends Extension {
             
             this.edgeTilingManager.checkQuarterExpansion(workspace, monitor);
             
-            afterAnimations(this.animationsManager, () => {
-                this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
+            afterWindowClose(() => {
+                afterAnimations(this.animationsManager, () => {
+                    this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
+                }, this._timeoutRegistry);
             }, this._timeoutRegistry);
             
             const windows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
@@ -649,15 +651,14 @@ export default class WindowMosaicExtension extends Extension {
                 if (sourceWorkspace) {
                     Logger.log(`[MOSAIC WM] Re-tiling source workspace ${previousWorkspaceIndex} after window ${windowId} moved to ${currentWorkspaceIndex}`);
                     
-                    // REVERSE SMART RESIZE: Restore window sizes in origin workspace
-                    // Skip if window was moved by overflow (already handled elsewhere)
-                    // Wait for workspace animation to complete before retiling
-                    afterAnimations(this.animationsManager, () => {
-                        if (!window._movedByOverflow) {
-                            Logger.log('[MOSAIC WM] DnD departure: Attempting Reverse Smart Resize on source workspace');
-                            this.tilingManager.tryRestoreWindowSizes(sourceWorkspace, monitor);
-                        }
-                        this.tilingManager.tileWorkspaceWindows(sourceWorkspace, false, monitor, false);
+                    afterWorkspaceSwitch(() => {
+                        afterAnimations(this.animationsManager, () => {
+                            if (!window._movedByOverflow) {
+                                Logger.log('[MOSAIC WM] DnD departure: Attempting Reverse Smart Resize on source workspace');
+                                this.tilingManager.tryRestoreWindowSizes(sourceWorkspace, monitor);
+                            }
+                            this.tilingManager.tileWorkspaceWindows(sourceWorkspace, false, monitor, false);
+                        }, this._timeoutRegistry);
                     }, this._timeoutRegistry);
                 }
             }
@@ -714,8 +715,10 @@ export default class WindowMosaicExtension extends Extension {
                 
                 if (resizeSuccess) {
                     Logger.log('[MOSAIC WM] DnD arrival: Smart Resize succeeded - tiling workspace');
-                    afterAnimations(this.animationsManager, () => {
-                        this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
+                    afterWorkspaceSwitch(() => {
+                        afterAnimations(this.animationsManager, () => {
+                            this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
+                        }, this._timeoutRegistry);
                     }, this._timeoutRegistry);
                 } else {
                     Logger.log('[MOSAIC WM] DnD arrival: Smart Resize failed - moving to new workspace');
@@ -724,8 +727,10 @@ export default class WindowMosaicExtension extends Extension {
                 }
             } else {
                 Logger.log('[MOSAIC WM] Manual move: window fits - tiling workspace');
-                afterAnimations(this.animationsManager, () => {
-                    this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
+                afterWorkspaceSwitch(() => {
+                    afterAnimations(this.animationsManager, () => {
+                        this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
+                    }, this._timeoutRegistry);
                 }, this._timeoutRegistry);
             }
             
@@ -792,8 +797,18 @@ export default class WindowMosaicExtension extends Extension {
         
         if (isNowExcluded) {
             Logger.log(`[MOSAIC WM] Window ${windowId} became excluded - retiling without it`);
-            // Just retile without this window
+            
+            const frame = window.get_frame_rect();
+            const freedWidth = frame.width;
+            const freedHeight = frame.height;
+            
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                const remainingWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
+                    .filter(w => w.get_id() !== windowId && !this.windowingManager.isExcluded(w));
+                
+                const workArea = this.edgeTilingManager.calculateRemainingSpace(workspace, monitor);
+                this.tilingManager.tryRestoreWindowSizes(remainingWindows, workArea, freedWidth, freedHeight, workspace, monitor);
+                
                 this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
                 return GLib.SOURCE_REMOVE;
             });
@@ -1758,46 +1773,53 @@ export default class WindowMosaicExtension extends Extension {
                             }
                             
                             // Window fits or is solo - tile normally
-                            this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                            const isDnDArrival = WINDOW._arrivedFromDnD;
                             
-                            // If window arrived from DnD, try to expand it towards opening size
-                            if (WINDOW._arrivedFromDnD) {
-                                WINDOW._arrivedFromDnD = false;
-                                const monitorWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
-                                    .filter(w => !this.edgeTilingManager.isEdgeTiled(w) &&
-                                                 !this.windowingManager.isExcluded(w));
+                            const performTiling = () => {
+                                this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
                                 
-                                // Special handling for solo window (Empty Workspace)
-                                // We want to restore BOTH width and height logic
-                                if (monitorWindows.length === 1) {
-                                    const win = monitorWindows[0];
-                                    const openingSize = this.tilingManager.getOpeningSize(win.get_id());
+                                // If window arrived from DnD, try to expand it towards opening size
+                                if (isDnDArrival) {
+                                    WINDOW._arrivedFromDnD = false;
                                     
-                                    if (openingSize) {
+                                    const monitorWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
+                                        .filter(w => !this.edgeTilingManager.isEdgeTiled(w) &&
+                                                     !this.windowingManager.isExcluded(w));
+                                    const openingSize = this._windowOpeningSizes.get(WINDOW.get_id());
+                                    
+                                    if (openingSize && monitorWindows.length === 1) {
+                                        // Solo window - fully restore to opening size
                                         const wa = WORKSPACE.get_work_area_for_monitor(MONITOR);
-                                        // Calculate safe dimensions (respecting spacing)
+                                        const win = monitorWindows[0];
+                                        const currentRect = win.get_frame_rect();
+                                        const x = currentRect.x;
+                                        const y = currentRect.y;
+                                        
                                         const targetW = Math.min(openingSize.width, wa.width - constants.WINDOW_SPACING * 2);
                                         const targetH = Math.min(openingSize.height, wa.height - constants.WINDOW_SPACING * 2);
                                         
-                                        // Center the window
-                                        const x = wa.x + Math.floor((wa.width - targetW) / 2);
-                                        const y = wa.y + Math.floor((wa.height - targetH) / 2);
-                                        
                                         Logger.log(`[MOSAIC WM] DnD Solo: Fully restoring window to ${targetW}x${targetH}`);
                                         win.move_resize_frame(true, x, y, targetW, targetH);
-                                    }
-                                } else {
-                                    // Fallback for multiple windows (Width expansion mostly)
-                                    const usedWidth = monitorWindows.reduce((sum, w) => sum + w.get_frame_rect().width, 0);
-                                    const totalSpacing = (monitorWindows.length + 1) * constants.WINDOW_SPACING;
-                                    const wa = WORKSPACE.get_work_area_for_monitor(MONITOR);
-                                    const availableExtra = wa.width - usedWidth - totalSpacing;
-                                    
-                                    if (availableExtra > 20) {
-                                        Logger.log(`[MOSAIC WM] DnD arrival: Extra space ${availableExtra}px - trying expansion`);
-                                        this.tilingManager.tryRestoreWindowSizes(monitorWindows, wa, availableExtra, wa.height, WORKSPACE, MONITOR);
+                                    } else {
+                                        // Fallback for multiple windows (Width expansion mostly)
+                                        const usedWidth = monitorWindows.reduce((sum, w) => sum + w.get_frame_rect().width, 0);
+                                        const totalSpacing = (monitorWindows.length + 1) * constants.WINDOW_SPACING;
+                                        const wa = WORKSPACE.get_work_area_for_monitor(MONITOR);
+                                        const availableExtra = wa.width - usedWidth - totalSpacing;
+                                        
+                                        if (availableExtra > 20) {
+                                            Logger.log(`[MOSAIC WM] DnD arrival: Extra space ${availableExtra}px - trying expansion`);
+                                            this.tilingManager.tryRestoreWindowSizes(monitorWindows, wa, availableExtra, wa.height, WORKSPACE, MONITOR);
+                                        }
                                     }
                                 }
+                            };
+                            
+                            if (isDnDArrival) {
+                                Logger.log('[MOSAIC WM] DnD arrival: Waiting for workspace animation before tiling');
+                                afterWorkspaceSwitch(performTiling, this._timeoutRegistry);
+                            } else {
+                                performTiling();
                             }
                         } else {
                             Logger.log('[MOSAIC WM] waitForGeometry: Skipping immediate tile - smart resize in progress');

@@ -130,8 +130,8 @@ export function afterWorkspaceSwitch(callback, registry) {
         return;
     }
     
-    // Add buffer to ensure animation is fully complete
-    registry.add(duration + 50, () => {
+    // Wait for workspace animation duration
+    registry.add(duration, () => {
         callback();
         return GLib.SOURCE_REMOVE;
     });
@@ -175,6 +175,19 @@ export function waitForGeometry(window, callback, registry, maxAttempts = consta
     };
     
     check();
+}
+
+export function afterWindowClose(callback, registry) {
+    if (!getAnimationsEnabled()) {
+        callback();
+        return;
+    }
+    
+    const duration = FALLBACK_ANIMATION_MS * getSlowDownFactor();
+    registry.add(duration + 50, () => {
+        callback();
+        return GLib.SOURCE_REMOVE;
+    });
 }
 
 export function queueIdle(callback) {
