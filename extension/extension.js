@@ -104,6 +104,10 @@ export default class WindowMosaicExtension extends Extension {
         }
     }
 
+    // =========================================================================
+    // SIGNAL HANDLERS - Window Creation & Destruction
+    // =========================================================================
+
     _windowCreatedHandler = (_, window) => {
         if (this.windowingManager.isMaximizedOrFullscreen(window)) {
             if (!this._windowsOpenedMaximized) {
@@ -542,7 +546,11 @@ export default class WindowMosaicExtension extends Extension {
             }
         }
     }
-    
+
+    // =========================================================================
+    // SIGNAL HANDLERS - Workspace Changes
+    // =========================================================================
+
     _switchWorkspaceHandler = (_, win) => {
         this._tileWindowWorkspace(win.meta_window);
     }
@@ -819,6 +827,10 @@ export default class WindowMosaicExtension extends Extension {
         }
     }
 
+    // =========================================================================
+    // SIGNAL HANDLERS - Window Size Changes
+    // =========================================================================
+
     _sizeChangeHandler = (_, win, mode) => {
         let window = win.meta_window;
         if(!this.windowingManager.isExcluded(window)) {
@@ -1030,6 +1042,10 @@ export default class WindowMosaicExtension extends Extension {
             this._sizeChanged = false;
         }
     }
+
+    // =========================================================================
+    // SIGNAL HANDLERS - Drag & Drop / Grab Operations
+    // =========================================================================
 
     _grabOpBeginHandler = (_, window, grabpo) => {
         this._currentGrabOp = grabpo;
