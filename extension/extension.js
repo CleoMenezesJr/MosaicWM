@@ -1817,7 +1817,15 @@ export default class WindowMosaicExtension extends Extension {
                     return GLib.SOURCE_CONTINUE;
                 };
                 
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10, waitForGeometry);
+                const actor = WINDOW.get_compositor_private();
+                if (actor) {
+                    const signalId = actor.connect('first-frame', () => {
+                        actor.disconnect(signalId);
+                        waitForGeometry();
+                    });
+                } else {
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10, waitForGeometry);
+                }
                 return GLib.SOURCE_REMOVE;
             }
             return GLib.SOURCE_CONTINUE;
