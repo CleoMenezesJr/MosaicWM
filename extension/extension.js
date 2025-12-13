@@ -1490,6 +1490,45 @@ export default class WindowMosaicExtension extends Extension {
             return;
         }
         
+        // SLIDE-IN ANIMATION: Connect to configure signal to mark window for animation
+        // The actual offset direction will be calculated after tiling determines position
+        try {
+            const configureId = window.connect('configure', (win, config) => {
+                // Only handle initial configuration (first time window is placed)
+                if (config.get_is_initial()) {
+                    const ws = win.get_workspace();
+                    const mon = win.get_monitor();
+                    if (ws && mon >= 0) {
+                        // Get existing windows to check if this is the first window
+                        const existingWindows = ws.list_windows().filter(w =>
+                            w.get_monitor() === mon &&
+                            w.get_id() !== win.get_id() &&
+                            !w.is_hidden() &&
+                            w.get_window_type() === Meta.WindowType.NORMAL &&
+                            !this.windowingManager.isExcluded(w)
+                        );
+                        
+                        // Only animate if there are other windows (not first window)
+                        if (existingWindows.length > 0) {
+                            win._needsSlideIn = true;
+                            win._slideInExistingWindows = existingWindows;
+                            Logger.log(`[MOSAIC WM] SLIDE-IN: Marked window ${win.get_id()} for offset animation (${existingWindows.length} existing windows)`);
+                        } else {
+                            Logger.log(`[MOSAIC WM] SLIDE-IN: First window ${win.get_id()} - no animation needed`);
+                        }
+                    }
+                }
+            });
+            
+            // Track signal for cleanup
+            if (!this._configureSignals) {
+                this._configureSignals = new Map();
+            }
+            this._configureSignals.set(window.get_id(), configureId);
+        } catch (e) {
+            Logger.log(`[MOSAIC WM] SLIDE-IN: Failed to connect configure signal: ${e.message}`);
+        }
+        
         // Mark window as newly added for overflow protection logic
         window._windowAddedTime = Date.now();
         

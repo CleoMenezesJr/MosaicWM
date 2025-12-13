@@ -71,6 +71,11 @@ export class AnimationsManager {
     }
 
     shouldAnimateWindow(window, draggedWindow = null) {
+        // SLIDE-IN: Always allow animation for windows marked for slide-in
+        if (window._needsSlideIn) {
+            return true;
+        }
+        
         // Don't animate the window being dragged
         if (draggedWindow && window.get_id() === draggedWindow.get_id()) {
             return false;
@@ -106,6 +111,73 @@ export class AnimationsManager {
             return;
         }
         
+        // SLIDE-IN: Calculate offset direction based on neighboring windows
+        const isSlideIn = window._needsSlideIn;
+        let slideInOffset = { x: 0, y: 0 };
+        
+        if (isSlideIn) {
+            const existingWindows = window._slideInExistingWindows || [];
+            delete window._needsSlideIn;
+            delete window._slideInExistingWindows;
+            
+            // Calculate offset direction based on where neighboring windows are
+            // Offset comes from the OPPOSITE side of where neighbors are
+            const OFFSET_AMOUNT = constants.SLIDE_IN_OFFSET_PX;
+            
+            // Calculate center of mass of existing windows
+            // New window should come from the OPPOSITE direction
+            let existingCenterX = 0;
+            let existingCenterY = 0;
+            let validNeighbors = 0;
+            
+            for (const neighbor of existingWindows) {
+                try {
+                    const neighborRect = neighbor.get_frame_rect();
+                    if (neighborRect && neighborRect.width > 0) {
+                        existingCenterX += neighborRect.x + neighborRect.width / 2;
+                        existingCenterY += neighborRect.y + neighborRect.height / 2;
+                        validNeighbors++;
+                    }
+                } catch (e) {
+                    // Window might be destroyed
+                }
+            }
+            
+            if (validNeighbors > 0) {
+                existingCenterX /= validNeighbors;
+                existingCenterY /= validNeighbors;
+                
+                const newWindowCenterX = targetRect.x + targetRect.width / 2;
+                const newWindowCenterY = targetRect.y + targetRect.height / 2;
+                
+                // If existing windows are to the LEFT of new window, new window comes from RIGHT
+                // If existing windows are to the RIGHT of new window, new window comes from LEFT
+                const deltaX = newWindowCenterX - existingCenterX;
+                const deltaY = newWindowCenterY - existingCenterY;
+                
+                // Prioritize horizontal movement
+                if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+                    if (deltaX > 10) {
+                        slideInOffset.x = OFFSET_AMOUNT; // Existing windows on left, come from right
+                    } else if (deltaX < -10) {
+                        slideInOffset.x = -OFFSET_AMOUNT; // Existing windows on right, come from left
+                    }
+                } else {
+                    if (deltaY > 10) {
+                        slideInOffset.y = OFFSET_AMOUNT; // Existing windows above, come from bottom
+                    } else if (deltaY < -10) {
+                        slideInOffset.y = -OFFSET_AMOUNT; // Existing windows below, come from top
+                    }
+                }
+            }
+            
+            if (slideInOffset.x !== 0 || slideInOffset.y !== 0) {
+                Logger.log(`[MOSAIC WM] SLIDE-IN: Window ${window.get_id()} offset=(${slideInOffset.x}, ${slideInOffset.y})`);
+            } else {
+                Logger.log(`[MOSAIC WM] SLIDE-IN: Window ${window.get_id()} centered - no offset`);
+            }
+        }
+        
         const windowActor = window.get_compositor_private();
         if (!windowActor) {
             Logger.log(`[MOSAIC WM] No actor for window ${window.get_id()}, skipping animation`);
@@ -134,8 +206,17 @@ export class AnimationsManager {
         // Calculate scale and translation for smooth animation
         const scaleX = currentRect.width / targetRect.width;
         const scaleY = currentRect.height / targetRect.height;
-        const translateX = currentRect.x - targetRect.x;
-        const translateY = currentRect.y - targetRect.y;
+        
+        // For slide-in: use ONLY the offset, ignoring current position
+        // This ensures window appears at edge and slides toward center
+        let translateX, translateY;
+        if (isSlideIn && (slideInOffset.x !== 0 || slideInOffset.y !== 0)) {
+            translateX = slideInOffset.x;
+            translateY = slideInOffset.y;
+        } else {
+            translateX = (currentRect.x - targetRect.x) + slideInOffset.x;
+            translateY = (currentRect.y - targetRect.y) + slideInOffset.y;
+        }
         
         const hasValidDimensions = currentRect.width > 0 && currentRect.height > 0 && 
                                     targetRect.width > 0 && targetRect.height > 0 &&
