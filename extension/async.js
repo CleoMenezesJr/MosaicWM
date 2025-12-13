@@ -3,8 +3,48 @@
 // Async utilities for timeout management
 
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
+import St from 'gi://St';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Logger from './logger.js';
 import * as constants from './constants.js';
+
+const FALLBACK_ANIMATION_MS = 250;
+
+let _animationsEnabled = null;
+
+function getAnimationsEnabled() {
+    if (_animationsEnabled === null) {
+        try {
+            const settings = new Gio.Settings({ schema: 'org.gnome.desktop.interface' });
+            _animationsEnabled = settings.get_boolean('enable-animations');
+        } catch (e) {
+            _animationsEnabled = true;
+        }
+    }
+    return _animationsEnabled;
+}
+
+function getSlowDownFactor() {
+    try {
+        return St.Settings.get().slow_down_factor;
+    } catch (e) {
+        return 1.0;
+    }
+}
+
+function getWorkspaceSwitchDuration() {
+    if (!getAnimationsEnabled()) return 0;
+    
+    // Main.wm uses GNOME Shell's internal animation duration
+    // The factor from St.Settings scales all animations
+    const baseDuration = FALLBACK_ANIMATION_MS;
+    return Math.ceil(baseDuration * getSlowDownFactor());
+}
+
+export function refreshAnimationsSetting() {
+    _animationsEnabled = null;
+}
 
 export class TimeoutRegistry {
     constructor() {
@@ -82,7 +122,15 @@ export function createDebounced(func, delay, registry) {
     return debounced;
 }
 
-export function afterWorkspaceSwitch(callback, registry, duration = constants.ANIMATION_DURATION_MS) {
+export function afterWorkspaceSwitch(callback, registry) {
+    const duration = getWorkspaceSwitchDuration();
+    
+    if (duration === 0) {
+        callback();
+        return;
+    }
+    
+    // Add buffer to ensure animation is fully complete
     registry.add(duration + 50, () => {
         callback();
         return GLib.SOURCE_REMOVE;
@@ -90,10 +138,16 @@ export function afterWorkspaceSwitch(callback, registry, duration = constants.AN
 }
 
 export function afterAnimations(animationsManager, callback, registry, maxWait = 1000) {
+    if (!getAnimationsEnabled()) {
+        callback();
+        return;
+    }
+    
     const startTime = Date.now();
+    const adjustedMaxWait = Math.ceil(maxWait * getSlowDownFactor());
     
     const check = () => {
-        if (animationsManager?.hasActiveAnimations?.() && (Date.now() - startTime) < maxWait) {
+        if (animationsManager?.hasActiveAnimations?.() && (Date.now() - startTime) < adjustedMaxWait) {
             registry.add(50, check);
             return GLib.SOURCE_REMOVE;
         }

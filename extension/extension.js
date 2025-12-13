@@ -621,12 +621,14 @@ export default class WindowMosaicExtension extends Extension {
                     
                     // REVERSE SMART RESIZE: Restore window sizes in origin workspace
                     // Skip if window was moved by overflow (already handled elsewhere)
-                    if (!window._movedByOverflow) {
-                        Logger.log('[MOSAIC WM] DnD departure: Attempting Reverse Smart Resize on source workspace');
-                        this.tilingManager.tryRestoreWindowSizes(sourceWorkspace, monitor);
-                    }
-                    
-                    this.tilingManager.tileWorkspaceWindows(sourceWorkspace, false, monitor, false);
+                    // Wait for workspace animation to complete before retiling
+                    afterAnimations(this.animationsManager, () => {
+                        if (!window._movedByOverflow) {
+                            Logger.log('[MOSAIC WM] DnD departure: Attempting Reverse Smart Resize on source workspace');
+                            this.tilingManager.tryRestoreWindowSizes(sourceWorkspace, monitor);
+                        }
+                        this.tilingManager.tileWorkspaceWindows(sourceWorkspace, false, monitor, false);
+                    }, this._timeoutRegistry);
                 }
             }
             
@@ -682,15 +684,19 @@ export default class WindowMosaicExtension extends Extension {
                 
                 if (resizeSuccess) {
                     Logger.log('[MOSAIC WM] DnD arrival: Smart Resize succeeded - tiling workspace');
-                    this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
+                    afterAnimations(this.animationsManager, () => {
+                        this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
+                    }, this._timeoutRegistry);
                 } else {
                     Logger.log('[MOSAIC WM] DnD arrival: Smart Resize failed - moving to new workspace');
-                    this._overflowMoveTimestamps.set(windowId, Date.now());  // Track to prevent re-processing
+                    this._overflowMoveTimestamps.set(windowId, Date.now());
                     this.windowingManager.moveOversizedWindow(window);
                 }
             } else {
                 Logger.log('[MOSAIC WM] Manual move: window fits - tiling workspace');
-                this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
+                afterAnimations(this.animationsManager, () => {
+                    this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, false);
+                }, this._timeoutRegistry);
             }
             
             return GLib.SOURCE_REMOVE;
