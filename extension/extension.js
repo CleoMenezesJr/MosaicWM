@@ -471,10 +471,9 @@ export default class WindowMosaicExtension extends Extension {
             
             this.edgeTilingManager.checkQuarterExpansion(workspace, monitor);
             
-            this.tilingManager.tileWorkspaceWindows(workspace, 
-                null, 
-                monitor,
-                true);
+            afterAnimations(this.animationsManager, () => {
+                this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
+            }, this._timeoutRegistry);
             
             const windows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
             const managedWindows = windows.filter(w => !this.windowingManager.isExcluded(w));
@@ -1290,7 +1289,9 @@ export default class WindowMosaicExtension extends Extension {
             
             const oldWorkspace = window.get_workspace();
             this.windowingManager.moveOversizedWindow(window);
-            this.tilingManager.tileWorkspaceWindows(oldWorkspace, null, window.get_monitor(), false);
+            afterAnimations(this.animationsManager, () => {
+                this.tilingManager.tileWorkspaceWindows(oldWorkspace, null, window.get_monitor(), false);
+            }, this._timeoutRegistry);
             
             this._dragOverflowWindow = null;
             this._draggedWindow = null;
@@ -1426,7 +1427,9 @@ export default class WindowMosaicExtension extends Extension {
                 !(this.windowingManager.isMaximizedOrFullscreen(window)) &&
                 !skipTiling) 
             {
-                this.tilingManager.tileWorkspaceWindows(window.get_workspace(), window, window.get_monitor(), false);
+                afterAnimations(this.animationsManager, () => {
+                    this.tilingManager.tileWorkspaceWindows(window.get_workspace(), window, window.get_monitor(), false);
+                }, this._timeoutRegistry);
             }
         } else
             this.reorderingManager.stopDrag(window, true);
