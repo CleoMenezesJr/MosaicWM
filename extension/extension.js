@@ -53,6 +53,7 @@ export default class WindowMosaicExtension extends Extension {
         
         this._settingsOverrider = null;
         this._draggedWindow = null;
+        this._edgeTileGhostWindows = [];  // Windows that would overflow during edge tile preview
         this._dragMonitorId = null;
         this._currentZone = TileZone.NONE;
         this._grabOpBeginId = null;
@@ -81,6 +82,33 @@ export default class WindowMosaicExtension extends Extension {
                                       meta_window, 
                                       null, 
                                       false);
+    }
+
+    // Clear ghost windows (restore opacity)
+    _clearGhostWindows() {
+        for (const win of this._edgeTileGhostWindows) {
+            const actor = win.get_compositor_private();
+            if (actor) {
+                actor.opacity = 255;
+            }
+        }
+        this._edgeTileGhostWindows = [];
+    }
+
+    // Move ghost windows to overflow
+    _moveGhostWindowsToOverflow() {
+        if (this._edgeTileGhostWindows.length === 0) return;
+        
+        Logger.log(`[MOSAIC WM] Moving ${this._edgeTileGhostWindows.length} ghost windows to overflow`);
+        
+        for (const win of this._edgeTileGhostWindows) {
+            const actor = win.get_compositor_private();
+            if (actor) actor.opacity = 255;  // Restore opacity before moving
+            
+            this.windowingManager.moveOversizedWindow(win);
+        }
+        
+        this._edgeTileGhostWindows = [];
     }
 
     _tileAllWorkspaces = () => {
@@ -1262,12 +1290,38 @@ export default class WindowMosaicExtension extends Extension {
                     const remainingSpace = this.edgeTilingManager.calculateRemainingSpaceForZone(zone, workArea);
                     Logger.log(`[MOSAIC WM] Preview: tiling mosaic to remaining space x=${remainingSpace.x}, w=${remainingSpace.width}`);
                     this.tilingManager.setDragRemainingSpace(remainingSpace);
-                    this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor, false);
+                    
+                    // Clear previous ghosts
+                    this._clearGhostWindows();
+                    
+                    // Get mosaic windows (excluding dragged window)
+                    const mosaicWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
+                        .filter(w => w.get_id() !== this._draggedWindow.get_id() && 
+                                    !this.edgeTilingManager.isEdgeTiled(w));
+                    
+                    // Look for overflow after tiling with remaining space
+                    const overflow = this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor, false);
+                    Logger.log(`[MOSAIC WM] Edge tile preview: overflow=${overflow}, mosaicWindows=${mosaicWindows.length}`);
+                    
+                    if (overflow) {
+                        // If overflow, mark ALL mosaic windows as potential ghosts
+                        for (const win of mosaicWindows) {
+                            const actor = win.get_compositor_private();
+                            if (actor) {
+                                actor.opacity = 128;
+                                this._edgeTileGhostWindows.push(win);
+                                Logger.log(`[MOSAIC WM] Ghost: marked ${win.get_id()} as overflow ghost`);
+                            }
+                        }
+                    }
                 } else if (zone === TileZone.NONE && this._currentZone !== TileZone.NONE) {
                     Logger.log(`[MOSAIC WM] Edge tiling: exiting zone, wasInEdgeTiling=${wasInEdgeTiling}`);
                     this._currentZone = TileZone.NONE;
                     this.edgeTilingManager.setEdgeTilingActive(false, null);
                     this.drawingManager.hideTilePreview();
+                    
+                    // Clear ghost windows (restore opacity)
+                    this._clearGhostWindows();
                     
                     // Check if window fits in mosaic
                     const fits = this.tilingManager.canFitWindow(this._draggedWindow, workspace, monitor);
@@ -1391,11 +1445,19 @@ export default class WindowMosaicExtension extends Extension {
                     Logger.log(`[MOSAIC WM] Edge tiling: apply result = ${success}`);
                     
                     if (success) {
+                        // Move ghost windows to overflow after edge tile is applied
+                        if (this._edgeTileGhostWindows.length > 0) {
+                            Logger.log(`[MOSAIC WM] Edge tile confirmed - moving ${this._edgeTileGhostWindows.length} ghost windows to overflow`);
+                            this._moveGhostWindowsToOverflow();
+                        }
+                        
                         GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
                             this._skipNextTiling = null;
                             return GLib.SOURCE_REMOVE;
                         });
                     } else {
+                        // Edge tile failed - clear ghosts
+                        this._clearGhostWindows();
                         this._skipNextTiling = null;
                     }
                 }

@@ -84,29 +84,29 @@ export class ReorderingManager {
             }
         }
 
-        if(target_id === id || target_id === null) {
-            this._tilingManager.clearTmpSwap();
-
-        } else {
-            this._tilingManager.setTmpSwap(id, target_id);
-
-        }
-
         let isOverEdgeZone = false;
         if (this._edgeTilingManager) {
             const zone = this._edgeTilingManager.detectZone(cursor.x, cursor.y, workArea, workspace);
             isOverEdgeZone = zone !== TileZone.NONE;
         }
         
-        const windowToExclude = isOverEdgeZone ? meta_window : null;
-        
-        // Re-tile with temporary swap
-        
-        const overflow = this._tilingManager.tileWorkspaceWindows(workspace, windowToExclude, monitor);
-        
-        if(overflow) {
-             this._tilingManager.clearTmpSwap();
-             this._tilingManager.tileWorkspaceWindows(workspace, windowToExclude, monitor);
+        // When over edge zone, skip all swap and tiling logic - edge tiling handler manages the layout
+        if (isOverEdgeZone) {
+            this._tilingManager.clearTmpSwap();
+            // Don't call tileWorkspaceWindows - edge tiling poll handles it
+        } else if (target_id === id || target_id === null) {
+            // No swap needed
+            this._tilingManager.clearTmpSwap();
+            this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
+        } else {
+            // Test if swap would cause overflow BEFORE applying
+            this._tilingManager.setTmpSwap(id, target_id);
+            const overflow = this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
+            
+            if(overflow) {
+                this._tilingManager.clearTmpSwap();
+                this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
+            }
         }
 
         if(this.dragStart) {
