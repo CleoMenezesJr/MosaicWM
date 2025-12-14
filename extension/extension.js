@@ -1504,14 +1504,128 @@ export default class WindowMosaicExtension extends Extension {
                             w.get_id() !== win.get_id() &&
                             !w.is_hidden() &&
                             w.get_window_type() === Meta.WindowType.NORMAL &&
-                            !this.windowingManager.isExcluded(w)
+                            !this.windowingManager.isExcluded(w) &&
+                            w.showing_on_its_workspace()
                         );
                         
-                        // Only animate if there are other windows (not first window)
-                        if (existingWindows.length > 0) {
+                        // Determine directional offset logic - using HISTORY from window-removed
+                        let offsetDirection = 0;
+                        const currentWSIndex = ws.index();
+                        
+                        // Use accurate previous workspace from _windowRemoved handler
+                        // This handles both DnD and Move-to-workspace actions reliably
+                        const prevWSIndex = this._windowPreviousWorkspace.get(win.get_id());
+                        
+                        // Check if we have a valid previous workspace index and it's different from current
+                        if (prevWSIndex !== undefined && prevWSIndex !== currentWSIndex) {
+                            if (prevWSIndex < currentWSIndex) {
+                                offsetDirection = -1; // From Left (slide in from left)
+                            } else {
+                                offsetDirection = 1; // From Right (slide in from right)
+                            }
+                        }
+                        
+                        // Animate if there are other windows OR if it's a directional move
+                        if (existingWindows.length > 0 || offsetDirection !== 0) {
                             win._needsSlideIn = true;
                             win._slideInExistingWindows = existingWindows;
-                            Logger.log(`[MOSAIC WM] SLIDE-IN: Marked window ${win.get_id()} for offset animation (${existingWindows.length} existing windows)`);
+                            win._slideInDirection = offsetDirection;
+                            
+                            Logger.log(`[MOSAIC WM] SLIDE-IN: Window ${win.get_id()} (Existing: ${existingWindows.length}, Dir: ${offsetDirection}, PrevWS: ${prevWSIndex})`);
+                            
+                            // Connect to first-frame for visual animation
+                            const actor = win.get_compositor_private();
+                            if (actor) {
+                                const firstFrameId = actor.connect('first-frame', () => {
+                                    actor.disconnect(firstFrameId);
+                                    
+                                    // Apply offset translation NOW that actor is rendered
+                                    if (win._needsSlideIn) {
+                                        const neighbors = win._slideInExistingWindows || [];
+                                        const direction = win._slideInDirection || 0;
+                                        const OFFSET = constants.SLIDE_IN_OFFSET_PX;
+                                        
+                                        let offsetX = 0, offsetY = 0;
+                                        let animationMode = imports.gi.Clutter.AnimationMode.EASE_OUT_QUAD; // Default subtle
+
+                                        // 1. Center of Mass Logic (if neighbors exist) - Prioritize fitting in
+                                        if (neighbors.length > 0) {
+                                            let centerX = 0, centerY = 0, count = 0;
+                                            for (const n of neighbors) {
+                                                try {
+                                                    const r = n.get_frame_rect();
+                                                    if (r && r.width > 0) {
+                                                        centerX += r.x + r.width / 2;
+                                                        centerY += r.y + r.height / 2;
+                                                        count++;
+                                                    }
+                                                } catch (e) {}
+                                            }
+                                            
+                                            if (count > 0) {
+                                                centerX /= count;
+                                                centerY /= count;
+                                                const winRect = win.get_frame_rect();
+                                                const winCenterX = winRect.x + winRect.width / 2;
+                                                const winCenterY = winRect.y + winRect.height / 2;
+                                                
+                                                const deltaX = winCenterX - centerX;
+                                                const deltaY = winCenterY - centerY;
+                                                
+                                                if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+                                                    offsetX = deltaX > 10 ? OFFSET : (deltaX < -10 ? -OFFSET : 0);
+                                                } else {
+                                                    offsetY = deltaY > 10 ? OFFSET : (deltaY < -10 ? -OFFSET : 0);
+                                                }
+                                            }
+                                        } 
+                                        // 2. Directional Logic (Single window or strict override)
+                                        else if (direction !== 0) {
+                                            // Apply direction-based offset
+                                            // Coming from LEFT (dir -1): Start at Left (-Offset) -> Move to 0
+                                            // Coming from RIGHT (dir 1): Start at Right (+Offset) -> Move to 0
+                                            offsetX = direction * OFFSET * 3; // Increase offset for "coming from outside" feel
+                                            animationMode = imports.gi.Clutter.AnimationMode.EASE_OUT_BACK; // Momentum for directional
+                                        }
+                                        
+                                        if (offsetX !== 0 || offsetY !== 0) {
+                                            Logger.log(`[MOSAIC WM] FIRST-FRAME SLIDE-IN: Applying offset (${offsetX}, ${offsetY}) to window ${win.get_id()} Mode: ${animationMode}`);
+                                            
+                                            // Mark as animating to prevent other animations from overwriting
+                                            win._slideInAnimating = true;
+                                            
+                                            // FORCE KILL GNOME ANIMATION & PREPARE OURS
+                                            actor.remove_all_transitions();
+                                            actor.set_scale(1.0, 1.0);
+                                            actor.set_opacity(0); // Start invisible
+                                            actor.set_pivot_point(0.5, 0.5);
+                                            actor.set_translation(offsetX, offsetY, 0);
+                                            
+                                            // Wait one tick for the initial state to be applied, then animate
+                                            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                                                if (!actor.get_parent()) return GLib.SOURCE_REMOVE; 
+                                                
+                                                actor.ease({
+                                                    translation_x: 0,
+                                                    translation_y: 0,
+                                                    opacity: 255, // Fade in
+                                                    duration: 250,
+                                                    mode: animationMode,
+                                                    onComplete: () => {
+                                                        delete win._slideInAnimating;
+                                                    }
+                                                });
+                                                return GLib.SOURCE_REMOVE;
+                                            });
+                                        }
+                                        
+                                        // Clear flags
+                                        delete win._needsSlideIn;
+                                        delete win._slideInExistingWindows;
+                                        delete win._slideInDirection;
+                                    }
+                                });
+                            }
                         } else {
                             Logger.log(`[MOSAIC WM] SLIDE-IN: First window ${win.get_id()} - no animation needed`);
                         }
@@ -1608,6 +1722,23 @@ export default class WindowMosaicExtension extends Extension {
                         // CRITICAL: Save opening size NOW when geometry is ready but BEFORE Smart Resize
                         // This captures the window's actual size for Reverse Smart Resize
                         this.tilingManager.saveOpeningSize(WINDOW);
+                        
+                        // FALLBACK: If configure signal didn't fire in time, set slide-in flag now
+                        if (!WINDOW._needsSlideIn && !WINDOW._slideInChecked) {
+                            WINDOW._slideInChecked = true;
+                            const existingWindows = WORKSPACE.list_windows().filter(w =>
+                                w.get_monitor() === MONITOR &&
+                                w.get_id() !== WINDOW.get_id() &&
+                                !w.is_hidden() &&
+                                w.get_window_type() === Meta.WindowType.NORMAL &&
+                                !this.windowingManager.isExcluded(w)
+                            );
+                            if (existingWindows.length > 0) {
+                                WINDOW._needsSlideIn = true;
+                                WINDOW._slideInExistingWindows = existingWindows;
+                                Logger.log(`[MOSAIC WM] SLIDE-IN FALLBACK: Marked window ${WINDOW.get_id()} (${existingWindows.length} existing)`);
+                            }
+                        }
                         
                         // Protect against premature overflow during initial tiling/smart resize
                         WINDOW._isSmartResizing = true;
@@ -1854,10 +1985,13 @@ export default class WindowMosaicExtension extends Extension {
                                 }
                             };
                             
-                            if (isDnDArrival) {
-                                Logger.log('[MOSAIC WM] DnD arrival: Waiting for workspace animation before tiling');
+                            // All cross-workspace moves: Wait for FULL workspace animation
+                            // This includes DnD, Overflow, and keyboard moves
+                            if (isDnDArrival || WINDOW._movedByOverflow || (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index())) {
+                                Logger.log(`[MOSAIC WM] Cross-workspace move: Waiting for workspace animation`);
                                 afterWorkspaceSwitch(performTiling, this._timeoutRegistry);
                             } else {
+                                // Same workspace - tile immediately
                                 performTiling();
                             }
                         } else {
@@ -2011,6 +2145,7 @@ export default class WindowMosaicExtension extends Extension {
         this.windowingManager.setEdgeTilingManager(this.edgeTilingManager);
         this.windowingManager.setAnimationsManager(this.animationsManager);
         this.windowingManager.setTilingManager(this.tilingManager);
+        this.windowingManager.setTimeoutRegistry(this._timeoutRegistry);
         this.windowingManager.setOverflowCallbacks(
             () => { this._overflowInProgress = true; },
             () => { this._overflowInProgress = false; }
@@ -2242,6 +2377,12 @@ export default class WindowMosaicExtension extends Extension {
         if (this._injectionManager) {
             this._injectionManager.clear();
             this._injectionManager = null;
+        }
+        
+        // Restore original map animation
+        if (this._originalMapWindow) {
+            Main.wm._mapWindow = this._originalMapWindow;
+            this._originalMapWindow = null;
         }
         
         Main.wm.removeKeybinding('tile-left');

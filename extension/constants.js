@@ -3,6 +3,7 @@
 // Global constants and configuration values
 
 import * as Logger from './logger.js';
+import Clutter from 'gi://Clutter';
 
 export const WINDOW_SPACING = 8; // Pixels
 
@@ -17,6 +18,11 @@ export const STARTUP_TILE_DELAY_MS = 300;
 export const ANIMATION_DURATION_MS = 350;
 
 export const ANIMATION_OPEN_CLOSE_DURATION_MS = 350;
+
+// Animation Modes
+export const ANIMATION_MODE = Clutter.AnimationMode.EASE_OUT_EXPO;
+export const ANIMATION_MODE_SUBTLE = Clutter.AnimationMode.EASE_OUT_QUAD;
+export const ANIMATION_MODE_MOMENTUM = Clutter.AnimationMode.EASE_OUT_BACK; // Bouncy
 
 // Minimum dimensions for tiling
 export const MIN_WINDOW_WIDTH = 400;
