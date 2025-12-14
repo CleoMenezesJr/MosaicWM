@@ -36,8 +36,7 @@ function getSlowDownFactor() {
 function getWorkspaceSwitchDuration() {
     if (!getAnimationsEnabled()) return 0;
     
-    // Main.wm uses GNOME Shell's internal animation duration
-    // The factor from St.Settings scales all animations
+    // Adjust for slow down factor if present
     const baseDuration = FALLBACK_ANIMATION_MS;
     return Math.ceil(baseDuration * getSlowDownFactor());
 }

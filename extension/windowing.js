@@ -83,14 +83,7 @@ export class WindowingManager {
         return previous_workspace;
     }
 
-    /**
-     * Attempts to tile a window with an existing edge-tiled window in the workspace.
-     * Uses the injected EdgeTilingManager.
-     * @param {Meta.Window} window The window to tile
-     * @param {Meta.Window} edgeTiledWindow The existing edge-tiled window
-     * @param {Meta.Workspace|null} previousWorkspace Previous workspace for fallback
-     * @returns {boolean} True if tiling succeeded
-     */
+    // Attempts to tile a window with an existing edge-tiled window
     tryTileWithSnappedWindow(window, edgeTiledWindow, previousWorkspace) {
         if (!this._edgeTilingManager) {
             Logger.error('tryTileWithSnappedWindow: edgeTilingManager not set');
@@ -170,12 +163,7 @@ export class WindowingManager {
         }
     }
 
-    /**
-     * Moves a window that doesn't fit into another workspace.
-     * Tries the next workspace first, creates new if needed.
-     * @param {Meta.Window} window The window to move
-     * @returns {Meta.Workspace} The target workspace
-     */
+    // Moves a window that doesn't fit into another workspace.
     moveOversizedWindow(window) {
         const workspaceManager = global.workspace_manager;
         const monitor = this.getPrimaryMonitor();
@@ -185,7 +173,7 @@ export class WindowingManager {
             this._overflowStartCallback();
         }
         
-        // Set flag immediately to prevent other handlers from tiling with wrong dimensions
+        // Flag window as overflow-moved to prevent tiling errors
         window._movedByOverflow = true;
         
         // Track origin workspace across multiple calls
@@ -251,8 +239,7 @@ export class WindowingManager {
                 this._animationsManager.animateWindowMove(window, startRect, endRect);
             }
             
-            // Re-tile after window has settled to ensure correct positioning
-            // Wait for window to have correct geometry before tiling
+            // Re-tile after window has settled
             if (this._tilingManager) {
                 let attempts = 0;
                 const maxAttempts = constants.GEOMETRY_WAIT_MAX_ATTEMPTS;
@@ -378,11 +365,7 @@ export class WindowingManager {
                window.is_fullscreen();
     }
 
-    /**
-     * Navigates to an appropriate workspace when current becomes empty.
-     * @param {Meta.Workspace} workspace The current workspace
-     * @param {boolean} condition Whether to navigate
-     */
+    // Navigates to an appropriate workspace when current becomes empty.
     renavigate(workspace, condition) {
         let previous_workspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
 

@@ -1490,8 +1490,7 @@ export default class WindowMosaicExtension extends Extension {
             return;
         }
         
-        // SLIDE-IN ANIMATION: Connect to configure signal to mark window for animation
-        // The actual offset direction will be calculated after tiling determines position
+        // Connect to configure signal for slide-in animation setup
         try {
             const configureId = window.connect('configure', (win, config) => {
                 // Only handle initial configuration (first time window is placed)
@@ -1532,9 +1531,7 @@ export default class WindowMosaicExtension extends Extension {
         // Mark window as newly added for overflow protection logic
         window._windowAddedTime = Date.now();
         
-        // Save initial position IMMEDIATELY for animation later
-        // This must happen before any tiling to capture the true starting position
-        this.animationsManager.saveInitialPosition(window);
+        // Save initial position for animation later
         
         // Use timeout_add instead of setInterval
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, () => {
@@ -1562,8 +1559,7 @@ export default class WindowMosaicExtension extends Extension {
                     } else {
                         Logger.log(`[MOSAIC WM] window-added: Overview drag-drop - window ${WINDOW.get_id()} from workspace ${previousWorkspaceIndex} to ${WORKSPACE.index()}`);
                         
-                        // ACTIVATE destination workspace and EXIT Overview first
-                        // This allows proper window geometry handling
+                        // ACTIVATE destination workspace and EXIT Overview
                         Logger.log(`[MOSAIC WM] DnD: Activating workspace ${WORKSPACE.index()} and exiting Overview`);
                         WORKSPACE.activate(global.get_current_time());
                         
@@ -1579,8 +1575,7 @@ export default class WindowMosaicExtension extends Extension {
                         this._windowRemovedTimestamp.delete(WINDOW.get_id());
                         this._manualWorkspaceMove.delete(WINDOW.get_id());
                         
-                        // Let normal waitForGeometry flow handle the window
-                        // It will do Smart Resize, overflow, etc. as needed
+                        // Let waitForGeometry flow handle the window
                     }
                 }
                 // Mark window as waiting for geometry - prevents premature overflow

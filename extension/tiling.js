@@ -168,11 +168,8 @@ export class TilingManager {
         return descriptors;
     }
 
-    /**
-     * Tile windows with dynamic shelf orientation.
-     * If a window's height exceeds 50% of workspace, use vertical shelves (columns).
-     * Otherwise, use horizontal shelves (rows).
-     */
+    // Tile windows with dynamic shelf orientation.
+    // Selects vertical columns if any window is tall (>65%) or workspace is narrow.
     _tile(windows, work_area) {
         if (windows.length === 0) {
             return {
@@ -195,16 +192,12 @@ export class TilingManager {
             maxWidth = Math.max(maxWidth, w.width);
         }
         
-        // Use vertical shelves (stacking windows one above another) when:
-        // 1. Any window is taller than 65% of workspace height, OR
-        // 2. Workspace is narrow (width < height) - e.g., edge tiling half-screen, OR
-        // 3. Widest window exceeds available width (force vertical stacking)
         const isNarrowWorkspace = work_area.width < work_area.height;
         const windowTooWide = maxWidth > work_area.width * 0.9;
         const windowTooTall = maxHeight > work_area.height * 0.65;
         const useVerticalShelves = windowTooTall || isNarrowWorkspace || windowTooWide;
         
-        Logger.log(`[MOSAIC WM] _tile: ${windows.length} windows, workArea=${work_area.width}x${work_area.height}, maxWinH=${maxHeight}, maxWinW=${maxWidth}, narrow=${isNarrowWorkspace}, tooWide=${windowTooWide}, useVertical=${useVerticalShelves}`);
+        Logger.log(`[MOSAIC WM] _tile: ${windows.length} windows, vertical=${useVerticalShelves}`);
         
         if (useVerticalShelves) {
             return this._verticalShelves(windows, work_area, spacing);
@@ -213,16 +206,14 @@ export class TilingManager {
         }
     }
     
-    /**
-     * Vertical shelves layout - windows stack in columns side by side.
-     */
+    // Vertical shelves layout - windows stack in columns side by side.
     _verticalShelves(windows, work_area, spacing) {
         // For 1-2 windows, use simple centered column
         if (windows.length <= 2) {
             return this._simpleCenteredColumn(windows, work_area, spacing);
         }
         
-        // BIN PACKING without height sorting - preserves array order for swaps
+        // Bin packing without height sorting to preserve swap order
         const columns = []; // Each column: { windows: [], height: 0, width: 0 }
         
         for (const w of windows) {
@@ -314,9 +305,6 @@ export class TilingManager {
             level.x = xPos;
             
             // Determine horizontal alignment based on column position
-            // Left columns → align RIGHT (towards center)
-            // Right columns → align LEFT (towards center)
-            // Center column → centered
             let alignMode = 'center';
             if (levelCount > 1) {
                 if (colIdx < centerColIndex) {
@@ -363,9 +351,7 @@ export class TilingManager {
         };
     }
     
-    /**
-     * Helper for 1-2 windows in vertical mode - simple centered column.
-     */
+    // Helper for 1-2 windows in vertical mode.
     _simpleCenteredColumn(windows, work_area, spacing) {
         // Calculate total height if stacked
         let totalHeight = 0;
@@ -443,9 +429,7 @@ export class TilingManager {
         };
     }
     
-    /**
-     * Original horizontal shelves layout - windows arrange in rows.
-     */
+    // Original horizontal shelves layout.
     _horizontalShelves(windows, work_area, spacing) {
         // For 1-2 windows, use simple centered row
         if (windows.length <= 2) {
@@ -512,9 +496,7 @@ export class TilingManager {
         };
     }
 
-    /**
-     * Helper for 1-2 windows, simple centered row.
-     */
+    // Helper for 1-2 windows, simple centered row.
     _simpleCenteredRow(windows, work_area, spacing) {
         const level = new Level(work_area);
         let totalWidth = 0;
@@ -543,10 +525,7 @@ export class TilingManager {
         };
     }
     
-    /**
-     * Calculate optimal grid dimensions for balanced layout.
-     * Uses actual window sizes to check for overflow (ROBUST).
-     */
+    // Calculate optimal grid dimensions using actual window sizes
     _calculateOptimalGrid(windows, work_area) {
         const windowCount = windows.length;
         if (windowCount <= 0) return { rows: 0, windowsPerRow: [] };
@@ -667,8 +646,7 @@ export class TilingManager {
 
         let meta_windows = this._windowingManager.getMonitorWorkspaceWindows(workspace, current_monitor);
         
-        // CRITICAL: Filter out excluded windows (always on top, sticky, etc.) early
-        // This prevents them from being counted in layout calculations
+        // Filter out excluded windows (always on top, sticky, etc.)
         meta_windows = meta_windows.filter(w => !this._windowingManager.isExcluded(w));
         
         // Exclude the reference window only if explicitly requested (for overflow scenarios)

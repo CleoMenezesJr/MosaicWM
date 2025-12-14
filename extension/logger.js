@@ -1,6 +1,6 @@
 // Copyright 2025 Cleo Menezes Jr.
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Debug logging control for development and production
+// Debug logging utilities
 
 const DEBUG = true;
 
