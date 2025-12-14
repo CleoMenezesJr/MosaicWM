@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copied from: https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/main/tools/toolbox/run-gnome-shell.sh
 # vi: sw=2 ts=4
 
