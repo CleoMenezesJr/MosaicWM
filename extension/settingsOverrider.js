@@ -38,11 +38,22 @@ export class SettingsOverrider {
 
         // Restore original values
         for (const [schemaId, overrides] of this.#overrides) {
-            const settings = new Gio.Settings({ schema_id: schemaId });
-            
-            for (const [key, originalValue] of overrides) {
-                settings.set_value(key, originalValue);
-                Logger.log(`[MOSAIC WM] Restored ${schemaId}.${key}`);
+            try {
+                const settings = new Gio.Settings({ schema_id: schemaId });
+                
+                for (const [key, originalValue] of overrides) {
+                    try {
+                        settings.set_value(key, originalValue);
+                        Logger.log(`[MOSAIC WM] Restored ${schemaId}.${key} to ${originalValue.print(true)}`);
+                    } catch (e) {
+                        Logger.warn(`[MOSAIC WM] Failed to restore ${schemaId}.${key}: ${e.message}`);
+                    }
+                }
+                
+                // Sync settings to ensure they're written
+                Gio.Settings.sync();
+            } catch (e) {
+                Logger.warn(`[MOSAIC WM] Failed to create settings for ${schemaId}: ${e.message}`);
             }
         }
         
