@@ -60,7 +60,7 @@ export const SMART_RESIZE_ANIMATION_MS = 400; // Dedicated animation duration fo
 export const SMART_RESIZE_MAX_ATTEMPTS = 20;  // Max polling attempts before giving up on smart resize
 
 // Slide-in animation for new windows
-export const SLIDE_IN_OFFSET_PX = 60;         // Offset in pixels for new window slide-in animation
+export const SLIDE_IN_OFFSET_PX = 100;        // Offset in pixels for new window slide-in animation
 
 // Grab Operation IDs (Meta.GrabOp values). Undocumented but empirically discovered.
 // Matches common resize operations (edge/corner drag).
