@@ -23,13 +23,25 @@ This aligns with GNOME's philosophy of reducing cognitive load and letting users
 
 ## ✨ Features
 
-- 🎯 **Automatic Tiling**: Windows are automatically arranged in an optimal mosaic layout
-- 🔄 **Smart Overflow**: Oversized windows automatically move to new workspaces
-- 🎨 **Drag & Drop**: Reorder windows by dragging them
-- 🖥️ **Fullscreen Support**: Fullscreen and maximized windows get dedicated workspaces
-- 👁️ **Visual Feedback**: See window positions during drag operations
-- 🚀 **Performance**: Lightweight and efficient
-- 🎛️ **Multi-Monitor**: Works seamlessly with multiple displays
+### Core Tiling
+- 🎯 **Automatic Mosaic Layout**: Windows are automatically arranged in an optimal layout using a radial packing algorithm
+- 🔄 **Smart Resize**: Before moving windows to new workspaces, the extension tries to resize existing windows to make space
+- 📐 **Edge Tiling (Snap Zones)**: Drag windows to screen edges for half/quarter tiling - remaining windows adapt to the available space
+- 🔀 **Window Swapping**: Drag a window onto another to swap their positions
+
+### Overflow & Workspaces  
+- 🚀 **Intelligent Overflow**: Windows that don't fit are moved to existing workspaces when possible, or create new ones
+- 🖥️ **Fullscreen Support**: Fullscreen and maximized windows automatically get dedicated workspaces
+- 🔙 **Reverse Smart Resize**: When windows leave, remaining windows expand back to their original sizes
+
+### Animations & Polish
+- ✨ **Directional Momentum**: Windows slide in from the direction they came from, with a bouncy animation
+- 🎬 **Smooth Transitions**: All layout changes are animated for a polished feel
+- 👁️ **Visual Feedback**: Live preview during drag operations shows where windows will land
+
+### Other
+- ⌨️ **Keyboard Shortcuts**: Swap windows with keyboard (configurable)
+- 🖥️ **Multi-Monitor**: Works across multiple displays (experimental)
 
 ## 📦 Installation
 
@@ -107,7 +119,7 @@ journalctl -f -o cat /usr/bin/gnome-shell | grep -i mosaic
 - **Classes**: PascalCase (`WindowDescriptor`)
 - **Constants**: UPPER_CASE (`WINDOW_SPACING`)
 - **Private properties**: Prefix with `_` (`this._wmEventIds`)
-- **Documentation**: JSDoc for all exported functions
+- **Comments**: Use `//` for inline comments, avoid JSDoc blocks
 
 ### Technical Notes
 
@@ -142,11 +154,12 @@ This project is licensed under the GNU General Public License v2.0 or later - se
 ## 🐛 Known Issues
 
 > [!CAUTION]
-> The interaction between mosaic layout and quarter tiling (edge tiling) is highly experimental and may not work as expected.
+> The interaction between mosaic layout and edge tiling (snap zones) is experimental.
 
-**Open issues:**
+**Current limitations:**
 
-- Overview drag-drop may crash in some scenarios
+- Multi-monitor requires **"Workspaces on all displays"** setting (Settings → Multitasking). "Workspaces on primary display only" is not yet supported. ([#30](https://github.com/CleoMenezesJr/MosaicWM/issues/30))
+- Overview drag-drop may have issues in some scenarios
 - Edge tiling overflow preview not yet animated
 
 ---
