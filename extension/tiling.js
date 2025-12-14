@@ -917,6 +917,11 @@ export class TilingManager {
                 if(this._windowingManager.isMaximizedOrFullscreen(window))
                     overflow = true;
         }
+        
+        // DRY RUN: If dryRun flag is set, return overflow without moving anything
+        if (arguments[5] === true) {
+            return overflow;
+        }
 
         // Don't expel windows when edge-tiled windows exist (reduced space is intentional)
         // EXCEPTION: if reference_meta_window itself is NOT edge-tiled, allow overflow for it
@@ -1104,10 +1109,9 @@ export class TilingManager {
         return fits;
     }
 
-    /**
-     * Save original size of a window before resizing
-     * @param {Meta.Window} window
-     */
+    //
+     // Save original size of a window before resizing
+     
     saveOriginalSize(window) {
         const winId = window.get_id();
         if (!this._originalSizes.has(winId)) {
@@ -1117,11 +1121,10 @@ export class TilingManager {
         }
     }
 
-    /**
-     * Save the opening size of a window (called once when window first appears)
-     * This is the MAXIMUM size the window can be restored to
-     * @param {Meta.Window} window
-     */
+    //
+     // Save the opening size of a window (called once when window first appears)
+     // This is the MAXIMUM size the window can be restored to
+     
     saveOpeningSize(window) {
         const winId = window.get_id();
         if (!this._openingSizes.has(winId)) {
@@ -1133,10 +1136,9 @@ export class TilingManager {
         }
     }
     
-    /**
-     * Clear opening size when window is destroyed
-     * @param {number} windowId
-     */
+    //
+     // Clear opening size when window is destroyed
+     
     clearOpeningSize(windowId) {
         if (this._openingSizes.has(windowId)) {
             this._openingSizes.delete(windowId);
@@ -1144,25 +1146,16 @@ export class TilingManager {
         }
     }
 
-    /**
-     * Get opening size for a window
-     * @param {number} windowId
-     * @returns {Object|null} { width, height } or null if not found
-     */
+    //
+     // Get opening size for a window
+     
     getOpeningSize(windowId) {
         return this._openingSizes.get(windowId) || null;
     }
 
-    /**
-     * Try to restore windows toward their original opening sizes when space is freed
-     * @param {Meta.Window[]} windows - Remaining windows in workspace
-     * @param {Object} workArea - Available work area
-     * @param {number} freedWidth - Width freed by removed window
-     * @param {number} freedHeight - Height freed by removed window
-     * @param {Meta.Workspace} workspace - Current workspace for fit validation
-     * @param {number} monitor - Monitor index for fit validation
-     * @returns {boolean} True if any windows were resized
-     */
+    //
+     // Try to restore windows toward their original opening sizes when space is freed
+     
     tryRestoreWindowSizes(windows, workArea, freedWidth, freedHeight, workspace, monitor) {
         Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: ${freedWidth}px width and ${freedHeight}px height freed`);
         
@@ -1344,12 +1337,9 @@ export class TilingManager {
         return restored;
     }
 
-    /**
-     * Legacy: Restore windows to their original sizes if possible
-     * @param {Meta.Window[]} windows
-     * @param {Object} workArea
-     * @deprecated Use tryRestoreWindowSizes instead
-     */
+    //
+     // Legacy: Restore windows to their original sizes if possible
+     
     restoreOriginalSizes(windows, workArea) {
         for (const window of windows) {
             const winId = window.get_id();
@@ -1366,21 +1356,18 @@ export class TilingManager {
         }
     }
 
-    /**
-     * Calculate window area as ratio of workspace area
-     * @param {Object} frame - Window frame rect
-     * @param {Object} workArea - Workspace area
-     * @returns {number} Ratio (0-1)
-     */
+    //
+     // Calculate window area as ratio of workspace area
+     
     getWindowAreaRatio(frame, workArea) {
         const windowArea = frame.width * frame.height;
         const workspaceArea = workArea.width * workArea.height;
         return windowArea / workspaceArea;
     }
 
-    /**
-     * Helper to get usable work area considering edge tiles
-     */
+    //
+     // Helper to get usable work area considering edge tiles
+     
     getUsableWorkArea(workspace, monitor) {
         if (this._edgeTilingManager) {
             const edgeTiledWindows = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
@@ -1400,13 +1387,9 @@ export class TilingManager {
         return workspace.get_work_area_for_monitor(monitor);
     }
 
-    /**
-     * Try to fit a new window by resizing existing windows
-     * @param {Meta.Window} newWindow - The window trying to fit
-     * @param {Meta.Window[]} existingWindows - Windows already in workspace
-     * @param {Object} workArea - Available workspace area
-     * @returns {boolean} True if fit was successful
-     */
+    //
+     // Try to fit a new window by resizing existing windows
+     
     tryFitWithResize(newWindow, existingWindows, workArea) {
         Logger.log(`[MOSAIC WM] tryFitWithResize: Attempting to fit window by resizing ${existingWindows.length} existing windows`);
         

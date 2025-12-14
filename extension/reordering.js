@@ -12,6 +12,8 @@ export class ReorderingManager {
         this.dragStart = false;
         this._dragTimeout = 0;
         this._dragSafetyTimeout = 0;
+        this._rejectedSwap = null;  // Track rejected swap to avoid repeated overflow checks
+        this._lastTileState = null;  // Track last tile state to avoid repeated tiling
         
         this._tilingManager = null;
         this._edgeTilingManager = null;
@@ -96,16 +98,42 @@ export class ReorderingManager {
             // Don't call tileWorkspaceWindows - edge tiling poll handles it
         } else if (target_id === id || target_id === null) {
             // No swap needed
-            this._tilingManager.clearTmpSwap();
-            this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
-        } else {
-            // Test if swap would cause overflow BEFORE applying
-            this._tilingManager.setTmpSwap(id, target_id);
-            const overflow = this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
             
-            if(overflow) {
+            // If we have a rejected swap active, don't reset to 'no-swap' immediately.
+            // This prevents bouncing when the "revert" animation temporarily makes the target detection fail.
+            // We just wait until we either find a VALID new target or hit the edge zone.
+            if (this._rejectedSwap) {
+                 // Ignoring no-swap because we have rejected swap
+            } else if (this._lastTileState !== 'no-swap') {
                 this._tilingManager.clearTmpSwap();
+                this._rejectedSwap = null;
                 this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
+                this._lastTileState = 'no-swap';
+            }
+        } else if (this._rejectedSwap === target_id) {
+            // This swap was already rejected due to overflow - do nothing, keep current layout
+            // Don't call tileWorkspaceWindows to avoid re-animation
+        } else {
+            // Try swap - only if we're changing to a new swap target
+            const newState = `swap-${target_id}`;
+            if (this._lastTileState !== newState) {
+                // DRY-RUN: Check if swap would cause overflow WITHOUT moving windows
+                this._tilingManager.setTmpSwap(id, target_id);
+                const wouldOverflow = this._tilingManager.tileWorkspaceWindows(
+                    workspace, meta_window, monitor, false, false, true  // dryRun = true
+                );
+                
+                if (wouldOverflow) {
+                    // Swap would cause overflow - reject without ever moving windows
+                    this._rejectedSwap = target_id;
+                    this._tilingManager.clearTmpSwap();
+                    this._lastTileState = newState;
+                } else {
+                    // Swap is valid - now actually tile the windows
+                    this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
+                    this._rejectedSwap = null;
+                    this._lastTileState = newState;
+                }
             }
         }
 
@@ -179,6 +207,8 @@ export class ReorderingManager {
         Logger.log(`[MOSAIC WM] stopDrag called for window ${meta_window.get_id()}, dragStart was: ${this.dragStart}`);
         let workspace = meta_window.get_workspace();
         this.dragStart = false;
+        this._rejectedSwap = null;  // Reset for next drag
+        this._lastTileState = null;  // Reset tile state for next drag
         
         if (this._dragTimeout) {
             GLib.source_remove(this._dragTimeout);
