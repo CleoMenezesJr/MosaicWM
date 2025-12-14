@@ -6,6 +6,7 @@ import * as Logger from './logger.js';
 import * as constants from './constants.js';
 import Meta from 'gi://Meta';
 import GLib from 'gi://GLib';
+import { afterWorkspaceSwitch } from './timing.js';
 
 import { TileZone } from './edgeTiling.js';
 
@@ -19,6 +20,7 @@ export class WindowingManager {
         this._edgeTilingManager = null;
         this._animationsManager = null;
         this._tilingManager = null;
+        this._timeoutRegistry = null;
         this._overflowStartCallback = null;
         this._overflowEndCallback = null;
     }
@@ -33,6 +35,10 @@ export class WindowingManager {
     
     setTilingManager(manager) {
         this._tilingManager = manager;
+    }
+    
+    setTimeoutRegistry(registry) {
+        this._timeoutRegistry = registry;
     }
     
     setOverflowCallbacks(startCallback, endCallback) {
@@ -211,7 +217,6 @@ export class WindowingManager {
         
         const previous_workspace = window.get_workspace();
         const switchFocusToMovedWindow = previous_workspace.active;
-        const startRect = window.get_frame_rect();
         
         window.change_workspace(target_workspace);
         
@@ -234,11 +239,6 @@ export class WindowingManager {
                 target_workspace.activate(global.get_current_time());
             }
             
-            if (this._animationsManager) {
-                const endRect = window.get_frame_rect();
-                this._animationsManager.animateWindowMove(window, startRect, endRect);
-            }
-            
             // Re-tile after window has settled
             if (this._tilingManager) {
                 let attempts = 0;
@@ -253,8 +253,11 @@ export class WindowingManager {
                     const windowInWorkspace = workspaceWindows.some(w => w.get_id() === window.get_id());
                     
                     if (frame.width > 0 && frame.height > 0 && windowInWorkspace) {
-                        Logger.log(`[MOSAIC WM] moveOversizedWindow: window geometry ready (${frame.width}x${frame.height}), retiling`);
-                        this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
+                        Logger.log(`[MOSAIC WM] moveOversizedWindow: window geometry ready (${frame.width}x${frame.height}), waiting for animation then retiling`);
+                        // Wait for workspace switch animation to complete before tiling
+                        afterWorkspaceSwitch(() => {
+                            this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
+                        }, this._timeoutRegistry);
                         
                         // Secondary retile only if window is not correctly positioned
                         GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
@@ -270,7 +273,9 @@ export class WindowingManager {
                             
                             if (positionError > 10) {
                                 Logger.log(`[MOSAIC WM] moveOversizedWindow: window mispositioned by ${positionError}px, retiling`);
-                                this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
+                                afterWorkspaceSwitch(() => {
+                                    this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
+                                }, this._timeoutRegistry);
                             } else {
                                 Logger.log(`[MOSAIC WM] moveOversizedWindow: window correctly positioned, skipping retile`);
                             }
@@ -288,7 +293,9 @@ export class WindowingManager {
                     // Prevent infinite loop - give up after max attempts
                     if (attempts >= maxAttempts) {
                         Logger.log(`[MOSAIC WM] moveOversizedWindow: timeout waiting for geometry, forcing retile`);
-                        this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
+                        afterWorkspaceSwitch(() => {
+                            this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
+                        }, this._timeoutRegistry);
                         if (this._overflowEndCallback) {
                             this._overflowEndCallback();
                         }

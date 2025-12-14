@@ -69,9 +69,9 @@ export class AnimationsManager {
     }
 
     shouldAnimateWindow(window, draggedWindow = null) {
-        // SLIDE-IN: Always allow animation for windows marked for slide-in
-        if (window._needsSlideIn) {
-            return true;
+        // Skip if slide-in animation is in progress (handled by first-frame)
+        if (window._slideInAnimating) {
+            return false;
         }
         
         // Don't animate the window being dragged
@@ -109,68 +109,6 @@ export class AnimationsManager {
             return;
         }
         
-        // Calculate slide-in offset based on neighbors
-        const isSlideIn = window._needsSlideIn;
-        let slideInOffset = { x: 0, y: 0 };
-        
-        if (isSlideIn) {
-            const existingWindows = window._slideInExistingWindows || [];
-            delete window._needsSlideIn;
-            delete window._slideInExistingWindows;
-            
-            // Calculate center of mass of existing windows
-            const OFFSET_AMOUNT = constants.SLIDE_IN_OFFSET_PX;
-            let existingCenterX = 0;
-            let existingCenterY = 0;
-            let validNeighbors = 0;
-            
-            for (const neighbor of existingWindows) {
-                try {
-                    const neighborRect = neighbor.get_frame_rect();
-                    if (neighborRect && neighborRect.width > 0) {
-                        existingCenterX += neighborRect.x + neighborRect.width / 2;
-                        existingCenterY += neighborRect.y + neighborRect.height / 2;
-                        validNeighbors++;
-                    }
-                } catch (e) {
-                    // Window might be destroyed
-                }
-            }
-            
-            if (validNeighbors > 0) {
-                existingCenterX /= validNeighbors;
-                existingCenterY /= validNeighbors;
-                
-                const newWindowCenterX = targetRect.x + targetRect.width / 2;
-                const newWindowCenterY = targetRect.y + targetRect.height / 2;
-                
-                // Determine direction (opposite to center of mass)
-                const deltaX = newWindowCenterX - existingCenterX;
-                const deltaY = newWindowCenterY - existingCenterY;
-                
-                // Prioritize horizontal movement
-                if (Math.abs(deltaX) >= Math.abs(deltaY)) {
-                    if (deltaX > 10) {
-                        slideInOffset.x = OFFSET_AMOUNT; // Existing windows on left, come from right
-                    } else if (deltaX < -10) {
-                        slideInOffset.x = -OFFSET_AMOUNT; // Existing windows on right, come from left
-                    }
-                } else {
-                    if (deltaY > 10) {
-                        slideInOffset.y = OFFSET_AMOUNT; // Existing windows above, come from bottom
-                    } else if (deltaY < -10) {
-                        slideInOffset.y = -OFFSET_AMOUNT; // Existing windows below, come from top
-                    }
-                }
-            }
-            
-            if (slideInOffset.x !== 0 || slideInOffset.y !== 0) {
-                Logger.log(`[MOSAIC WM] SLIDE-IN: Window ${window.get_id()} offset=(${slideInOffset.x}, ${slideInOffset.y})`);
-            } else {
-                Logger.log(`[MOSAIC WM] SLIDE-IN: Window ${window.get_id()} centered - no offset`);
-            }
-        }
-        
         const windowActor = window.get_compositor_private();
         if (!windowActor) {
             Logger.log(`[MOSAIC WM] No actor for window ${window.get_id()}, skipping animation`);
@@ -200,15 +138,8 @@ export class AnimationsManager {
         const scaleX = currentRect.width / targetRect.width;
         const scaleY = currentRect.height / targetRect.height;
         
-        // For slide-in, use only the offset (ignore current position)
-        let translateX, translateY;
-        if (isSlideIn && (slideInOffset.x !== 0 || slideInOffset.y !== 0)) {
-            translateX = slideInOffset.x;
-            translateY = slideInOffset.y;
-        } else {
-            translateX = (currentRect.x - targetRect.x) + slideInOffset.x;
-            translateY = (currentRect.y - targetRect.y) + slideInOffset.y;
-        }
+        let translateX = currentRect.x - targetRect.x;
+        let translateY = currentRect.y - targetRect.y;
         
         const hasValidDimensions = currentRect.width > 0 && currentRect.height > 0 && 
                                     targetRect.width > 0 && targetRect.height > 0 &&
@@ -234,16 +165,13 @@ export class AnimationsManager {
         // Apply new size/position immediately (logical change)
         window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
         
-        // Setup visual actors to fake the transition
-        windowActor.set_pivot_point(0, 0);
-        windowActor.set_scale(scaleX, scaleY);
+        // Option 2: Use only translation, no scale (avoids grow-from-bottom effect)
         windowActor.set_translation(translateX, translateY, 0);
         
         const safetyTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, duration + constants.SAFETY_TIMEOUT_BUFFER_MS, () => {
             if (this._animatingWindows.has(windowId)) {
                 this._animatingWindows.delete(windowId);
                 try {
-                    windowActor.set_scale(1.0, 1.0);
                     windowActor.set_translation(0, 0, 0);
                 } catch (e) {
                 }
@@ -252,15 +180,12 @@ export class AnimationsManager {
         });
         
         windowActor.ease({
-            scale_x: 1.0,
-            scale_y: 1.0,
             translation_x: 0,
             translation_y: 0,
             duration: duration,
             mode: animationMode,
             onComplete: () => {
                 GLib.source_remove(safetyTimeout);
-                windowActor.set_scale(1.0, 1.0);
                 windowActor.set_translation(0, 0, 0);
                 this._animatingWindows.delete(windowId);
                 if (onComplete) onComplete();
