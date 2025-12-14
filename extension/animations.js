@@ -30,10 +30,8 @@ export class AnimationsManager {
         return this._resizingWindowId;
     }
 
-    /**
-     * Returns true if any windows are currently animating
-     * Used by async utilities to wait for animations to complete
-     */
+    // Returns true if any windows are currently animating
+    // Used by async utilities to wait for animations to complete
     hasActiveAnimations() {
         return this._animatingWindows.size > 0;
     }
@@ -111,7 +109,7 @@ export class AnimationsManager {
             return;
         }
         
-        // SLIDE-IN: Calculate offset direction based on neighboring windows
+        // Calculate slide-in offset based on neighbors
         const isSlideIn = window._needsSlideIn;
         let slideInOffset = { x: 0, y: 0 };
         
@@ -120,12 +118,8 @@ export class AnimationsManager {
             delete window._needsSlideIn;
             delete window._slideInExistingWindows;
             
-            // Calculate offset direction based on where neighboring windows are
-            // Offset comes from the OPPOSITE side of where neighbors are
-            const OFFSET_AMOUNT = constants.SLIDE_IN_OFFSET_PX;
-            
             // Calculate center of mass of existing windows
-            // New window should come from the OPPOSITE direction
+            const OFFSET_AMOUNT = constants.SLIDE_IN_OFFSET_PX;
             let existingCenterX = 0;
             let existingCenterY = 0;
             let validNeighbors = 0;
@@ -150,8 +144,7 @@ export class AnimationsManager {
                 const newWindowCenterX = targetRect.x + targetRect.width / 2;
                 const newWindowCenterY = targetRect.y + targetRect.height / 2;
                 
-                // If existing windows are to the LEFT of new window, new window comes from RIGHT
-                // If existing windows are to the RIGHT of new window, new window comes from LEFT
+                // Determine direction (opposite to center of mass)
                 const deltaX = newWindowCenterX - existingCenterX;
                 const deltaY = newWindowCenterY - existingCenterY;
                 
@@ -207,8 +200,7 @@ export class AnimationsManager {
         const scaleX = currentRect.width / targetRect.width;
         const scaleY = currentRect.height / targetRect.height;
         
-        // For slide-in: use ONLY the offset, ignoring current position
-        // This ensures window appears at edge and slides toward center
+        // For slide-in, use only the offset (ignore current position)
         let translateX, translateY;
         if (isSlideIn && (slideInOffset.x !== 0 || slideInOffset.y !== 0)) {
             translateX = slideInOffset.x;

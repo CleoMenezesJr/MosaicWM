@@ -22,7 +22,7 @@ export class SettingsOverrider {
         
         const schemaOverrides = this.#overrides.get(schemaId);
         
-        // Save original value if not already saved
+        // Save original value
         if (!schemaOverrides.has(key)) {
             const originalValue = settings.get_value(key);
             schemaOverrides.set(key, originalValue);
@@ -36,7 +36,7 @@ export class SettingsOverrider {
     clear() {
         if (!this.#overrides) return;
 
-        // Restore all original values
+        // Restore original values
         for (const [schemaId, overrides] of this.#overrides) {
             const settings = new Gio.Settings({ schema_id: schemaId });
             

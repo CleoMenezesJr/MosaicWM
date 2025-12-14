@@ -34,8 +34,7 @@ export class EdgeTilingManager {
         this._isResizing = false; // Flag to prevent recursive resize
         this._previousSizes = new Map(); // windowId -> { width, height } for delta tracking
 
-        // Module state for auto-tiling dependencies
-        // Maps: dependentWindowId -> masterWindowId
+        // Auto-tiling dependencies (dependentWindowId -> masterWindowId)
         this._autoTiledDependencies = new Map();
         
         this._animationsManager = null;
@@ -79,21 +78,13 @@ export class EdgeTilingManager {
         this._activeEdgeTilingWindow = null;
     }
 
-    /**
-     * Cleanup and destroy manager
-     */
+    // Cleanup resources
     destroy() {
         this.clearAllStates();
         this._animationsManager = null;
     }
 
-    /**
-     * Check if there are edge-tiled windows on a specific side
-     * @private
-     * @param {Meta.Workspace} workspace
-     * @param {string} side - 'left' or 'right'
-     * @returns {boolean}
-     */
+    // Check for edge-tiled windows on a specific side
     _hasEdgeTiledWindows(workspace, side) {
         if (!workspace) return false;
         
@@ -147,10 +138,7 @@ export class EdgeTilingManager {
         return TileZone.NONE;
     }
 
-    /**
-     * Get width of existing tile on the same side
-     * @private
-     */
+    // Get width of existing tile on the same side
     _getExistingSideWidth(workspace, monitor, side) {
         if (!workspace || monitor === undefined) return null;
         
@@ -189,10 +177,7 @@ export class EdgeTilingManager {
         return null;
     }
 
-    /**
-     * Get height of existing quarter tile window
-     * @private
-     */
+    // Get height of existing quarter tile window
     _getExistingQuarterHeight(workspace, monitor, zone) {
         if (!workspace || monitor === undefined) return null;
         
@@ -614,14 +599,7 @@ export class EdgeTilingManager {
         this._tilingManager = tilingManager;
     }
 
-    /**
-     * Check if window can be resized to target dimensions
-     * @private
-     * @param {Meta.Window} window
-     * @param {number} targetWidth
-     * @param {number} targetHeight
-     * @returns {boolean}
-     */
+    // Check if window can be resized to target dimensions
     _canResize(window, targetWidth, targetHeight) {
         if (window.window_type !== 0) { // Meta.WindowType.NORMAL
             Logger.log(`[MOSAIC WM] Window type ${window.window_type} cannot be edge-tiled`);

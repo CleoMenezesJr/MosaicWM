@@ -11,7 +11,7 @@ export class ReorderingManager {
     constructor() {
         this.dragStart = false;
         this._dragTimeout = 0;
-        this._dragSafetyTimeout = 0; // Safety timeout to prevent infinite drag loops
+        this._dragSafetyTimeout = 0;
         
         this._tilingManager = null;
         this._edgeTilingManager = null;
@@ -101,14 +101,6 @@ export class ReorderingManager {
         const windowToExclude = isOverEdgeZone ? meta_window : null;
         
         // Re-tile with temporary swap
-        // tileWorkspaceWindows returns overflow boolean, but original code checked it in if statement?
-        // Original: if(tiling.tileWorkspaceWindows(...)) { clear; tile... }
-        // Wait, original:
-        // if(tiling.tileWorkspaceWindows(workspace, windowToExclude, monitor)) {
-        //     tiling.clearTmpSwap();
-        //     tiling.tileWorkspaceWindows(workspace, windowToExclude, monitor)
-        // }
-        // This implies if overflow (true), it clears swap and retiles.
         
         const overflow = this._tilingManager.tileWorkspaceWindows(workspace, windowToExclude, monitor);
         

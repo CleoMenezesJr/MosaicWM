@@ -1,6 +1,6 @@
 // Copyright 2025 Cleo Menezes Jr.
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Window position swapping with keyboard shortcuts
+// Window swapping logic
 
 import * as Logger from './logger.js';
 import { TileZone } from './edgeTiling.js';

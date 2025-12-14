@@ -9,7 +9,7 @@ export class DrawingManager {
     constructor() {
         // Active feedback boxes
         this._boxes = [];
-        // Pool of reusable boxes to avoid constant create/destroy churn
+        // Pool of reusable boxes (avoids create/destroy churn)
         this._boxPool = [];
         
         // Tile preview overlay for edge tiling
@@ -23,7 +23,7 @@ export class DrawingManager {
     }
 
     rect(x, y, w, h) {
-        // Do not hide edge tiling preview here - let Extension.js manage it
+        // Managed by Extension.js
         
         let box;
         if (this._boxPool.length > 0) {

@@ -18,16 +18,17 @@ export const ANIMATION_DURATION_MS = 350;
 
 export const ANIMATION_OPEN_CLOSE_DURATION_MS = 350;
 
-// Minimum window dimensions for tiling consideration
+// Minimum dimensions for tiling
 export const MIN_WINDOW_WIDTH = 400;
 export const MIN_WINDOW_HEIGHT = 100;
 export const ABSOLUTE_MIN_HEIGHT = 200;
 
-// Thresholds for edge tiling detection (pixels from screen edge)
+// Edge detection threshold
 export const EDGE_TILING_THRESHOLD = 10;
-export const COLUMN_ALIGNMENT_TOLERANCE = 50; // Tolerance for grouping windows into virtual columns (Virtual Columns Algorithm)
+// Tolerance for grouping windows into virtual columns (Virtual Columns Algorithm)
+export const COLUMN_ALIGNMENT_TOLERANCE = 50;
 
-// Timing constants for polling and delays
+// Timing constants
 export const POLL_INTERVAL_MS = 50;
 export const DEBOUNCE_DELAY_MS = 500;
 export const RETILE_DELAY_MS = 100;
@@ -45,7 +46,7 @@ export const MIN_AVAILABLE_SPACE_PX = 50;        // Minimum available space thre
 // Threshold for identifying significant changes in window geometry for animations
 export const ANIMATION_DIFF_THRESHOLD = 10;
 
-// Smart resize before overflow thresholds (as percentage of workspace area)
+// Smart resize thresholds
 export const SMALL_WINDOW_THRESHOLD = 0.25;  // Window < 25% of workspace = small
 export const LARGE_WINDOW_THRESHOLD = 0.35;  // Window > 35% of workspace = large (lowered to catch Medium windows)
 export const MIN_RESIZE_RATIO = 0.30;        // Minimum 30% of original size when resizing
@@ -55,11 +56,8 @@ export const SMART_RESIZE_MAX_ATTEMPTS = 20;  // Max polling attempts before giv
 // Slide-in animation for new windows
 export const SLIDE_IN_OFFSET_PX = 60;         // Offset in pixels for new window slide-in animation
 
-// Grab Operation IDs (Legacy replacements/Helpers if Meta doesn't expose them cleanly)
-// These match common Meta.GrabOp values for resizing.
-// Resize grab operations (empirically discovered, not officially documented)
-// Pattern: base value + direction flags
-// Mouse resize operations (edge/corner drag):
+// Grab Operation IDs (Meta.GrabOp values). Undocumented but empirically discovered.
+// Matches common resize operations (edge/corner drag).
 export const GRAB_OP_RESIZING_NW = 36865;
 export const GRAB_OP_RESIZING_N  = 4097;
 export const GRAB_OP_RESIZING_NE = 8193;
