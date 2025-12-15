@@ -3,15 +3,12 @@
 // Window reordering via drag and drop
 
 import * as Logger from './logger.js';
-import GLib from 'gi://GLib';
-import * as constants from './constants.js';
 import { TileZone } from './edgeTiling.js';
 
 export class ReorderingManager {
     constructor() {
         this.dragStart = false;
-        this._dragTimeout = 0;
-        this._dragSafetyTimeout = 0;
+        this._positionChangedId = 0;
         this._rejectedSwap = null;  // Track rejected swap to avoid repeated overflow checks
         this._lastTileState = null;  // Track last tile state to avoid repeated tiling
         
@@ -19,6 +16,9 @@ export class ReorderingManager {
         this._edgeTilingManager = null;
         this._animationsManager = null;
         this._windowingManager = null;
+        
+        this._boundPositionHandler = null;
+        this._dragContext = null;
     }
 
     setTilingManager(manager) {
@@ -43,8 +43,10 @@ export class ReorderingManager {
         return Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2));
     }
 
-    _drag(meta_window, child_frame, id, windows) {
-        if (!this._tilingManager) return;
+    _onPositionChanged() {
+        if (!this.dragStart || !this._tilingManager || !this._dragContext) return;
+        
+        const { meta_window, id, windows } = this._dragContext;
         
         let workspace = meta_window.get_workspace();
         let monitor = meta_window.get_monitor();
@@ -65,13 +67,8 @@ export class ReorderingManager {
         
         const reorderableWindows = windows.filter(w => !edgeTiledIds.includes(w.id));
         
+        // If dragged window became edge-tiled, skip swap logic
         if (edgeTiledIds.includes(id)) {
-            if(this.dragStart) {
-                this._dragTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.DRAG_UPDATE_INTERVAL_MS, () => {
-                    this._drag(meta_window, child_frame, id, windows);
-                    return GLib.SOURCE_REMOVE;
-                });
-            }
             return;
         }
 
@@ -97,7 +94,6 @@ export class ReorderingManager {
             this._tilingManager.clearTmpSwap();
             // Don't call tileWorkspaceWindows - edge tiling poll handles it
         } else if (target_id === id || target_id === null) {
-            // No swap needed
             
             // If we have a rejected swap active, don't reset to 'no-swap' immediately.
             // This prevents bouncing when the "revert" animation temporarily makes the target detection fail.
@@ -135,13 +131,6 @@ export class ReorderingManager {
                     this._lastTileState = newState;
                 }
             }
-        }
-
-        if(this.dragStart) {
-            this._dragTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.DRAG_UPDATE_INTERVAL_MS, () => {
-                this._drag(meta_window, child_frame, id, windows);
-                return GLib.SOURCE_REMOVE;
-            });
         }
     }
 
@@ -185,20 +174,15 @@ export class ReorderingManager {
         this.dragStart = true;
         const descriptorsCopy = JSON.parse(JSON.stringify(descriptors));
         
-        if (this._dragSafetyTimeout) {
-            GLib.source_remove(this._dragSafetyTimeout);
-            this._dragSafetyTimeout = 0;
-        }
-        this._dragSafetyTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.DRAG_SAFETY_TIMEOUT_MS, () => {
-            if (this.dragStart) {
-                Logger.error(`[MOSAIC WM] SAFETY: Force-stopping drag loop after 10 seconds`);
-                this.stopDrag(meta_window, true, false);
-            }
-            this._dragSafetyTimeout = 0;
-            return GLib.SOURCE_REMOVE;
-        });
+        this._dragContext = {
+            meta_window,
+            id: meta_window.get_id(),
+            windows: descriptorsCopy
+        };
         
-        this._drag(meta_window, meta_window.get_frame_rect(), meta_window.get_id(), descriptorsCopy);
+        this._boundPositionHandler = this._onPositionChanged.bind(this);
+        this._positionChangedId = meta_window.connect('position-changed', this._boundPositionHandler);
+        this._onPositionChanged();
     }
 
     stopDrag(meta_window, skip_apply, skip_tiling) {
@@ -210,15 +194,16 @@ export class ReorderingManager {
         this._rejectedSwap = null;  // Reset for next drag
         this._lastTileState = null;  // Reset tile state for next drag
         
-        if (this._dragTimeout) {
-            GLib.source_remove(this._dragTimeout);
-            this._dragTimeout = 0;
+        if (this._positionChangedId && this._dragContext?.meta_window) {
+            try {
+                this._dragContext.meta_window.disconnect(this._positionChangedId);
+            } catch (e) {
+                // Window may have been destroyed
+            }
+            this._positionChangedId = 0;
         }
-        
-        if (this._dragSafetyTimeout) {
-            GLib.source_remove(this._dragSafetyTimeout);
-            this._dragSafetyTimeout = 0;
-        }
+        this._boundPositionHandler = null;
+        this._dragContext = null;
         
         if (this._animationsManager) {
             this._animationsManager.setDragging(false);
@@ -240,15 +225,17 @@ export class ReorderingManager {
     }
 
     destroy() {
-        if (this._dragTimeout) {
-            GLib.source_remove(this._dragTimeout);
-            this._dragTimeout = 0;
-        }
-        if (this._dragSafetyTimeout) {
-            GLib.source_remove(this._dragSafetyTimeout);
-            this._dragSafetyTimeout = 0;
+        if (this._positionChangedId && this._dragContext?.meta_window) {
+            try {
+                this._dragContext.meta_window.disconnect(this._positionChangedId);
+            } catch (e) {
+                // Window may have been destroyed
+            }
+            this._positionChangedId = 0;
         }
         this.dragStart = false;
+        this._boundPositionHandler = null;
+        this._dragContext = null;
         this._tilingManager = null;
         this._edgeTilingManager = null;
         this._animationsManager = null;
