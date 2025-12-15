@@ -30,6 +30,10 @@ export class TilingManager {
         
         // Track window opening sizes for reverse smart resize (restore on window close)
         this._openingSizes = new Map();   // windowId -> { width, height } - size when window first opened
+        
+        // Queue for serializing window opening operations to prevent race conditions
+        this._openingQueue = [];
+        this._processingQueue = false;
     }
 
     setEdgeTilingManager(manager) {
@@ -89,6 +93,46 @@ export class TilingManager {
     
     clearExcludedWindow() {
         this._excludedWindow = null;
+    }
+    
+    // Queue a window opening operation to prevent race conditions
+    // The callback will be called when it's this window's turn
+    enqueueWindowOpen(windowId, callback) {
+        Logger.log(`[MOSAIC WM] Enqueuing window ${windowId} for opening (queue size: ${this._openingQueue.length})`);
+        this._openingQueue.push({ windowId, callback });
+        this._processOpeningQueue();
+    }
+    
+    // Process the opening queue one window at a time
+    _processOpeningQueue() {
+        if (this._processingQueue || this._openingQueue.length === 0) {
+            return;
+        }
+        
+        this._processingQueue = true;
+        const { windowId, callback } = this._openingQueue.shift();
+        
+        Logger.log(`[MOSAIC WM] Processing queue: window ${windowId} (remaining: ${this._openingQueue.length})`);
+        
+        // Execute the callback
+        try {
+            callback();
+        } catch (e) {
+            Logger.log(`[MOSAIC WM] Error processing window ${windowId}: ${e}`);
+        }
+        
+        // Small delay before processing next window to let animations settle
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.QUEUE_PROCESS_DELAY_MS, () => {
+            this._processingQueue = false;
+            this._processOpeningQueue();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+    
+    // Clear queue (e.g., on disable)
+    clearOpeningQueue() {
+        this._openingQueue = [];
+        this._processingQueue = false;
     }
 
     setTmpSwap(id1, id2) {

@@ -61,6 +61,7 @@ export const SMART_RESIZE_MAX_ATTEMPTS = 20;  // Max polling attempts before giv
 
 // Slide-in animation for new windows
 export const SLIDE_IN_OFFSET_PX = 100;        // Offset in pixels for new window slide-in animation
+export const QUEUE_PROCESS_DELAY_MS = 100;    // Delay between processing window opening queue items
 
 // Grab Operation IDs (Meta.GrabOp values). Undocumented but empirically discovered.
 // Matches common resize operations (edge/corner drag).
