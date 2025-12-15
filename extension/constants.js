@@ -11,8 +11,6 @@ export const TILE_INTERVAL_MS = 60000 * 5; // 5 minutes
 
 export const WINDOW_VALIDITY_CHECK_INTERVAL_MS = 10;
 
-export const DRAG_UPDATE_INTERVAL_MS = 50;
-
 export const STARTUP_TILE_DELAY_MS = 300;
 
 export const ANIMATION_DURATION_MS = 350;
@@ -44,7 +42,6 @@ export const EDGE_TILE_RESTORE_DELAY_MS = 300;  // Delay to prevent false overfl
 export const GEOMETRY_WAIT_MAX_ATTEMPTS = 40;   // Max attempts to wait for window geometry (40 * 50ms = 2s)
 export const REVERSE_RESIZE_PROTECTION_MS = 200; // Protection window for reverse smart resize
 export const RESIZE_VERIFICATION_DELAY_MS = 1500; // Delay for resize verification checks
-export const DRAG_SAFETY_TIMEOUT_MS = 10000;     // Safety timeout for drag operations
 export const ISRESIZING_FLAG_RESET_MS = 2;       // Delay to reset isResizing flag
 export const EXCLUSION_POLL_INTERVAL_MS = 1000;  // Interval for polling exclusion state changes
 export const MIN_AVAILABLE_SPACE_PX = 50;        // Minimum available space threshold for smart resize
