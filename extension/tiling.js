@@ -168,8 +168,121 @@ export class TilingManager {
         return descriptors;
     }
 
+    // Generate permutations of an array (limited for performance)
+    // For 7+ items, returns heuristic orderings instead of all permutations
+    _generatePermutations(arr, maxPermutations = 720) {
+        if (arr.length <= 1) return [arr];
+        if (arr.length === 2) return [arr, [arr[1], arr[0]]];
+        
+        // For 7+ windows, use heuristic orderings (by area, descending and ascending)
+        if (arr.length >= 7) {
+            const byAreaDesc = [...arr].sort((a, b) => (b.width * b.height) - (a.width * a.height));
+            const byAreaAsc = [...arr].sort((a, b) => (a.width * a.height) - (b.width * b.height));
+            const byWidthDesc = [...arr].sort((a, b) => b.width - a.width);
+            const byHeightDesc = [...arr].sort((a, b) => b.height - a.height);
+            return [arr, byAreaDesc, byAreaAsc, byWidthDesc, byHeightDesc];
+        }
+        
+        // Generate all permutations using Heap's algorithm
+        const result = [];
+        const heap = (n, arr) => {
+            if (n === 1) {
+                result.push([...arr]);
+                return;
+            }
+            for (let i = 0; i < n; i++) {
+                heap(n - 1, arr);
+                if (result.length >= maxPermutations) return;
+                if (n % 2 === 0) {
+                    [arr[i], arr[n - 1]] = [arr[n - 1], arr[i]];
+                } else {
+                    [arr[0], arr[n - 1]] = [arr[n - 1], arr[0]];
+                }
+            }
+        };
+        heap(arr.length, [...arr]);
+        return result;
+    }
+
+    // Score a layout result - higher is better
+    // Prioritizes: no overflow, compactness, centralization
+    _scoreLayout(tileResult, workArea) {
+        if (!tileResult || tileResult.overflow) return -Infinity;
+        
+        // Calculate bounding box of all windows
+        let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+        let totalArea = 0;
+        
+        for (const level of tileResult.levels) {
+            for (const w of level.windows) {
+                const x = w.targetX || level.x;
+                const y = w.targetY || level.y;
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x + w.width);
+                maxY = Math.max(maxY, y + w.height);
+                totalArea += w.width * w.height;
+            }
+        }
+        
+        if (minX === Infinity) return -Infinity;
+        
+        const bboxWidth = maxX - minX;
+        const bboxHeight = maxY - minY;
+        const bboxArea = bboxWidth * bboxHeight;
+        
+        // Score components
+        // 1. Compactness: ratio of window area to bounding box area (0-1)
+        const compactness = totalArea / Math.max(bboxArea, 1);
+        
+        // 2. Centralization: how close is the bbox center to workArea center
+        const bboxCenterX = minX + bboxWidth / 2;
+        const bboxCenterY = minY + bboxHeight / 2;
+        const workCenterX = workArea.x + workArea.width / 2;
+        const workCenterY = workArea.y + workArea.height / 2;
+        const centerDist = Math.sqrt(
+            Math.pow(bboxCenterX - workCenterX, 2) + 
+            Math.pow(bboxCenterY - workCenterY, 2)
+        );
+        const maxDist = Math.sqrt(Math.pow(workArea.width, 2) + Math.pow(workArea.height, 2)) / 2;
+        const centralization = 1 - (centerDist / maxDist);
+        
+        // 3. Size efficiency: smaller bounding box is better
+        const sizeEfficiency = 1 - (bboxArea / (workArea.width * workArea.height));
+        
+        // Weighted score (compactness is most important)
+        return compactness * 50 + centralization * 30 + sizeEfficiency * 20;
+    }
+
+    // Find the optimal window ordering by trying permutations
+    _findOptimalOrder(windows, workArea, tilingFn) {
+        if (windows.length <= 1) return windows;
+        
+        const startTime = Date.now();
+        const permutations = this._generatePermutations(windows);
+        
+        let bestOrder = windows;
+        let bestScore = -Infinity;
+        
+        for (const perm of permutations) {
+            const result = tilingFn.call(this, perm, workArea, constants.WINDOW_SPACING);
+            const score = this._scoreLayout(result, workArea);
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestOrder = perm;
+            }
+        }
+        
+        const elapsed = Date.now() - startTime;
+        Logger.log(`[MOSAIC WM] _findOptimalOrder: ${windows.length} windows, ${permutations.length} permutations, ${elapsed}ms`);
+        
+        return bestOrder;
+    }
+
     // Tile windows with dynamic shelf orientation.
     // Selects vertical columns if any window is tall (>65%) or workspace is narrow.
+    // Uses optimal permutation search for predictable, best-quality layouts.
     _tile(windows, work_area) {
         if (windows.length === 0) {
             return {
@@ -197,13 +310,16 @@ export class TilingManager {
         const windowTooTall = maxHeight > work_area.height * 0.65;
         const useVerticalShelves = windowTooTall || isNarrowWorkspace || windowTooWide;
         
-        Logger.log(`[MOSAIC WM] _tile: ${windows.length} windows, vertical=${useVerticalShelves}`);
+        // Select tiling function based on orientation
+        const tilingFn = useVerticalShelves ? this._verticalShelves : this._horizontalShelves;
         
-        if (useVerticalShelves) {
-            return this._verticalShelves(windows, work_area, spacing);
-        } else {
-            return this._horizontalShelves(windows, work_area, spacing);
-        }
+        // Find optimal window ordering (tries permutations, scores each layout)
+        const optimalWindows = this._findOptimalOrder(windows, work_area, tilingFn);
+        
+        Logger.log(`[MOSAIC WM] _tile: ${windows.length} windows, vertical=${useVerticalShelves}, optimized order`);
+        
+        // Execute with optimal order
+        return tilingFn.call(this, optimalWindows, work_area, spacing);
     }
     
     // Vertical shelves layout - windows stack in columns side by side.
