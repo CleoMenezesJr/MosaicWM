@@ -203,3 +203,30 @@ export function queueHighPriority(callback) {
         return GLib.SOURCE_REMOVE;
     });
 }
+
+// Executes callback after overview is hidden (waits for exit animation)
+// If overview is not visible, executes immediately
+export function afterOverviewHidden(callback, registry) {
+    if (!Main.overview.visible) {
+        callback();
+        return;
+    }
+    
+    Logger.log('[MOSAIC WM] Waiting for overview to hide...');
+    
+    const hiddenId = Main.overview.connect('hidden', () => {
+        Main.overview.disconnect(hiddenId);
+        Logger.log('[MOSAIC WM] Overview hidden - executing callback');
+        callback();
+    });
+    
+    // Failsafe: if overview doesn't hide within 1s, execute anyway
+    registry.add(1000, () => {
+        if (Main.overview.visible) {
+            Logger.log('[MOSAIC WM] Overview hide timeout - forcing callback');
+            try { Main.overview.disconnect(hiddenId); } catch(e) {}
+            callback();
+        }
+        return GLib.SOURCE_REMOVE;
+    });
+}

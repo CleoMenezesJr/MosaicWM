@@ -24,7 +24,7 @@ import { SwappingManager } from './swapping.js';
 import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
 import { MosaicLayoutStrategy } from './overviewLayout.js';
-import { TimeoutRegistry, afterWorkspaceSwitch, afterAnimations, afterWindowClose } from './timing.js';
+import { TimeoutRegistry, afterWorkspaceSwitch, afterAnimations, afterWindowClose, afterOverviewHidden } from './timing.js';
 
 export default class WindowMosaicExtension extends Extension {
     constructor(metadata) {
@@ -1644,12 +1644,15 @@ export default class WindowMosaicExtension extends Extension {
                         Logger.log(`[MOSAIC WM] DnD: Activating workspace ${WORKSPACE.index()} and exiting Overview`);
                         WORKSPACE.activate(global.get_current_time());
                         
-                        if (Main.overview.visible) {
-                            Main.overview.hide();
-                        }
-                        
                         // Mark as DnD arrival - will trigger expansion after tiling
                         WINDOW._arrivedFromDnD = true;
+                        
+                        // Wait for overview to fully close before tiling
+                        // This ensures move_resize_frame works correctly
+                        if (Main.overview.visible) {
+                            WINDOW._deferTilingUntilOverviewHidden = true;
+                            Main.overview.hide();
+                        }
                         
                         // Clear DnD tracking - normal flow will handle window
                         this._windowPreviousWorkspace.delete(WINDOW.get_id());
@@ -1683,6 +1686,42 @@ export default class WindowMosaicExtension extends Extension {
                         // Skip early tiling for overflow moved windows
                         if (WINDOW._movedByOverflow) {
                             Logger.log(`[MOSAIC WM] Skipping early tile in waitForGeometry - window was moved by overflow`);
+                            return GLib.SOURCE_REMOVE;
+                        }
+                        
+                        // If overview is visible when window is created/dropped,
+                        // tile immediately (may reflect in overview) then also after overview closes
+                        if (Main.overview.visible) {
+                            Logger.log(`[MOSAIC WM] Window created while overview visible - tiling now + after hide`);
+                            
+                            // Save opening size first
+                            this.tilingManager.saveOpeningSize(WINDOW);
+                            this._connectWindowWorkspaceSignal(WINDOW);
+                            
+                            // Tile immediately (positions may reflect in overview via MosaicLayoutStrategy)
+                            this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                            
+                            // Force overview to re-layout window clones (deferred to avoid allocation cycle)
+                            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                                try {
+                                    if (Main.overview.visible) {
+                                        const workspacesDisplay = Main.overview._overview._controls._workspacesDisplay;
+                                        if (workspacesDisplay) {
+                                            workspacesDisplay.queue_relayout();
+                                            Logger.log(`[MOSAIC WM] Forced overview workspace relayout`);
+                                        }
+                                    }
+                                } catch (e) {
+                                    Logger.log(`[MOSAIC WM] Could not force overview relayout: ${e.message}`);
+                                }
+                                return GLib.SOURCE_REMOVE;
+                            });
+                            
+                            // Also tile after overview closes to guarantee positions are applied
+                            afterOverviewHidden(() => {
+                                Logger.log(`[MOSAIC WM] Post-overview retile for robustness`);
+                                this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                            }, this._timeoutRegistry);
                             return GLib.SOURCE_REMOVE;
                         }
                         
