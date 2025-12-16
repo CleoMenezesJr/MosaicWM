@@ -11,8 +11,10 @@ import Clutter from 'gi://Clutter';
 import * as constants from './constants.js';
 import { TileZone } from './edgeTiling.js';
 
+export const ComputedLayouts = new Map();
+
 export class TilingManager {
-    constructor() {
+    constructor(extension) {
         // Module-level state converted to class properties
         this.masks = [];
         this.working_windows = [];
@@ -863,21 +865,21 @@ export class TilingManager {
         }
     }
 
-    _drawTile(tile_info, work_area, meta_windows) {
+    _drawTile(tile_info, work_area, meta_windows, dryRun = false) {
         let levels = tile_info.levels;
         let _x = tile_info.x;
         let _y = tile_info.y;
         if(!tile_info.vertical) {
             let y = _y;
             for(let level of levels) {
-                // Pass masks, isDragging AND drawingManager
-                level.draw_horizontal(meta_windows, work_area, y, this.masks, this.isDragging, this._drawingManager);
+                // Pass masks, isDragging AND drawingManager AND dryRun
+                level.draw_horizontal(meta_windows, work_area, y, this.masks, this.isDragging, this._drawingManager, dryRun);
                 y += level.height + constants.WINDOW_SPACING;
             }
         } else {
             let x = _x;
             for(let level of levels) {
-                level.draw_vertical(meta_windows, x, this.masks, this.isDragging, this._drawingManager);
+                level.draw_vertical(meta_windows, x, this.masks, this.isDragging, this._drawingManager, dryRun);
                 x += level.width + constants.WINDOW_SPACING;
             }
         }
@@ -1547,6 +1549,27 @@ export class TilingManager {
         return workspace.get_work_area_for_monitor(monitor);
     }
 
+    // Calculate layouts without moving windows (for Overview)
+    calculateLayoutsOnly() {
+        const workspace = global.workspace_manager.get_active_workspace();
+        const monitor = global.display.get_focus_window()?.get_monitor() || 0;
+        
+        // Pass excludeFromTiling=false to ensure we consider the new window
+        let working_info = this._getWorkingInfo(workspace, null, monitor, false);
+        if(!working_info) return;
+
+        let meta_windows = working_info.meta_windows;
+        let windows = working_info.windows;
+        let work_area = working_info.work_area;
+
+        // Populate ComputedLayouts cache without moving windows (dryRun=true)
+        // Must perform the tiling calculation first
+        let tile_info = this._tile(windows, work_area);
+        
+        // Then run the draw phase in dryRun mode to just populate the cache
+        this._drawTile(tile_info, work_area, meta_windows, true);
+    }
+
     //
      // Try to fit a new window by resizing existing windows
      
@@ -1988,49 +2011,52 @@ class WindowDescriptor {
         this.id = meta_window.get_id();
     }
     
-    draw(meta_windows, x, y, masks, isDragging, drawingManager) {
-        const window = meta_windows.find(w => w.get_id() === this.id);
-        if (window) {
-            const isMask = masks[this.id];
-            
-            if (isDragging) {
-                if (isMask) {
-                    // This is the dragged window - draw preview at its target position
-                    if (drawingManager) {
-                        drawingManager.rect(x, y, this.width, this.height);
-                    }
-                } else {
-                    // This is NOT the dragged window - reposition it
-                    const currentRect = window.get_frame_rect();
-                    const positionChanged = Math.abs(currentRect.x - x) > 5 || Math.abs(currentRect.y - y) > 5;
-                    const sizeChanged = Math.abs(currentRect.width - this.width) > 5 || Math.abs(currentRect.height - this.height) > 5;
-                    
-                    Logger.log(`[MOSAIC WM] draw (drag): id=${this.id}, target=(${x},${y}), current=(${currentRect.x},${currentRect.y}), posChanged=${positionChanged}`);
-                    
-                    if (positionChanged || sizeChanged) {
-                        window.move_resize_frame(false, x, y, this.width, this.height);
-                        const windowActor = window.get_compositor_private();
-                        if (windowActor) {
-                            const translateX = currentRect.x - x;
-                            const translateY = currentRect.y - y;
-                            windowActor.set_translation(translateX, translateY, 0);
-                            windowActor.ease({
-                                translation_x: 0,
-                                translation_y: 0,
-                                opacity: 255,
-                                duration: constants.ANIMATION_DURATION_MS,
-                                mode: Clutter.AnimationMode.EASE_OUT_QUAD
-                            });
-                        }
-                    }
+    draw(meta_windows, x, y, masks, isDragging, drawingManager, dryRun = false) {
+    const window = meta_windows.find(w => w.get_id() === this.id);
+    if (window) {
+        // If dry run, just return - the layout cache was already updated in the caller
+        if (dryRun) return;
+
+        const isMask = masks[this.id];
+        
+        if (isDragging) {
+            if (isMask) {
+                // This is the dragged window - draw preview at its target position
+                if (drawingManager) {
+                    drawingManager.rect(x, y, this.width, this.height);
                 }
             } else {
-                window.move_frame(false, x, y);
+                // This is NOT the dragged window - reposition it
+                const currentRect = window.get_frame_rect();
+                const positionChanged = Math.abs(currentRect.x - x) > 5 || Math.abs(currentRect.y - y) > 5;
+                const sizeChanged = Math.abs(currentRect.width - this.width) > 5 || Math.abs(currentRect.height - this.height) > 5;
+                
+                Logger.log(`[MOSAIC WM] draw (drag): id=${this.id}, target=(${x},${y}), current=(${currentRect.x},${currentRect.y}), posChanged=${positionChanged}`);
+                
+                if (positionChanged || sizeChanged) {
+                    window.move_resize_frame(false, x, y, this.width, this.height);
+                    const windowActor = window.get_compositor_private();
+                    if (windowActor) {
+                        const translateX = currentRect.x - x;
+                        const translateY = currentRect.y - y;
+                        windowActor.set_translation(translateX, translateY, 0);
+                        windowActor.ease({
+                            translation_x: 0,
+                            translation_y: 0,
+                            opacity: 255,
+                            duration: constants.ANIMATION_DURATION_MS,
+                            mode: Clutter.AnimationMode.EASE_OUT_QUAD
+                        });
+                    }
+                }
             }
         } else {
-            Logger.warn(`[MOSAIC WM] Could not find window with ID ${this.id} for drawing`);
+            window.move_resize_frame(false, x, y, this.width, this.height);
         }
+    } else {
+        Logger.warn(`[MOSAIC WM] Could not find window with ID ${this.id} for drawing`);
     }
+}
 }
 
 function Level(work_area) {
@@ -2042,26 +2068,35 @@ function Level(work_area) {
     this.work_area = work_area;
 }
 
-Level.prototype.draw_horizontal = function(meta_windows, work_area, y, masks, isDragging, drawingManager) {
+Level.prototype.draw_horizontal = function(meta_windows, work_area, y, masks, isDragging, drawingManager, dryRun = false) {
     let x = this.x;
     for(let window of this.windows) {
         let center_offset = (work_area.height / 2 + work_area.y) - (y + window.height / 2);
         let y_offset = 0;
         if(center_offset > 0)
             y_offset = Math.min(center_offset, this.height - window.height);
+            
+        // Use targetX/targetY if set (for center-gravity alignment), otherwise use calculated position
+        const drawX = window.targetX !== undefined ? window.targetX : x;
+        const drawY = window.targetY !== undefined ? window.targetY : y + y_offset;
+        
+        ComputedLayouts.set(window.id, { x: drawX, y: drawY, width: window.width, height: window.height });
 
-        window.draw(meta_windows, x, y + y_offset, masks, isDragging, drawingManager);
+        window.draw(meta_windows, drawX, drawY, masks, isDragging, drawingManager, dryRun);
         x += window.width + constants.WINDOW_SPACING;
     }
 }
 
-Level.prototype.draw_vertical = function(meta_windows, x, masks, isDragging, drawingManager) {
+Level.prototype.draw_vertical = function(meta_windows, x, masks, isDragging, drawingManager, dryRun = false) {
     let y = this.y;
     for(let window of this.windows) {
         // Use targetX/targetY if set (for center-gravity alignment), otherwise use calculated position
         const drawX = window.targetX !== undefined ? window.targetX : x;
         const drawY = window.targetY !== undefined ? window.targetY : y;
-        window.draw(meta_windows, drawX, drawY, masks, isDragging, drawingManager);
+        
+        ComputedLayouts.set(window.id, { x: drawX, y: drawY, width: window.width, height: window.height });
+
+        window.draw(meta_windows, drawX, drawY, masks, isDragging, drawingManager, dryRun);
         y += window.height + constants.WINDOW_SPACING;
     }
 }

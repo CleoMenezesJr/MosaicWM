@@ -18,13 +18,19 @@ import { SettingsOverrider } from './settingsOverrider.js';
 
 // Import new Managers
 import { EdgeTilingManager, TileZone } from './edgeTiling.js';
-import { TilingManager } from './tiling.js';
+import { TilingManager, ComputedLayouts } from './tiling.js';
 import { ReorderingManager } from './reordering.js';
 import { SwappingManager } from './swapping.js';
 import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
 import { MosaicLayoutStrategy } from './overviewLayout.js';
 import { TimeoutRegistry, afterWorkspaceSwitch, afterAnimations, afterWindowClose, afterOverviewHidden } from './timing.js';
+
+// Module-level accessor for TilingManager (used by overviewLayout.js for on-demand cache)
+let _tilingManagerInstance = null;
+export function getTilingManager() {
+    return _tilingManagerInstance;
+}
 
 export default class WindowMosaicExtension extends Extension {
     constructor(metadata) {
@@ -144,6 +150,7 @@ export default class WindowMosaicExtension extends Extension {
     // =========================================================================
 
     _windowCreatedHandler = (_, window) => {
+
         if (this.windowingManager.isMaximizedOrFullscreen(window)) {
             if (!this._windowsOpenedMaximized) {
                 this._windowsOpenedMaximized = new Set();
@@ -603,7 +610,22 @@ export default class WindowMosaicExtension extends Extension {
         this._windowStickySignals = this._windowStickySignals || new Map();
         this._windowStickySignals.set(windowId, stickySignalId);
         
-        // Initialize previous exclusion state for transition tracking
+        // Initialize maps if needed
+    this._windowPositionSignals = this._windowPositionSignals || new Map();
+    this._windowSizeSignals = this._windowSizeSignals || new Map();
+
+    // Invalidate cache on position/size change
+    const posSignalId = window.connect('position-changed', () => {
+        ComputedLayouts.delete(windowId);
+    });
+    this._windowPositionSignals.set(windowId, posSignalId);
+
+    const sizeSignalId = window.connect('size-changed', () => {
+        ComputedLayouts.delete(windowId);
+    });
+    this._windowSizeSignals.set(windowId, sizeSignalId);
+    
+    // Initialize previous exclusion state for transition tracking
         this._windowPreviousExclusionState = this._windowPreviousExclusionState || new Map();
         this._windowPreviousExclusionState.set(windowId, this.windowingManager.isExcluded(window));
         Logger.log(`[MOSAIC WM] Initialized exclusion state for window ${windowId}: ${this._windowPreviousExclusionState.get(windowId)}`);
@@ -727,6 +749,16 @@ export default class WindowMosaicExtension extends Extension {
         if (signalId) {
             window.disconnect(signalId);
             this._windowWorkspaceSignals.delete(windowId);
+        }
+    
+        if (this._windowPositionSignals && this._windowPositionSignals.has(windowId)) {
+            window.disconnect(this._windowPositionSignals.get(windowId));
+            this._windowPositionSignals.delete(windowId);
+        }
+
+        if (this._windowSizeSignals && this._windowSizeSignals.has(windowId)) {
+            window.disconnect(this._windowSizeSignals.get(windowId));
+            this._windowSizeSignals.delete(windowId);
         }
     }
 
@@ -1666,10 +1698,11 @@ export default class WindowMosaicExtension extends Extension {
                 WINDOW._waitingForGeometry = true;
                 
                 const waitForGeometry = () => {
-                    const rect = WINDOW.get_frame_rect();
-                    if (rect.width > 0 && rect.height > 0) {
-                        // Geometry ready - clear flag
-                        WINDOW._waitingForGeometry = false;
+            const rect = WINDOW.get_frame_rect();
+            
+            if (rect.width > 0 && rect.height > 0) {
+                // Geometry ready - clear flag
+                WINDOW._waitingForGeometry = false;
                         WINDOW._geometryReady = true;
                         
                         // CRITICAL: Skip ALL tiling logic for excluded windows (modals, transients, etc.)
@@ -1699,16 +1732,31 @@ export default class WindowMosaicExtension extends Extension {
                             this._connectWindowWorkspaceSignal(WINDOW);
                             
                             // Tile immediately (positions may reflect in overview via MosaicLayoutStrategy)
-                            this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                            // Use calculateLayoutsOnly to update cache without moving windows (safer for Overview)
+                            this.tilingManager.calculateLayoutsOnly();
                             
                             // Force overview to re-layout window clones (deferred to avoid allocation cycle)
                             GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                                 try {
                                     if (Main.overview.visible) {
-                                        const workspacesDisplay = Main.overview._overview._controls._workspacesDisplay;
-                                        if (workspacesDisplay) {
-                                            workspacesDisplay.queue_relayout();
-                                            Logger.log(`[MOSAIC WM] Forced overview workspace relayout`);
+                                        const overview = Main.overview._overview;
+                                        // Trigger layout update on all workspace displays
+                                        if (overview && overview.controls) {
+                                            const wsDisplay = overview.controls._workspacesDisplay;
+                                            if (wsDisplay) {
+                                                Logger.log('[MOSAIC WM] Triggering workspace display relayout');
+                                                wsDisplay.queue_relayout();
+                                                // Also try to force layout change on active workspace view if accessible
+                                                // This is the "Nuclear Option" for forcing a redraw
+                                                if (wsDisplay._workspacesViews) {
+                                                    Logger.log(`[MOSAIC WM] Found ${wsDisplay._workspacesViews.length} workspace views - forcing layout_changed`);
+                                                    for (let view of wsDisplay._workspacesViews) {
+                                                        if (view._layoutManager) {
+                                                            view._layoutManager.layout_changed();
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 } catch (e) {
@@ -2149,6 +2197,7 @@ export default class WindowMosaicExtension extends Extension {
         // Create managers
         this.edgeTilingManager = new EdgeTilingManager();
         this.tilingManager = new TilingManager();
+        _tilingManagerInstance = this.tilingManager; // Expose for overviewLayout.js
         this.reorderingManager = new ReorderingManager();
         this.swappingManager = new SwappingManager();
         this.drawingManager = new DrawingManager();
