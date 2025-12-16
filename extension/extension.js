@@ -1330,6 +1330,11 @@ export default class WindowMosaicExtension extends Extension {
             return;
         }
         
+        // Mark windows created during overview to skip slide-in animation
+        if (Main.overview.visible) {
+            window._createdDuringOverview = true;
+        }
+        
         // Connect to configure signal for slide-in animation setup
         try {
             const configureId = window.connect('configure', (win, config) => {
@@ -1366,7 +1371,8 @@ export default class WindowMosaicExtension extends Extension {
                         }
                         
                         // Animate if there are other windows OR if it's a directional move
-                        if (existingWindows.length > 0 || offsetDirection !== 0) {
+                        // BUT skip if window was created during overview (already positioned correctly)
+                        if ((existingWindows.length > 0 || offsetDirection !== 0) && !win._createdDuringOverview) {
                             win._needsSlideIn = true;
                             win._slideInExistingWindows = existingWindows;
                             win._slideInDirection = offsetDirection;
@@ -1570,6 +1576,9 @@ export default class WindowMosaicExtension extends Extension {
                         if (Main.overview.visible) {
                             Logger.log(`[MOSAIC WM] Window created while overview visible - tiling now + after hide`);
                             
+                            // Mark this window to skip slide-in animation after overview closes
+                            WINDOW._createdDuringOverview = true;
+                            
                             // Save opening size first
                             this.tilingManager.saveOpeningSize(WINDOW);
                             this.windowHandler.connectWindowSignals(WINDOW);
@@ -1621,7 +1630,8 @@ export default class WindowMosaicExtension extends Extension {
                         this.tilingManager.saveOpeningSize(WINDOW);
                         
                         // FALLBACK: If configure signal didn't fire in time, set slide-in flag now
-                        if (!WINDOW._needsSlideIn && !WINDOW._slideInChecked) {
+                        // Skip for windows created during overview (already positioned)
+                        if (!WINDOW._needsSlideIn && !WINDOW._slideInChecked && !WINDOW._createdDuringOverview) {
                             WINDOW._slideInChecked = true;
                             const existingWindows = WORKSPACE.list_windows().filter(w =>
                                 w.get_monitor() === MONITOR &&
