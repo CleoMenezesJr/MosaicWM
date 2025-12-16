@@ -3,6 +3,8 @@
 /// Mosaic WM Constants
 // Shared constants for the extension
 
+import Clutter from 'gi://Clutter';
+
 export const WINDOW_SPACING = 8; // Pixels
 
 export const TILE_INTERVAL_MS = 60000 * 5; // 5 minutes

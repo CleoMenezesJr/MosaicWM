@@ -1436,7 +1436,7 @@ export default class WindowMosaicExtension extends Extension {
                                         const OFFSET = constants.SLIDE_IN_OFFSET_PX;
                                         
                                         let offsetX = 0, offsetY = 0;
-                                        let animationMode = imports.gi.Clutter.AnimationMode.EASE_OUT_QUAD; // Default subtle
+                                        let animationMode = Clutter.AnimationMode.EASE_OUT_QUAD; // Default subtle
 
                                         // 1. Center of Mass Logic (if neighbors exist) - Prioritize fitting in
                                         if (neighbors.length > 0) {
@@ -1477,7 +1477,7 @@ export default class WindowMosaicExtension extends Extension {
                                             // Coming from LEFT (dir -1): Start at Left (-Offset) -> Move to 0
                                             // Coming from RIGHT (dir 1): Start at Right (+Offset) -> Move to 0
                                             offsetX = direction * OFFSET * 3; // Increase offset for "coming from outside" feel
-                                            animationMode = imports.gi.Clutter.AnimationMode.EASE_OUT_BACK; // Momentum for directional
+                                            animationMode = Clutter.AnimationMode.EASE_OUT_BACK; // Momentum for directional
                                         }
                                         
                                         if (offsetX !== 0 || offsetY !== 0) {
