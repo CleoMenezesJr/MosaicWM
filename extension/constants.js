@@ -1,9 +1,7 @@
 // Copyright 2025 Cleo Menezes Jr.
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Global constants and configuration values
-
-import * as Logger from './logger.js';
-import Clutter from 'gi://Clutter';
+/// Mosaic WM Constants
+// Shared constants for the extension
 
 export const WINDOW_SPACING = 8; // Pixels
 

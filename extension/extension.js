@@ -998,7 +998,9 @@ export default class WindowMosaicExtension extends Extension {
         if (this._dragPositionChangedId && draggedWindow) {
             try {
                 draggedWindow.disconnect(this._dragPositionChangedId);
-            } catch (e) {}
+            } catch (e) {
+                Logger.log(`[MOSAIC WM] Failed to disconnect drag signal: ${e.message}`);
+            }
             this._dragPositionChangedId = 0;
         }
         
@@ -1216,7 +1218,9 @@ export default class WindowMosaicExtension extends Extension {
             if (this._dragPositionChangedId && window) {
                 try {
                     window.disconnect(this._dragPositionChangedId);
-                } catch (e) {}
+                } catch (e) {
+                    Logger.log(`[MOSAIC WM] Failed to disconnect signal on drag end (overflow): ${e.message}`);
+                }
                 this._dragPositionChangedId = 0;
             }
             if (this._dragEventFilterId) {
@@ -1230,7 +1234,9 @@ export default class WindowMosaicExtension extends Extension {
             if (this._dragPositionChangedId && window) {
                 try {
                     window.disconnect(this._dragPositionChangedId);
-                } catch (e) {}
+                } catch (e) {
+                    Logger.log(`[MOSAIC WM] Failed to disconnect signal on drag end: ${e.message}`);
+                }
                 this._dragPositionChangedId = 0;
             }
             
@@ -1443,7 +1449,9 @@ export default class WindowMosaicExtension extends Extension {
                                                         centerY += r.y + r.height / 2;
                                                         count++;
                                                     }
-                                                } catch (e) {}
+                                                } catch (e) {
+                                                    Logger.log(`[MOSAIC WM] Failed to get neighbor rect: ${e.message}`);
+                                                }
                                             }
                                             
                                             if (count > 0) {
@@ -2284,7 +2292,9 @@ export default class WindowMosaicExtension extends Extension {
         if (this._dragPositionChangedId && this._draggedWindow) {
             try {
                 this._draggedWindow.disconnect(this._dragPositionChangedId);
-            } catch (e) {}
+            } catch (e) {
+                Logger.log(`[MOSAIC WM] Failed to disconnect window signal: ${e.message}`);
+            }
             this._dragPositionChangedId = 0;
         }
         if (this._dragEventFilterId) {

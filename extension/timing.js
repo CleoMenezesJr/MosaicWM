@@ -19,6 +19,7 @@ function getAnimationsEnabled() {
             const settings = new Gio.Settings({ schema: 'org.gnome.desktop.interface' });
             _animationsEnabled = settings.get_boolean('enable-animations');
         } catch (e) {
+            Logger.log(`[MOSAIC WM] Failed to read animation settings: ${e.message}, defaulting to true`);
             _animationsEnabled = true;
         }
     }

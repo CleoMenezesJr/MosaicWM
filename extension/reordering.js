@@ -239,10 +239,9 @@ export class ReorderingManager {
 
     destroy() {
         if (this._positionChangedId && this._dragContext?.meta_window) {
-            try {
+            const actor = this._dragContext.meta_window.get_compositor_private();
+            if (actor) {
                 this._dragContext.meta_window.disconnect(this._positionChangedId);
-            } catch (e) {
-                // Window may have been destroyed
             }
             this._positionChangedId = 0;
         }
