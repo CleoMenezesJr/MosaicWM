@@ -378,6 +378,18 @@ export class EdgeTilingManager {
     }
 
     calculateRemainingSpace(workspace, monitor) {
+        if (!workspace || monitor === undefined || monitor === null || monitor < 0) {
+            Logger.log(`[MOSAIC WM] calculateRemainingSpace: Invalid inputs (ws=${workspace}, mon=${monitor})`);
+            return null;
+        }
+        
+        // Validation for monitor index
+        const nMonitors = global.display.get_n_monitors();
+        if (monitor >= nMonitors) {
+            Logger.log(`[MOSAIC WM] calculateRemainingSpace: Monitor index ${monitor} out of bounds (${nMonitors})`);
+            return null;
+        }
+
         const workArea = workspace.get_work_area_for_monitor(monitor);
         const edgeTiledWindows = this.getEdgeTiledWindows(workspace, monitor);
         
