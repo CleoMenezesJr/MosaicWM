@@ -227,8 +227,8 @@ export class WindowingManager {
             return GLib.SOURCE_REMOVE;
         });
         
-        // Defer activation and animation
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+        // Defer activation to next idle (no artificial delay)
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
             const workspaceIndex = target_workspace.index();
             if (workspaceIndex < 0 || workspaceIndex >= workspaceManager.get_n_workspaces()) {
                 Logger.warn(`[MOSAIC WM] Workspace no longer valid: ${workspaceIndex}`);
@@ -259,8 +259,8 @@ export class WindowingManager {
                             this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
                         }, this._timeoutRegistry);
                         
-                        // Secondary retile only if window is not correctly positioned
-                        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+                        // Check position immediately after retile (no delay)
+                        const checkPosition = () => {
                             const finalFrame = window.get_frame_rect();
                             const workArea = target_workspace.get_work_area_for_monitor(monitor);
                             
@@ -273,17 +273,18 @@ export class WindowingManager {
                             
                             if (positionError > 10) {
                                 Logger.log(`[MOSAIC WM] moveOversizedWindow: window mispositioned by ${positionError}px, retiling`);
-                                afterWorkspaceSwitch(() => {
-                                    this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
-                                }, this._timeoutRegistry);
-                            } else {
-                                Logger.log(`[MOSAIC WM] moveOversizedWindow: window correctly positioned, skipping retile`);
+                                this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
                             }
                             
                             // Notify that overflow is complete
                             if (this._overflowEndCallback) {
                                 this._overflowEndCallback();
                             }
+                        };
+                        
+                        // Use idle callback for immediate check (no artificial delay)
+                        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                            checkPosition();
                             return GLib.SOURCE_REMOVE;
                         });
                         
