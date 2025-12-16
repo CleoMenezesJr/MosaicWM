@@ -43,8 +43,19 @@ export class ReorderingManager {
         return Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2));
     }
 
+    setPaused(paused) {
+        this._paused = paused;
+        if (paused && this._tilingManager) {
+            this._tilingManager.clearTmpSwap();
+        }
+    }
+
     _onPositionChanged() {
         if (!this.dragStart || !this._tilingManager || !this._dragContext) return;
+        
+        if (this._paused) {
+            return;
+        }
         
         const { meta_window, id, windows } = this._dragContext;
         
@@ -182,6 +193,8 @@ export class ReorderingManager {
         
         this._boundPositionHandler = this._onPositionChanged.bind(this);
         this._positionChangedId = meta_window.connect('position-changed', this._boundPositionHandler);
+        
+        this._paused = false; // Ensure paused state is reset on start
         this._onPositionChanged();
     }
 
@@ -191,8 +204,8 @@ export class ReorderingManager {
         Logger.log(`[MOSAIC WM] stopDrag called for window ${meta_window.get_id()}, dragStart was: ${this.dragStart}`);
         let workspace = meta_window.get_workspace();
         this.dragStart = false;
-        this._rejectedSwap = null;  // Reset for next drag
-        this._lastTileState = null;  // Reset tile state for next drag
+        this._rejectedSwap = null;
+        this._lastTileState = null;
         
         if (this._positionChangedId && this._dragContext?.meta_window) {
             try {
