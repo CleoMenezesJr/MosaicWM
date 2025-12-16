@@ -744,17 +744,80 @@ export default class WindowMosaicExtension extends Extension {
             if(mode === 2 || mode === 0) { // If the window was maximized
                 if(this.windowingManager.isMaximizedOrFullscreen(window) && this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor).length > 1) {
                     Logger.log('[MOSAIC WM] User maximized window - moving to new workspace');
+                    const originalWorkspaceIndex = workspace.index(); // Save BEFORE move (for undo)
+                    
+                    // Use openingSize as pre-maximize size (frame is already maximized here)
+                    const preMaxSize = this.tilingManager._openingSizes.get(id);
+                    if (preMaxSize) {
+                        Logger.log(`[MOSAIC WM] Saved pre-max size: ${preMaxSize.width}x${preMaxSize.height}`);
+                    }
+                    
                     let newWorkspace = this.windowingManager.moveOversizedWindow(window);
                     if(newWorkspace) {
                         this._maximizedWindows[id] = {
-                            workspace: newWorkspace.index(),
-                            monitor: monitor
+                            originalWorkspace: originalWorkspaceIndex,  // Origin (for undo)
+                            currentWorkspace: newWorkspace.index(),     // Destination
+                            monitor: monitor,
+                            preMaxSize: preMaxSize                      // Size before maximize (may be null)
                         };
                         this.tilingManager.tileWorkspaceWindows(workspace, false, monitor, false);
                     }
                 }
             }
         }
+    }
+
+    // Handle undo of maximize: returns window to original workspace
+    _handleUnmaximizeUndo(window, maxInfo) {
+        const { originalWorkspace: origIndex, monitor, preMaxSize } = maxInfo;
+        const currentWorkspace = window.get_workspace();
+        const workspaceManager = global.workspace_manager;
+        const windowId = window.get_id();
+        
+        // Restore pre-maximize size to openingSizes so tiling uses correct dimensions
+        if (preMaxSize) {
+            Logger.log(`[MOSAIC WM] Undo: Restoring pre-max size ${preMaxSize.width}x${preMaxSize.height} for window ${windowId}`);
+            this.tilingManager._openingSizes.set(windowId, preMaxSize);
+        }
+        
+        // 1. Check if original workspace still exists
+        if (origIndex >= workspaceManager.get_n_workspaces()) {
+            Logger.log(`[MOSAIC WM] Undo: Original workspace ${origIndex} no longer exists - staying`);
+            this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor);
+            return;
+        }
+        
+        const targetWorkspace = workspaceManager.get_workspace_by_index(origIndex);
+        
+        // 2. If already in original workspace, just tile
+        if (currentWorkspace.index() === origIndex) {
+            Logger.log(`[MOSAIC WM] Undo: Already in original workspace - tiling`);
+            this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor);
+            return;
+        }
+        
+        // 3. Check if window will fit in original workspace
+        const canFit = this.tilingManager.canFitWindow(window, targetWorkspace, monitor);
+        
+        if (!canFit) {
+            Logger.log(`[MOSAIC WM] Undo: Window doesn't fit in original workspace ${origIndex} - staying`);
+            this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor);
+            return;
+        }
+        
+        // 4. Move back to original workspace
+        Logger.log(`[MOSAIC WM] Undo: Moving window back to workspace ${origIndex}`);
+        const oldWorkspace = currentWorkspace;
+        window.change_workspace(targetWorkspace);
+        targetWorkspace.activate(global.get_current_time());
+        
+        // 5. Tile both workspaces after switch
+        afterWorkspaceSwitch(() => {
+            this.tilingManager.tileWorkspaceWindows(targetWorkspace, window, monitor, true);
+            if (oldWorkspace.index() >= 0 && oldWorkspace.index() < workspaceManager.get_n_workspaces()) {
+                this.tilingManager.tileWorkspaceWindows(oldWorkspace, null, monitor, false);
+            }
+        }, this._timeoutRegistry);
     }
 
     _sizeChangedHandler = (_, win) => {
@@ -767,6 +830,18 @@ export default class WindowMosaicExtension extends Extension {
             const rect = window.get_frame_rect();
             if (rect.width <= 10 || rect.height <= 10) {
                 return;
+            }
+            
+            // UNMAXIMIZE UNDO: Check if this is an unmaximize of a tracked window
+            const windowId = window.get_id();
+            const maxInfo = this._maximizedWindows[windowId];
+            
+            if (maxInfo && !this.windowingManager.isMaximizedOrFullscreen(window)) {
+                Logger.log(`[MOSAIC WM] Window ${windowId} was unmaximized - attempting undo to workspace ${maxInfo.originalWorkspace}`);
+                this._handleUnmaximizeUndo(window, maxInfo);
+                delete this._maximizedWindows[windowId];
+                this._sizeChanged = false;
+                return; // Skip normal size-changed handling
             }
             
             // CRITICAL: Skip if window is being programmatically resized by Smart Resize or Reverse Smart Resize
@@ -1847,7 +1922,7 @@ export default class WindowMosaicExtension extends Extension {
                                     const monitorWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
                                         .filter(w => !this.edgeTilingManager.isEdgeTiled(w) &&
                                                      !this.windowingManager.isExcluded(w));
-                                    const openingSize = this._windowOpeningSizes.get(WINDOW.get_id());
+                                    const openingSize = this.tilingManager._openingSizes.get(WINDOW.get_id());
                                     
                                     if (openingSize && monitorWindows.length === 1) {
                                         // Solo window - fully restore to opening size
