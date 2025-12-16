@@ -374,20 +374,47 @@ export class WindowingManager {
     }
 
     // Navigates to an appropriate workspace when current becomes empty.
-    renavigate(workspace, condition) {
-        let previous_workspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
-
-        if (previous_workspace === 1 || previous_workspace.index() === workspace.index() || !previous_workspace) {
-            previous_workspace = workspace.get_neighbor(Meta.MotionDirection.RIGHT);
-            if (previous_workspace === 1 ||
-                previous_workspace.index() === workspace.index() ||
-                previous_workspace.index() === global.workspace_manager.get_n_workspaces() - 1)
-                return;
+    // Priority: last visited workspace, unless it's the final (always-empty) workspace
+    renavigate(workspace, condition, lastVisitedIndex = null) {
+        const workspaceManager = global.workspace_manager;
+        const nWorkspaces = workspaceManager.get_n_workspaces();
+        const currentIndex = workspace.index();
+        const lastWorkspaceIndex = nWorkspaces - 1; // Final workspace is always empty (GNOME dynamic)
+        
+        // Skip if workspace is already the final one (nothing to navigate from)
+        if (currentIndex === lastWorkspaceIndex) {
+            Logger.log('[MOSAIC WM] renavigate: Already on final workspace, going left');
+            const leftNeighbor = workspace.get_neighbor(Meta.MotionDirection.LEFT);
+            if (leftNeighbor && leftNeighbor.index() !== currentIndex) {
+                leftNeighbor.activate(this.getTimestamp());
+            }
+            return;
         }
         
-        if (condition &&
-            workspace.index() !== global.workspace_manager.get_n_workspaces() - 1) {
-            previous_workspace.activate(this.getTimestamp());
+        // Try last visited workspace first (if provided and valid)
+        if (lastVisitedIndex !== null && lastVisitedIndex !== currentIndex && lastVisitedIndex !== lastWorkspaceIndex) {
+            const lastVisited = workspaceManager.get_workspace_by_index(lastVisitedIndex);
+            if (lastVisited && lastVisited.index() >= 0 && lastVisited.index() < nWorkspaces) {
+                Logger.log(`[MOSAIC WM] renavigate: Going to last visited workspace ${lastVisitedIndex}`);
+                lastVisited.activate(this.getTimestamp());
+                return;
+            }
+        }
+        
+        // Fallback: left neighbor, then right neighbor
+        let targetWorkspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
+        
+        if (!targetWorkspace || targetWorkspace.index() === currentIndex || targetWorkspace.index() === lastWorkspaceIndex) {
+            targetWorkspace = workspace.get_neighbor(Meta.MotionDirection.RIGHT);
+            // Avoid final empty workspace
+            if (targetWorkspace && targetWorkspace.index() === lastWorkspaceIndex) {
+                targetWorkspace = null;
+            }
+        }
+        
+        if (targetWorkspace && targetWorkspace.index() !== currentIndex && condition) {
+            Logger.log(`[MOSAIC WM] renavigate: Falling back to neighbor workspace ${targetWorkspace.index()}`);
+            targetWorkspace.activate(this.getTimestamp());
         }
     }
 

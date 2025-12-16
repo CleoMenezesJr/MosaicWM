@@ -2085,7 +2085,7 @@ export default class WindowMosaicExtension extends Extension {
                 const allRelatedWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR);
                 if (allRelatedWindows.length === 0) {
                     Logger.log('[MOSAIC WM] _windowRemoved: Workspace truly empty, navigating away');
-                    this.windowingManager.renavigate(WORKSPACE, WORKSPACE.active);
+                    this.windowingManager.renavigate(WORKSPACE, WORKSPACE.active, this._lastVisitedWorkspace);
                 }
             }
             
