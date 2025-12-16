@@ -74,6 +74,12 @@ export class AnimationsManager {
             return false;
         }
         
+        // Skip for windows created during overview - already positioned correctly
+        if (window._createdDuringOverview) {
+            delete window._createdDuringOverview; // Clear after first use
+            return false;
+        }
+        
         // Don't animate the window being dragged
         if (draggedWindow && window.get_id() === draggedWindow.get_id()) {
             return false;
