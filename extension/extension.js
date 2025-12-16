@@ -2079,6 +2079,14 @@ export default class WindowMosaicExtension extends Extension {
             } else if (remainingWindows.length > 0) {
                 // Just retile without restore for overflow moves
                 this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+            } else {
+                // Workspace is now empty of mosaic windows
+                // Check if there are ANY related windows (including edge-tiled) before navigating
+                const allRelatedWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR);
+                if (allRelatedWindows.length === 0) {
+                    Logger.log('[MOSAIC WM] _windowRemoved: Workspace truly empty, navigating away');
+                    this.windowingManager.renavigate(WORKSPACE, WORKSPACE.active);
+                }
             }
             
             return GLib.SOURCE_REMOVE;
