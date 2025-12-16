@@ -114,6 +114,11 @@ export class EdgeTilingManager {
         const threshold = constants.EDGE_TILING_THRESHOLD;
         const thirdY = workArea.height / 3;
         
+        // Check TOP edge first (maximize)
+        if (cursorY < workArea.y + threshold) {
+            return TileZone.FULLSCREEN;
+        }
+        
         if (cursorX < workArea.x + threshold) {
             const hasLeftWindows = this._hasEdgeTiledWindows(workspace, 'left');
             
