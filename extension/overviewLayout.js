@@ -17,8 +17,27 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
         if (clones.length === 0)
             return [];
 
+        // Filter out attached dialogs (visually merged with parent window)
+        // These expand the parent's bounding box in Overview causing layout issues
+        const filteredClones = clones.filter(clone => {
+            const metaWindow = clone.metaWindow || clone.source?.metaWindow;
+            if (!metaWindow) return true; // Keep clones without metaWindow (fallback)
+            
+            // Only exclude attached dialogs (visually merged with parent)
+            if (metaWindow.is_attached_dialog()) return false;
+            
+            // Also exclude transient modal dialogs (which appear when we detach them)
+            // This ensures we hide the detached modal while keeping the parent clean
+            if (metaWindow.get_transient_for() !== null) return false;
+            
+            return true;
+        });
+        
+        if (filteredClones.length === 0)
+            return [];
+
         // Check cache completeness
-        let allCached = this._isCacheComplete(clones);
+        let allCached = this._isCacheComplete(filteredClones);
         
         // If cache incomplete, try to populate it
         if (!allCached) {
@@ -28,20 +47,20 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
             }
             
             // Re-check after population attempt
-            allCached = this._isCacheComplete(clones);
+            allCached = this._isCacheComplete(filteredClones);
         }
         
         // GRACEFUL DEGRADATION: If cache is still incomplete, use GNOME's default layout
         // This ensures windows appear correctly positioned (even if not in mosaic) until tiling is ready
         if (!allCached) {
-            return this._computeDefaultSlots(clones, area);
+            return this._computeDefaultSlots(filteredClones, area);
         }
 
         // All windows have cached positions - use mosaic layout
         let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
         const usedRects = new Map();
 
-        for (const clone of clones) {
+        for (const clone of filteredClones) {
             let winId = null;
             if (clone.metaWindow) {
                 winId = clone.metaWindow.get_id();
@@ -77,7 +96,7 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
 
         // Return layout slots
         const slots = [];
-        for (const clone of clones) {
+        for (const clone of filteredClones) {
             const rect = usedRects.get(clone);
             const x = (rect.x - minX) * scale + area.x + offsetX;
             const y = (rect.y - minY) * scale + area.y + offsetY;
@@ -128,9 +147,20 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
             const col = i % cols;
             const row = Math.floor(i / cols);
             
-            const bbox = clone.boundingBox;
-            const winWidth = bbox.width > 0 ? bbox.width : 300;
-            const winHeight = bbox.height > 0 ? bbox.height : 200;
+            // Use metaWindow frame_rect if available (excludes attached dialogs)
+            // Otherwise fall back to clone's boundingBox
+            const metaWindow = clone.metaWindow || clone.source?.metaWindow;
+            let winWidth, winHeight;
+            
+            if (metaWindow) {
+                const frameRect = metaWindow.get_frame_rect();
+                winWidth = frameRect.width > 0 ? frameRect.width : 300;
+                winHeight = frameRect.height > 0 ? frameRect.height : 200;
+            } else {
+                const bbox = clone.boundingBox;
+                winWidth = bbox.width > 0 ? bbox.width : 300;
+                winHeight = bbox.height > 0 ? bbox.height : 200;
+            }
             
             const scale = Math.min(cellWidth / winWidth, cellHeight / winHeight, maxScale);
             const w = winWidth * scale;
