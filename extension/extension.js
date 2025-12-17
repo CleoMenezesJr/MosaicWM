@@ -1020,26 +1020,16 @@ export default class WindowMosaicExtension extends Extension {
                  this.drawingManager.hideTilePreview();
                  this.tilingManager.setDragRemainingSpace(null);
                  
+                 // Clear ghost windows - they were only needed for edge tile preview
+                 this.dragHandler.clearGhostWindows();
+                 
                  // Force re-tile to restore full workarea immediately
                  Logger.log(`[MOSAIC WM] Edge tile exit: forcing re-tile to restore workarea`);
                  this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor);
                  
-                 this.dragHandler.clearGhostWindows();
-                 
-                 const fits = this.tilingManager.canFitWindow(this._draggedWindow, workspace, monitor);
-                 
-                 if (!fits) {
-                     Logger.log(`[MOSAIC WM] Window doesn't fit in mosaic - applying overflow opacity`);
-                     const actor = this._draggedWindow.get_compositor_private();
-                     if (actor) actor.opacity = 128;
-                     this._dragOverflowWindow = this._draggedWindow;
-                     this.tilingManager.setExcludedWindow(this._draggedWindow);
-                     this.drawingManager.hideTilePreview();
-                     this.drawingManager.removeBoxes();
-                 } else {
-                     Logger.log(`[MOSAIC WM] Edge tile exit: resuming normal drag`);
-                     this.reorderingManager.startDrag(this._draggedWindow);
-                 }
+                 // Resume normal drag - overflow will be checked when drag actually ends
+                 Logger.log(`[MOSAIC WM] Edge tile exit: resuming normal drag`);
+                 this.reorderingManager.startDrag(this._draggedWindow);
              }
              
              this._isPositionProcessing = false;
@@ -1248,6 +1238,9 @@ export default class WindowMosaicExtension extends Extension {
             this.tilingManager.clearDragRemainingSpace();
             
             this.edgeTilingManager.setEdgeTilingActive(false, null);
+            
+            // Failsafe: Always clear ghost windows on drag end (may have been missed if zone exit timing was off)
+            this.dragHandler.clearGhostWindows();
         }
         
         if(!this.windowingManager.isExcluded(window)) {
@@ -1323,6 +1316,11 @@ export default class WindowMosaicExtension extends Extension {
             }
         } else
             this.reorderingManager.stopDrag(window, true);
+        
+        // UNCONDITIONAL CLEANUP: Ensure ghost windows and preview are always cleaned up
+        // This catches edge cases where zone exit during drag didn't properly clean up state
+        this.dragHandler.clearGhostWindows();
+        this.drawingManager.hideTilePreview();
     }
 
     _windowAdded = (workspace, window) => {
@@ -2040,12 +2038,25 @@ export default class WindowMosaicExtension extends Extension {
         eventIds.push(workspace.connect("window-removed", this._windowRemoved));
         this._workspaceEventIds.push([workspace, eventIds]);
     }
+    
 
     enable() {
         Logger.info("[MOSAIC WM]: Starting Mosaic layout manager.");
 
         // Get workspace manager reference
         this._workspaceManager = global.workspace_manager;
+        
+        // Initialize mutter settings + failsafe: Ensure attach-modal-dialogs is enabled
+        // (in case extension crashed during Overview with setting disabled)
+        this._mutterSettings = new Gio.Settings({ schema_id: 'org.gnome.mutter' });
+        try {
+            if (!this._mutterSettings.get_boolean('attach-modal-dialogs')) {
+                this._mutterSettings.set_boolean('attach-modal-dialogs', true);
+                Logger.log('[MOSAIC WM] Failsafe: Restored attach-modal-dialogs setting');
+            }
+        } catch (e) {
+            // Ignore - setting may not exist
+        }
         
         // Create managers
         this.edgeTilingManager = new EdgeTilingManager();
@@ -2098,6 +2109,14 @@ export default class WindowMosaicExtension extends Extension {
         this._settingsOverrider.add(
             new Gio.Settings({ schema_id: 'org.gnome.mutter' }),
             'edge-tiling',
+            new GLib.Variant('b', false)
+        );
+        
+        // Disable attach-modal-dialogs to prevent squashed Overview previews
+        // When enabled, attached dialogs expand the window bounding box causing layout issues
+        this._settingsOverrider.add(
+            this._mutterSettings,
+            'attach-modal-dialogs',
             new GLib.Variant('b', false)
         );
         
