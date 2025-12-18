@@ -964,8 +964,15 @@ export class TilingManager {
     }
 
     tileWorkspaceWindows(workspace, reference_meta_window, _monitor, keep_oversized_windows, excludeFromTiling = false) {
+        // Invalidate window list cache for this operation
+        if (this._windowingManager) {
+            this._windowingManager.invalidateWindowsCache();
+        }
+        
         let working_info = this._getWorkingInfo(workspace, reference_meta_window, _monitor, excludeFromTiling);
-        if(!working_info) return;
+        if(!working_info) {
+            return;
+        }
         let meta_windows = working_info.meta_windows;
         let windows = working_info.windows;
         let work_area = working_info.work_area;
