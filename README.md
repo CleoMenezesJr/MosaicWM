@@ -63,8 +63,9 @@ gnome-extensions enable mosaicwm@cleomenezesjr.github.io
 
 1. Download the latest release from GitHub
 2. Extract to `~/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/`
-3. Restart GNOME Shell (log out and log back in)
-4. Enable via Extensions app or: `gnome-extensions enable mosaicwm@cleomenezesjr.github.io`
+3. **Disable debug logging**: Edit `extension/logger.js` and set `const DEBUG = false;`
+4. Restart GNOME Shell (log out and log back in)
+5. Enable via Extensions app or: `gnome-extensions enable mosaicwm@cleomenezesjr.github.io`
 
 ## 🎮 Usage
 
@@ -93,11 +94,14 @@ Once enabled, the extension works automatically:
 
 ### Enable Debug Logging
 
-To enable verbose debug logs, edit `extension/logger.js` and set:
+Debug logging is enabled by default for development. To enable verbose debug logs, edit `extension/logger.js` and set:
 
 ```javascript
-const DEBUG_ENABLED = true;
+const DEBUG = true;
 ```
+
+> [!TIP]
+> For production/installation, set `DEBUG = false` to reduce CPU usage.
 
 ### Debugging
 
@@ -139,6 +143,9 @@ For more information on GNOME Shell extension development:
 - 🧪 **Testing**: Try the extension and explore edge cases
 - 🐛 **Bug Reports**: Open issues with detailed reproduction steps
 - 💡 **Feature Ideas**: Share suggestions in GitHub Issues
+
+> [!IMPORTANT]
+> **For development**: Ensure `DEBUG = true` in `extension/logger.js` to see verbose logs.
 
 ## 📝 License
 
