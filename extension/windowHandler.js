@@ -121,11 +121,8 @@ export class WindowHandler {
         const wasExcluded = this._ext._windowPreviousExclusionState.get(windowId) || false;
         this._ext._windowPreviousExclusionState.set(windowId, isNowExcluded);
         
-        Logger.log(`[MOSAIC WM] State change check: Window ${windowId}, Was: ${wasExcluded}, Now: ${isNowExcluded}`);
-        
         // Only act on actual state transitions
         if (wasExcluded === isNowExcluded) {
-            Logger.log(`[MOSAIC WM] Window ${windowId} exclusion unchanged (${isNowExcluded}) - skipping`);
             return;
         }
         

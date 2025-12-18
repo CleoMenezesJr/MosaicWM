@@ -104,20 +104,6 @@ export default class WindowMosaicExtension extends Extension {
     _tileAllWorkspaces = () => {
         let nWorkspaces = this._workspaceManager.get_n_workspaces();
         
-        // Check exclusion state changes for all windows (fallback polling)
-        for(let i = 0; i < nWorkspaces; i++) {
-            let workspace = this._workspaceManager.get_workspace_by_index(i);
-            if (!workspace) continue;
-            let windows = workspace.list_windows();
-            if (!windows) continue;
-            for (let window of windows) {
-                // Check all NORMAL windows (not just 'related') to catch sticky/above state changes
-                if (this.windowingManager && window.window_type === Meta.WindowType.NORMAL) {
-                    this.windowHandler.handleExclusionStateChange(window);
-                }
-            }
-        }
-        
         for(let i = 0; i < nWorkspaces; i++) {
             let workspace = this._workspaceManager.get_workspace_by_index(i);
             let nMonitors = global.display.get_n_monitors();
@@ -2180,37 +2166,15 @@ export default class WindowMosaicExtension extends Extension {
             return GLib.SOURCE_REMOVE;
         });
         
-        this._tileTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.TILE_INTERVAL_MS, () => {
-            this._tileAllWorkspaces();
-            return GLib.SOURCE_CONTINUE;
-        });
-        
-        // FALLBACK: Polling for exclusion state changes (Signal reliability robustness)
-        // Added HERE after all managers are wired up
-        Logger.log('[MOSAIC WM] About to register exclusion poll');
-        if (this._exclusionPoll) {
-             GLib.source_remove(this._exclusionPoll);
-        }
-        Logger.log('[MOSAIC WM] Registering exclusion poll NOW');
-        this._exclusionPoll = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.EXCLUSION_POLL_INTERVAL_MS, () => {
-             try {
-                 if (!this.windowingManager) return GLib.SOURCE_CONTINUE; // Not ready yet
-                 const nWorkspaces = global.workspace_manager.get_n_workspaces();
-                 for(let i = 0; i < nWorkspaces; i++) {
-                     let workspace = global.workspace_manager.get_workspace_by_index(i);
-                     if (!workspace) continue;
-                     let windows = workspace.list_windows();
-                     if (!windows) continue;
-                     for (let window of windows) {
-                         if (!this.windowingManager.isRelated(window)) continue; // Skip non-related
-                         this.windowHandler.handleExclusionStateChange(window);
-                     }
-                 }
-             } catch (e) {
-                 Logger.log(`[MOSAIC WM] Exclusion poll error: ${e.message}`);
-             }
-             return GLib.SOURCE_CONTINUE;
-        });
+        // DISABLED: Periodic retile every 5 minutes was a safety net for missed signals.
+        // Now that we have proper signal handlers for all state changes (window-added,
+        // window-removed, notify::above, notify::on-all-workspaces, grab-op-*, etc.),
+        // this polling is unnecessary and wastes CPU cycles. Re-enable if layout bugs
+        // are found that signals don't catch.
+        // this._tileTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.TILE_INTERVAL_MS, () => {
+        //     this._tileAllWorkspaces();
+        //     return GLib.SOURCE_CONTINUE;
+        // });
     }
     
     _setupKeybindings() {
@@ -2350,11 +2314,6 @@ export default class WindowMosaicExtension extends Extension {
             this._dragEventFilterId = 0;
         }
 
-        if (this._exclusionPoll) {
-             GLib.source_remove(this._exclusionPoll);
-             this._exclusionPoll = null;
-        }
-        
         if (this.edgeTilingManager) this.edgeTilingManager.destroy();
         if (this.drawingManager) this.drawingManager.destroy();
         if (this.animationsManager) this.animationsManager.destroy();
