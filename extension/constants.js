@@ -89,3 +89,10 @@ export const RESIZE_GRAB_OPS = [
 // Move grab operations:
 export const GRAB_OP_MOVING = 1;
 export const GRAB_OP_KEYBOARD_MOVING = 1025;
+
+// Extended Canvas constants (200% virtual canvas)
+export const CANVAS_EXPANSION_RATIO = 2.0;      // 200% of workarea
+export const CANVAS_PAN_LEFT = 0.5;             // 50% extra left
+export const CANVAS_PAN_RIGHT = 0.5;            // 50% extra right
+export const VIEWPORT_SCROLL_DURATION_MS = 250; // Smooth scroll duration
+export const CLONE_OPACITY = 200;               // Slightly transparent clones (0-255)

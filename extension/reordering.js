@@ -3,6 +3,7 @@
 // Window reordering via drag and drop
 
 import * as Logger from './logger.js';
+import GLib from 'gi://GLib';
 import { TileZone } from './edgeTiling.js';
 
 export class ReorderingManager {
@@ -225,12 +226,20 @@ export class ReorderingManager {
         this._tilingManager.disableDragMode();
         this._tilingManager.destroyMasks();
         
-        if(!skip_apply)
+        if(!skip_apply) {
+            Logger.log(`[MOSAIC WM] stopDrag: Applying temporary swap`);
             this._tilingManager.applyTmpSwap(workspace);
+        }
             
         this._tilingManager.clearTmpSwap();
         
         if (!skip_tiling) {
+            Logger.log(`[MOSAIC WM] stopDrag: Triggering final re-tile for workspace`);
+            
+            // Ensure any lingering transitions from the drag (e.g. native shell effects) are killed
+            const actor = meta_window.get_compositor_private();
+            if (actor) actor.remove_all_transitions();
+            
             this._tilingManager.tileWorkspaceWindows(workspace, null, meta_window.get_monitor());
         } else {
             Logger.log(`[MOSAIC WM] stopDrag: Skipping workspace tiling (requested)`);

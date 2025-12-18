@@ -71,26 +71,31 @@ export class AnimationsManager {
     shouldAnimateWindow(window, draggedWindow = null) {
         // Skip if slide-in animation is in progress (handled by first-frame)
         if (window._slideInAnimating) {
+            Logger.log(`[MOSAIC ANIM] Skipped: slide-in active for ${window.get_id()}`);
             return false;
         }
         
         // Skip for windows created during overview - already positioned correctly
         if (window._createdDuringOverview) {
+            Logger.log(`[MOSAIC ANIM] Skipped: created during overview for ${window.get_id()}`);
             delete window._createdDuringOverview; // Clear after first use
             return false;
         }
         
         // Don't animate the window being dragged
         if (draggedWindow && window.get_id() === draggedWindow.get_id()) {
+            Logger.log(`[MOSAIC ANIM] Skipped: is dragged window ${window.get_id()}`);
             return false;
         }
         
         if (this._animatingWindows.has(window.get_id())) {
+            Logger.log(`[MOSAIC ANIM] Skipped: already animating ${window.get_id()}`);
             return false;
         }
         
         // Don't animate manually resized windows
         if (this._resizingWindowId === window.get_id()) {
+            Logger.log(`[MOSAIC ANIM] Skipped: manually resizing ${window.get_id()}`);
             return false;
         }
         
@@ -110,6 +115,7 @@ export class AnimationsManager {
         
         if (!this.shouldAnimateWindow(window, draggedWindow)) {
             // Apply position immediately without animation
+            Logger.log(`[MOSAIC ANIM] Skipping animation for ${window.get_id()} - Immediate move to ${targetRect.x},${targetRect.y}`);
             window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
             if (onComplete) onComplete();
             return;
@@ -140,12 +146,17 @@ export class AnimationsManager {
             animationMode = ANIMATION_MODE;
         }
         
-        // Calculate scale and translation for smooth animation
         const scaleX = currentRect.width / targetRect.width;
         const scaleY = currentRect.height / targetRect.height;
         
         let translateX = currentRect.x - targetRect.x;
         let translateY = currentRect.y - targetRect.y;
+
+        Logger.log(`[MOSAIC ANIM] animateWindow: Win=${window.get_id()}
+          Current: ${currentRect.x},${currentRect.y} ${currentRect.width}x${currentRect.height}
+          Target:  ${targetRect.x},${targetRect.y} ${targetRect.width}x${targetRect.height}
+          Trans:   ${translateX},${translateY}
+          Mode:    ${mode || (this._justEndedDrag ? 'DROP' : 'NORMAL')}`);
         
         const hasValidDimensions = currentRect.width > 0 && currentRect.height > 0 && 
                                     targetRect.width > 0 && targetRect.height > 0 &&

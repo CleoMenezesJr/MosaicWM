@@ -54,6 +54,10 @@ export class TilingManager {
         this._windowingManager = manager;
     }
 
+    setExtendedCanvasManager(manager) {
+        this._extendedCanvasManager = manager;
+    }
+
     createMask(meta_window) {
         this.masks[meta_window.get_id()] = true;
     }
@@ -457,6 +461,7 @@ export class TilingManager {
         
         // Calculate horizontal centering
         const startX = (work_area.width - totalWidth) / 2 + work_area.x;
+        
         const levelCount = levels.length;
         const centerColIndex = (levelCount - 1) / 2; // e.g., 0.5 for 2 cols, 1 for 3 cols
         
@@ -865,21 +870,27 @@ export class TilingManager {
         }
     }
 
-    _drawTile(tile_info, work_area, meta_windows, dryRun = false) {
+    _drawTile(tile_info, work_area, meta_windows, dryRun = false, phase = 3) {
         let levels = tile_info.levels;
+        // Calculate Translation for Phase 2 (Map Canvas Coords -> Screen Coords)
+        let translateX = 0;
+        if (phase >= 2 && this._extendedCanvasManager) {
+            translateX = -this._extendedCanvasManager.scrollOffset;
+        }
+
         let _x = tile_info.x;
         let _y = tile_info.y;
         if(!tile_info.vertical) {
             let y = _y;
             for(let level of levels) {
-                // Pass masks, isDragging AND drawingManager AND dryRun
-                level.draw_horizontal(meta_windows, work_area, y, this.masks, this.isDragging, this._drawingManager, dryRun);
+                // Pass masks, isDragging AND drawingManager AND dryRun AND translateX
+                level.draw_horizontal(meta_windows, work_area, y, this.masks, this.isDragging, this._drawingManager, dryRun, translateX);
                 y += level.height + constants.WINDOW_SPACING;
             }
         } else {
             let x = _x;
             for(let level of levels) {
-                level.draw_vertical(meta_windows, x, this.masks, this.isDragging, this._drawingManager, dryRun);
+                level.draw_vertical(meta_windows, x, this.masks, this.isDragging, this._drawingManager, dryRun, translateX);
                 x += level.width + constants.WINDOW_SPACING;
             }
         }
@@ -1040,6 +1051,12 @@ export class TilingManager {
                 // Set work_area to remaining space for tiling calculations
                 work_area = remainingSpace;
                 
+                // CRITICAL SAFETY CHECK: If work_area is invalid (e.g. invalid monitor), abort
+                if (!work_area || work_area.width <= 0 || work_area.height <= 0) {
+                    Logger.log(`[MOSAIC WM] Invalid work area dimensions (w=${work_area?.width}, h=${work_area?.height}). Aborting tile.`);
+                    return;
+                }
+                
                 // If no non-edge-tiled windows, nothing to tile
                 if (meta_windows.length === 0) {
                     Logger.log('[MOSAIC WM] No non-edge-tiled windows to tile');
@@ -1067,10 +1084,49 @@ export class TilingManager {
             return;
         }
         
-        const tileArea = this.isDragging && this.dragRemainingSpace ? this.dragRemainingSpace : work_area;
+        let tileArea = this.isDragging && this.dragRemainingSpace ? this.dragRemainingSpace : work_area;
         
-        let tile_info = this._tile(windows, tileArea);
+        // === EXTENDED CANVAS: Check phase for overflow suppression ===
+        // Calculate phase based on total window widths
+        // In Phase 1/2, we suppress overflow (no smart resize needed)
+        let extendedCanvasPhase = 3; // Default to Phase 3 (normal overflow behavior)
+        if (this._extendedCanvasManager) {
+            extendedCanvasPhase = this._extendedCanvasManager.calculatePhase(windows, tileArea);
+            Logger.log(`[MOSAIC WM] tileWorkspaceWindows: Extended Canvas Phase = ${extendedCanvasPhase}`);
+        }
+        
+        // === Phase 2: Use SYMMETRIC expanded tileArea ===
+        // This allows windows to be positioned beyond visible viewport
+        // Expansion is symmetric around center, so centering still works correctly
+        let effectiveTileArea = tileArea;
+        if (extendedCanvasPhase === 2 && this._extendedCanvasManager) {
+            effectiveTileArea = this._extendedCanvasManager.getEffectiveWorkArea(tileArea, extendedCanvasPhase);
+            Logger.log(`[MOSAIC WM] Extended Canvas Phase 2: Using expanded tileArea x=${effectiveTileArea.x.toFixed(0)}, width=${effectiveTileArea.width} (was x=${tileArea.x}, w=${tileArea.width})`);
+        }
+        
+        // Tile with expanded area in Phase 2, normal area in Phase 1/3
+        let tile_info = this._tile(windows, effectiveTileArea);
         let overflow = tile_info.overflow;
+        
+        // Log tile results for debugging
+        Logger.log(`[MOSAIC WM] _tile result: overflow=${overflow}, levels=${tile_info.levels?.length || 0}, vertical=${tile_info.vertical}`);
+        if (tile_info.levels && tile_info.levels.length > 0) {
+            for (let i = 0; i < tile_info.levels.length; i++) {
+                const level = tile_info.levels[i];
+                Logger.log(`[MOSAIC WM]   Level ${i}: x=${level.x?.toFixed(0)}, y=${level.y?.toFixed(0)}, w=${level.width?.toFixed(0)}, h=${level.height?.toFixed(0)}, windows=${level.windows?.length || 0}`);
+                for (const w of level.windows || []) {
+                    Logger.log(`[MOSAIC WM]     Window: targetX=${w.targetX?.toFixed(0)}, targetY=${w.targetY?.toFixed(0)}, size=${w.width}x${w.height}`);
+                }
+            }
+        }
+        
+        // === EXTENDED CANVAS: Suppress overflow in Phase 1/2 ===
+        // Even if _tile reports overflow, we don't trigger smart resize/move
+        // because windows fit within the 200% canvas
+        if (extendedCanvasPhase < 3 && overflow) {
+            Logger.log(`[MOSAIC WM] ExtendedCanvas: Suppressing overflow in Phase ${extendedCanvasPhase}`);
+            overflow = false;
+        }
         
         if (workspace_windows.length <= 1) {
             overflow = false;
@@ -1120,8 +1176,9 @@ export class TilingManager {
         
         Logger.log(`[MOSAIC WM] Drawing tiles - isDragging: ${this.isDragging}, using tileArea: x=${tileArea.x}, y=${tileArea.y}`);
         
-        // ANIMATIONS
+        // ANIMATIONS - Now skip only windows that need clipping, not entire phases
         let animationsHandledPositioning = false;
+        
         if (!this.isDragging && tile_info && tile_info.levels && tile_info.levels.length > 0) {
             let draggedWindow = reference_meta_window;
             
@@ -1132,7 +1189,8 @@ export class TilingManager {
                 delete reference_meta_window._justReturnedFromExclusion;
             }
             
-            animationsHandledPositioning = this._animateTileLayout(tile_info, tileArea, meta_windows, draggedWindow);
+            // Pass work area so _animateTileLayout can check per-window clipping
+            animationsHandledPositioning = this._animateTileLayout(tile_info, tileArea, meta_windows, draggedWindow, working_info.monitor);
         }
         
         if (this.isDragging && windows.length === 0 && reference_meta_window) {
@@ -1152,9 +1210,27 @@ export class TilingManager {
         } else if (!animationsHandledPositioning) {
             // Only call drawTile if animations didn't handle positioning
             Logger.log(`[MOSAIC WM] Animations did not handle positioning, calling drawTile`);
-            this._drawTile(tile_info, tileArea, meta_windows);
+            this._drawTile(tile_info, tileArea, meta_windows, false, extendedCanvasPhase);
         } else {
             Logger.log(`[MOSAIC WM] Animations handled positioning, skipping drawTile`);
+        }
+        
+        // === EXTENDED CANVAS: Update clones and positioning ===
+        // PaperWM-style: clones show where windows SHOULD be positioned
+        
+        if (this._extendedCanvasManager && !this.isDragging && tile_info) {
+             // ALWAYS use updateWindowPositions to control ALL window positioning
+             // This ensures correct clipping (cropping) even in Phase 1 if windows are partially off-screen
+             const monitor = working_info.monitor;
+             
+             Logger.log(`[MOSAIC TRACE] Extended Canvas Active (Phase ${extendedCanvasPhase}). Calling updateWindowPositions for ${meta_windows.length} windows.`);
+             
+             this._extendedCanvasManager.updateWindowPositions(
+                 meta_windows, workspace, monitor, tile_info, tileArea, true
+             );
+        } else if (this._extendedCanvasManager && this.isDragging) {
+            // During drag: remove all clips, show real windows
+            this._extendedCanvasManager.removeAllClips();
         }
         
         return overflow;
@@ -1254,6 +1330,22 @@ export class TilingManager {
         if (windows.length <= 1) {
             Logger.log('[MOSAIC WM] canFitWindow: Only 1 window total - always fits');
             return true;
+        }
+
+        // === EXTENDED CANVAS PHASE CHECK ===
+        // In Phase 1 & 2, windows always "fit" because we have 200% canvas space
+        // Smart resize only kicks in at Phase 3 (>200% overflow)
+        if (this._extendedCanvasManager) {
+            const phase = this._extendedCanvasManager.calculatePhase(windows, availableSpace);
+            Logger.log(`[MOSAIC WM] canFitWindow: Extended Canvas Phase = ${phase}`);
+            
+            if (phase < 3) {
+                // Phase 1 or 2: Windows fit within canvas (200%), no smart resize needed
+                Logger.log('[MOSAIC WM] canFitWindow: Phase 1/2 - fits in extended canvas (no smart resize)');
+                return true;
+            }
+            // Phase 3: Check normal overflow for smart resize
+            Logger.log('[MOSAIC WM] canFitWindow: Phase 3 - checking for smart resize');
         }
 
         const tile_result = this._tile(windows, availableSpace);
@@ -2068,7 +2160,7 @@ function Level(work_area) {
     this.work_area = work_area;
 }
 
-Level.prototype.draw_horizontal = function(meta_windows, work_area, y, masks, isDragging, drawingManager, dryRun = false) {
+Level.prototype.draw_horizontal = function(meta_windows, work_area, y, masks, isDragging, drawingManager, dryRun = false, translateX = 0) {
     let x = this.x;
     for(let window of this.windows) {
         let center_offset = (work_area.height / 2 + work_area.y) - (y + window.height / 2);
@@ -2077,7 +2169,8 @@ Level.prototype.draw_horizontal = function(meta_windows, work_area, y, masks, is
             y_offset = Math.min(center_offset, this.height - window.height);
             
         // Use targetX/targetY if set (for center-gravity alignment), otherwise use calculated position
-        const drawX = window.targetX !== undefined ? window.targetX : x;
+        // Apply Translation (for Phase 2 Screen Mapping)
+        const drawX = (window.targetX !== undefined ? window.targetX : x) + translateX;
         const drawY = window.targetY !== undefined ? window.targetY : y + y_offset;
         
         ComputedLayouts.set(window.id, { x: drawX, y: drawY, width: window.width, height: window.height });
@@ -2087,11 +2180,12 @@ Level.prototype.draw_horizontal = function(meta_windows, work_area, y, masks, is
     }
 }
 
-Level.prototype.draw_vertical = function(meta_windows, x, masks, isDragging, drawingManager, dryRun = false) {
+Level.prototype.draw_vertical = function(meta_windows, x, masks, isDragging, drawingManager, dryRun = false, translateX = 0) {
     let y = this.y;
     for(let window of this.windows) {
         // Use targetX/targetY if set (for center-gravity alignment), otherwise use calculated position
-        const drawX = window.targetX !== undefined ? window.targetX : x;
+        // Apply Translation (for Phase 2 Screen Mapping)
+        const drawX = (window.targetX !== undefined ? window.targetX : x) + translateX;
         const drawY = window.targetY !== undefined ? window.targetY : y;
         
         ComputedLayouts.set(window.id, { x: drawX, y: drawY, width: window.width, height: window.height });

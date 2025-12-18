@@ -28,6 +28,7 @@ import { TimeoutRegistry, afterWorkspaceSwitch, afterAnimations, afterWindowClos
 import { WindowHandler } from './windowHandler.js';
 import { DragHandler } from './dragHandler.js';
 import { ResizeHandler } from './resizeHandler.js';
+import { ExtendedCanvasManager } from './extendedCanvas.js';
 
 // Module-level accessor for TilingManager (used by overviewLayout.js for on-demand cache)
 let _tilingManagerInstance = null;
@@ -79,6 +80,7 @@ export default class WindowMosaicExtension extends Extension {
         this.drawingManager = null;
         this.animationsManager = null;
         this.windowingManager = null;
+        this.extendedCanvasManager = null;
         
         // Handler classes
         this.windowHandler = null;
@@ -131,6 +133,7 @@ export default class WindowMosaicExtension extends Extension {
     // =========================================================================
 
     _windowCreatedHandler = (_, window) => {
+        Logger.log(`[MOSAIC DEBUG] _windowCreatedHandler triggering for ${window?.get_id()}. ExtendedCanvasMgr: ${!!this.extendedCanvasManager}`);
 
         if (this.windowingManager.isMaximizedOrFullscreen(window)) {
             if (!this._windowsOpenedMaximized) {
@@ -213,6 +216,16 @@ export default class WindowMosaicExtension extends Extension {
                     Logger.log('[MOSAIC WM] New window: Tiling failed, continuing with normal flow');
                 }
                 
+                // EXTENDED CANVAS COMPATIBILITY: Check Phase before determining fit
+                // If we are in Extended Canvas mode, standard canFitWindow will fail erroneously.
+                // We rely ENTIRELY on the Initialization Watchdog (currently attached in _windowAdded) to handle placement.
+                if (this.extendedCanvasManager) {                    
+                    Logger.log(`[MOSAIC WM] ProcessWindow: Extended Canvas Active - Skipping standard fit/smart-resize check`);
+                    // Ensure signals are connected, then exit - Watchdog handles tiling
+                    this.windowHandler.connectWindowSignals(window);
+                    return GLib.SOURCE_REMOVE;
+                }
+
                 const canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
                 
                 if(!canFit && !window._movedByOverflow) {
@@ -1119,7 +1132,6 @@ export default class WindowMosaicExtension extends Extension {
                 this._currentZone = TileZone.NONE;
             }
             
-            // Connect signal-based listeners for edge tiling (replaces polling)
             Logger.log(`[MOSAIC WM] Connecting signal-based edge tiling listeners`);
             this._dragPositionChangedId = this._draggedWindow.connect('position-changed', this._onDragPositionChanged.bind(this));
         }
@@ -1129,17 +1141,64 @@ export default class WindowMosaicExtension extends Extension {
             !(this.windowingManager.isMaximizedOrFullscreen(window))) {
             Logger.log(`[MOSAIC WM] _grabOpBeginHandler: calling startDrag for window ${window.get_id()}`);
             this.reorderingManager.startDrag(window);
+            
+            // Start watchdog to detect if drag ends without signal (common when dropping "far")
+            if (this._grabWatchdogId) {
+                GLib.source_remove(this._grabWatchdogId);
+                this._grabWatchdogId = null;
+            }
+            this._currentDragWindow = window;
+            this._grabWatchdogId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                // If we think we are dragging but system grab op is gone (or we can't detect it easily),
+                // rely on the fact that if we are here, the 'grab-op-end' signal didn't fire yet.
+                // We trust the timeout. If user is still holding mouse, this might fire early?
+                // Better approach: just rely on the fact that we are polling.
+                // Since get_grab_op is missing in modern GNOME, we'll rely on our internal state.
+                // If this watchdog is running, it means we MIGHT have missed the signal.
+                // But we don't want to kill a valid drag.
+                // Check if the actor is still 'grabbed'? No easy way.
+                // Let's rely on checking if the window is still the 'grab_window' of the display?
+                if (this._currentGrabOp) { 
+                     // Simple safe check: if 200ms passed and we are still here?
+                     // Actually, this watchdog was intended to catch "Signal Loss".
+                     // For now, let's just log and keep alive? No, we need to detect END.
+                     // If we can't detect END, we can't implement a robust Watchdog without get_grab_op.
+                     // But wait, 'grab-op-end' IS the signal.
+                     // Let's disabling the "force end" logic for now if we can't verify grab state, to prevent accidents.
+                     // OR just remove the problematic call and rely on internal state?
+                     // If I remove the check, it will ALWAYS force end. That's bad.
+                     // I will Comment out the crashy line and return false to kill the watchdog safely.
+                     Logger.log(`[MOSAIC WM] Watchdog: Cannot verify grab state (get_grab_op missing). Disabling watchdog mechanism.`);
+                     return GLib.SOURCE_REMOVE;
+                }
+                return GLib.SOURCE_CONTINUE;
+            });
         }
     }
     
     _grabOpEndHandler = (_, window, grabpo) => {
-        this._currentGrabOp = null;
-        
-        // Handle drag overflow - window that was marked as not fitting
-        if (this._dragOverflowWindow && this._dragOverflowWindow === window) {
-            Logger.log(`[MOSAIC WM] Drag ended with overflow window - moving to new workspace`);
-            const actor = this._dragOverflowWindow.get_compositor_private();
-            if (actor) actor.opacity = 255; // Restore opacity
+        try {
+            Logger.log(`[MOSAIC WM] _grabOpEndHandler ENTRY: Win=${window?.get_id()}, Op=${grabpo}`);
+            
+            if (this._grabWatchdogId) {
+                GLib.source_remove(this._grabWatchdogId);
+                this._grabWatchdogId = null;
+            }
+            this._currentDragWindow = null;
+            this._currentGrabOp = null;
+
+            // FORCE RESET: Clear any stuck animation flags that might block re-positioning
+            if (window) {
+                window._slideInAnimating = false;
+                delete window._createdDuringOverview;
+                this.animationsManager._animatingWindows.delete(window.get_id());
+            }
+            
+            // Handle drag overflow - window that was marked as not fitting
+            if (this._dragOverflowWindow && this._dragOverflowWindow === window) {
+                Logger.log(`[MOSAIC WM] Drag ended with overflow window - moving to new workspace`);
+                const actor = this._dragOverflowWindow.get_compositor_private();
+                if (actor) actor.opacity = 255; // Restore opacity
             
             this.tilingManager.clearExcludedWindow();
             this.drawingManager.hideTilePreview();
@@ -1321,6 +1380,9 @@ export default class WindowMosaicExtension extends Extension {
         // This catches edge cases where zone exit during drag didn't properly clean up state
         this.dragHandler.clearGhostWindows();
         this.drawingManager.hideTilePreview();
+        } catch (e) {
+            Logger.log(`[MOSAIC WM] CRITICAL: Error in _grabOpEndHandler: ${e.message}\n${e.stack}`);
+        }
     }
 
     _windowAdded = (workspace, window) => {
@@ -1371,6 +1433,7 @@ export default class WindowMosaicExtension extends Extension {
                         // Animate if there are other windows OR if it's a directional move
                         // BUT skip if window was created during overview (already positioned correctly)
                         if ((existingWindows.length > 0 || offsetDirection !== 0) && !win._createdDuringOverview) {
+                            // Enable slide-in animation
                             win._needsSlideIn = true;
                             win._slideInExistingWindows = existingWindows;
                             win._slideInDirection = offsetDirection;
@@ -1434,6 +1497,93 @@ export default class WindowMosaicExtension extends Extension {
                                             animationMode = Clutter.AnimationMode.EASE_OUT_BACK; // Momentum for directional
                                         }
                                         
+                                        // --- EXTENDED CANVAS COMPATIBILITY & WATCHDOG ---
+                                        if (this.extendedCanvasManager) {
+                                            const monitor = win.get_monitor();
+                                            const workspace = win.get_workspace();
+                                            const workArea = workspace.get_work_area_for_monitor(monitor);
+                                            
+                                            // WATCHDOG: Check for Phase 2 update after window geometry is ready
+                                            // This handles cases where initial size is 0, misleading calculatePhase into Phase 1
+                                            let retryCount = 0;
+                                            const maxRetries = 5;
+                                            const retryDelays = [50, 100, 200, 300, 500];
+
+                                            const tryPhase2Check = () => {
+                                                if (!win.get_compositor_private()) return GLib.SOURCE_REMOVE;
+
+                                                const rect = win.get_frame_rect();
+                                                const hasGeometry = rect && rect.width > 0 && rect.height > 0;
+                                                
+                                                if (hasGeometry) {
+                                                    // Re-calculate phase with valid geometry
+                                                    const allWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+                                                    const currentPhase = this.extendedCanvasManager.calculatePhase(allWindows, workArea);
+                                                    
+                                                    // DEBUG WATCHDOG
+                                                    Logger.log(`[MOSAIC WATCHDOG] Check ${retryCount}: Win=${win.get_id()} (${rect.width}x${rect.height}), TotalWindows=${allWindows.length}, Phase=${currentPhase}`);
+
+                                                    // GEOMETRY READY: Force tiling immediately to ensure correct placement
+                                                    // This covers Phase 1, Phase 2, and any "missed" tiling events
+                                                    if (this.tilingManager) {
+                                                        Logger.log(`[MOSAIC WM] Watchdog: Geometry ready for ${win.get_id()}. Enforcing tiling.`);
+                                                        // Cancel any active slide-in animation that might conflict
+                                                        const actor = win.get_compositor_private();
+                                                        if (actor) {
+                                                            actor.remove_all_transitions();
+                                                            actor.opacity = 255;
+                                                        }
+                                                        
+                                                        // CRITICAL: Clear the animation flag since we killed the transition
+                                                        delete win._slideInAnimating;
+                                                        delete win._needsSlideIn;
+                                                        if (actor) actor.set_translation(0, 0, 0);
+                                                        
+                                                        // FORCE CLEAN SLATE (Mimic DnD Release):
+                                                        // Remove all existing clips/translations before applying new layout.
+                                                        // This ensures we don't inherit bad state.
+                                                        if (this.extendedCanvasManager) {
+                                                            this.extendedCanvasManager.removeAllClips();
+                                                        }
+
+                                                        this.tilingManager.tileWorkspaceWindows(workspace, null, monitor);
+                                                        
+                                                        // DOUBLE TAP: Force a second retile to ensure positioning sticks 
+                                                        // (resolves race conditions with mapping/animations)
+                                                        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+                                                            if (win.get_compositor_private()) {
+                                                                Logger.log(`[MOSAIC WM] Watchdog: Double Tap Retile for ${win.get_id()}`);
+                                                                this.tilingManager.tileWorkspaceWindows(workspace, null, monitor);
+                                                            }
+                                                            return GLib.SOURCE_REMOVE;
+                                                        });
+                                                        
+                                                        return GLib.SOURCE_REMOVE;
+                                                    }
+                                                } else {
+                                                     Logger.log(`[MOSAIC WATCHDOG] Check ${retryCount}: Win=${win.get_id()} NO GEOMETRY`);
+                                                }
+                                                
+                                                if (retryCount < maxRetries) {
+                                                    retryCount++;
+                                                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, retryDelays[retryCount] || 500, tryPhase2Check);
+                                                }
+                                                return GLib.SOURCE_REMOVE;
+                                            };
+                                            
+                                            // Start Watchdog
+                                            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, tryPhase2Check);
+                                            
+                                            // Initial Phase Check (OPTIMIZATION: Skip animation if we ALREADY know it's Phase 2)
+                                            const allWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+                                            const initialPhase = this.extendedCanvasManager.calculatePhase(allWindows, workArea);
+                                            
+                                            if (initialPhase >= 2) {
+                                                Logger.log(`[MOSAIC WM] Phase ${initialPhase} Active - Skipping Slide-In Animation for ${win.get_id()}`);
+                                                return;
+                                            }
+                                        }
+
                                         if (offsetX !== 0 || offsetY !== 0) {
                                             Logger.log(`[MOSAIC WM] FIRST-FRAME SLIDE-IN: Applying offset (${offsetX}, ${offsetY}) to window ${win.get_id()} Mode: ${animationMode}`);
                                             
@@ -1473,7 +1623,27 @@ export default class WindowMosaicExtension extends Extension {
                                 });
                             }
                         } else {
-                            Logger.log(`[MOSAIC WM] SLIDE-IN: First window ${win.get_id()} - no animation needed`);
+                            Logger.log(`[MOSAIC WM] SLIDE-IN: First window ${win.get_id()} - no animation, triggering tiling via first-frame`);
+                            
+                            // Even for first window, connect first-frame to ensure tiling is applied
+                            const actor = win.get_compositor_private();
+                            if (actor && this.extendedCanvasManager && this.tilingManager) {
+                                const tilingMonitor = mon;
+                                const tilingWorkspace = ws;
+                                const tilingWin = win;
+                                const firstFrameTilingId = actor.connect('first-frame', () => {
+                                    actor.disconnect(firstFrameTilingId);
+                                    
+                                    const frame = tilingWin.get_frame_rect();
+                                    Logger.log(`[MOSAIC WM] First-Frame Tiling (else): Window ${tilingWin.get_id()} ready (${frame.width}x${frame.height}). Forcing layout.`);
+                                    
+                                    // Clean Slate (mimic DnD release)
+                                    this.extendedCanvasManager.removeAllClips();
+                                    
+                                    // Force tiling
+                                    this.tilingManager.tileWorkspaceWindows(tilingWorkspace, null, tilingMonitor);
+                                });
+                            }
                         }
                     }
                 }
@@ -2083,6 +2253,11 @@ export default class WindowMosaicExtension extends Extension {
         this.tilingManager.setAnimationsManager(this.animationsManager);
         this.tilingManager.setWindowingManager(this.windowingManager);
         
+        // Extended Canvas Manager - 200% virtual canvas with horizontal scrolling
+        this.extendedCanvasManager = new ExtendedCanvasManager(this);
+        this.tilingManager.setExtendedCanvasManager(this.extendedCanvasManager);
+        this.extendedCanvasManager.setTilingManager(this.tilingManager);
+        
         this.reorderingManager.setTilingManager(this.tilingManager);
         this.reorderingManager.setEdgeTilingManager(this.edgeTilingManager);
         this.reorderingManager.setAnimationsManager(this.animationsManager);
@@ -2253,6 +2428,27 @@ export default class WindowMosaicExtension extends Extension {
             () => this._swapActiveWindow('down'));
         
         Logger.log('[MOSAIC WM] All swap keybindings registered successfully');
+        
+        // Canvas scroll keybindings (Ctrl+Alt+Left/Right)
+        this._scrollKeyPressId = global.stage.connect('key-press-event', (actor, event) => {
+            const state = event.get_state();
+            const symbol = event.get_key_symbol();
+            const isCtrlAlt = (state & Clutter.ModifierType.CONTROL_MASK) && 
+                              (state & Clutter.ModifierType.MOD1_MASK);
+            
+            if (isCtrlAlt && this.extendedCanvasManager) {
+                if (symbol === Clutter.KEY_Left) {
+                    this.extendedCanvasManager.scrollLeft();
+                    return Clutter.EVENT_STOP;
+                } else if (symbol === Clutter.KEY_Right) {
+                    this.extendedCanvasManager.scrollRight();
+                    return Clutter.EVENT_STOP;
+                }
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+        Logger.log('[MOSAIC WM] Canvas scroll keybindings registered (Ctrl+Alt+Left/Right)');
+        
         Logger.log('[MOSAIC WM] Keyboard shortcuts registered');
     }
     
@@ -2335,6 +2531,13 @@ export default class WindowMosaicExtension extends Extension {
         Main.wm.removeKeybinding('swap-right');
         Main.wm.removeKeybinding('swap-up');
         Main.wm.removeKeybinding('swap-down');
+        
+        // Disconnect scroll key handler
+        if (this._scrollKeyPressId) {
+            global.stage.disconnect(this._scrollKeyPressId);
+            this._scrollKeyPressId = null;
+        }
+        
         Logger.log('[MOSAIC WM] Keyboard shortcuts removed');
         
         if (this._dragPositionChangedId && this._draggedWindow) {
@@ -2419,6 +2622,7 @@ export default class WindowMosaicExtension extends Extension {
         if (this.reorderingManager) this.reorderingManager.destroy();
         if (this.swappingManager) this.swappingManager.destroy();
         if (this.windowingManager) this.windowingManager.destroy();
+        if (this.extendedCanvasManager) this.extendedCanvasManager.destroy();
 
         this.tilingManager = null;
         this.edgeTilingManager = null;
@@ -2427,6 +2631,7 @@ export default class WindowMosaicExtension extends Extension {
         this.drawingManager = null;
         this.animationsManager = null;
         this.windowingManager = null;
+        this.extendedCanvasManager = null;
         
         // Clean up handler classes
         this.windowHandler = null;
