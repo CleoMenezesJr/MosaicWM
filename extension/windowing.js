@@ -62,14 +62,33 @@ export class WindowingManager {
         return this.getMonitorWorkspaceWindows(this.getWorkspace(), monitor, allow_unrelated);
     }
 
+    // Cache for getMonitorWorkspaceWindows - invalidated at start of each tiling operation
+    _windowsCache = new Map();
+    _cacheGeneration = 0;
+    
+    // Call this at start of tiling operations to invalidate cache
+    invalidateWindowsCache() {
+        this._cacheGeneration++;
+        this._windowsCache.clear();
+    }
+
     getMonitorWorkspaceWindows(workspace, monitor, allow_unrelated) {
-        let _windows = [];
-        if (!workspace) return _windows;
+        if (!workspace) return [];
         
+        // Check cache
+        const cacheKey = `${workspace.index()}-${monitor}-${allow_unrelated ? 1 : 0}-${this._cacheGeneration}`;
+        if (this._windowsCache.has(cacheKey)) {
+            return this._windowsCache.get(cacheKey);
+        }
+        
+        let _windows = [];
         let windows = workspace.list_windows();
         for (let window of windows)
             if (window.get_monitor() === monitor && (this.isRelated(window) || allow_unrelated))
                 _windows.push(window);
+        
+        // Store in cache
+        this._windowsCache.set(cacheKey, _windows);
         return _windows;
     }
 
@@ -77,6 +96,7 @@ export class WindowingManager {
         let workspace = window.get_workspace();
         let active = workspace.active;
         let previous_workspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
+
         
         if (!previous_workspace) {
             Logger.error("There is no workspace to the left.");
