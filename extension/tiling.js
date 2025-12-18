@@ -1170,10 +1170,18 @@ export class TilingManager {
     canFitWindow(window, workspace, monitor) {
         Logger.log(`[MOSAIC WM] canFitWindow: Checking if window can fit in workspace ${workspace.index()}`);
         
+        // Excluded windows (Always on Top, Sticky) always "fit" - they don't participate in tiling
+        // This allows them to coexist with fullscreen/maximized windows
+        if (this._windowingManager.isExcluded(window)) {
+            Logger.log('[MOSAIC WM] canFitWindow: Window is excluded - always fits (not tiled)');
+            return true;
+        }
+        
         if (window.is_fullscreen()) {
             Logger.log('[MOSAIC WM] canFitWindow: Window is fullscreen - always fits (no overflow)');
             return true;
         }
+
         
         const working_info = this._getWorkingInfo(workspace, window, monitor);
         if (!working_info) {
