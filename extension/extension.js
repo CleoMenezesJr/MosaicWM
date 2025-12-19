@@ -166,11 +166,13 @@ export default class WindowMosaicExtension extends Extension {
                                 this._windowsOpenedMaximized.delete(windowId);
                             } else {
                                 Logger.log('[MOSAIC WM] Opened maximized without tiled window - moving to new workspace');
+                                Logger.log('[TRACE] OVERFLOW from: Opened maximized without tiled window');
                                 this.windowingManager.moveOversizedWindow(window);
                                 this._windowsOpenedMaximized.delete(windowId);
                             }
                         } else {
                             Logger.log('[MOSAIC WM] User maximized window - moving to new workspace');
+                            Logger.log('[TRACE] OVERFLOW from: User maximized window');
                             this.windowingManager.moveOversizedWindow(window);
                         }
                         return GLib.SOURCE_REMOVE;
@@ -200,6 +202,7 @@ export default class WindowMosaicExtension extends Extension {
                 }
                 
                 const canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
+                Logger.log(`[TRACE] NEW WINDOW: canFit=${canFit}, movedByOverflow=${window._movedByOverflow}`);
                 
                 if(!canFit && !window._movedByOverflow) {
                     // Enqueue to prevent race conditions when multiple windows open
@@ -226,6 +229,7 @@ export default class WindowMosaicExtension extends Extension {
                         
                         if (hasSacredWindow) {
                             Logger.log('[MOSAIC WM] Sacred window detected - forcing overflow');
+                            Logger.log('[TRACE] OVERFLOW from: Sacred window detected');
                             this.windowingManager.moveOversizedWindow(window);
                             return;
                         }
@@ -237,13 +241,21 @@ export default class WindowMosaicExtension extends Extension {
                         if (existingWindows.length > 0) {
                             const resizeSuccess = this.tilingManager.tryFitWithResize(window, existingWindows, workArea);
                             if (resizeSuccess) {
-                                Logger.log('[MOSAIC WM] Smart resize applied via queue');
-                                this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
+                                // Smart Resize now includes 2D tile simulation internally
+                                // Use a small timeout to give Mutter time to process resize
+                                // before tileWorkspaceWindows reads the new frame_rect sizes
+                                Logger.log('[MOSAIC WM] Smart resize applied - waiting for resize to propagate');
+                                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+                                    this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
+                                    return GLib.SOURCE_REMOVE;
+                                });
                                 return;
                             }
                         }
+
                         
                         Logger.log('[MOSAIC WM] No smart resize possible - moving to new workspace');
+                        Logger.log('[TRACE] OVERFLOW from: No smart resize possible');
                         this.windowingManager.moveOversizedWindow(window);
                     });
                 } else if (window._movedByOverflow) {
@@ -542,6 +554,7 @@ export default class WindowMosaicExtension extends Extension {
                     }, this._timeoutRegistry);
                 } else {
                     Logger.log('[MOSAIC WM] DnD arrival: Smart Resize failed - moving to new workspace');
+                    Logger.log('[TRACE] OVERFLOW from: DnD Smart Resize failed');
                     this._overflowMoveTimestamps.set(windowId, Date.now());
                     this.windowingManager.moveOversizedWindow(window);
                 }
@@ -1490,6 +1503,11 @@ export default class WindowMosaicExtension extends Extension {
                 const frame = WINDOW.get_frame_rect();
                 const hasValidDimensions = frame.width > 0 && frame.height > 0;
                 
+                if (hasValidDimensions) {
+                    Logger.log(`[TRACE] WINDOW OPENED: "${WINDOW.get_wm_class()}" size=${frame.width}x${frame.height}`);
+                }
+
+                
                 const previousWorkspaceIndex = this._windowPreviousWorkspace.get(WINDOW.get_id());
                 const removedTimestamp = this._windowRemovedTimestamp.get(WINDOW.get_id());
                 const timeSinceRemoved = removedTimestamp ? Date.now() - removedTimestamp : Infinity;
@@ -1976,9 +1994,11 @@ export default class WindowMosaicExtension extends Extension {
                 return GLib.SOURCE_REMOVE;
             }
             
-            // Get remaining windows in workspace (exclude edge tiles)
+            // Get remaining windows in workspace (exclude edge tiles and the removed window)
+            const removedId = window.get_id();
             const remainingWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
-                .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && 
+                .filter(w => w.get_id() !== removedId &&
+                             !this.edgeTilingManager.isEdgeTiled(w) && 
                              !this.windowingManager.isExcluded(w));
             
             Logger.log(`[MOSAIC WM] _windowRemoved: ${remainingWindows.length} remaining windows, freed ${freedWidth}x${freedHeight}, wasOverflowMove=${wasMovedByOverflow}`);
