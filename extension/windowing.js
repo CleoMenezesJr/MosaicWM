@@ -9,6 +9,7 @@ import GLib from 'gi://GLib';
 import { afterWorkspaceSwitch } from './timing.js';
 
 import { TileZone } from './edgeTiling.js';
+import * as WindowState from './windowState.js';
 
 const BLACKLISTED_WM_CLASSES = [
     'org.gnome.Screenshot',
@@ -200,11 +201,11 @@ export class WindowingManager {
         }
         
         // Flag window as overflow-moved to prevent tiling errors
-        window._movedByOverflow = true;
+        WindowState.set(window, 'movedByOverflow', true);
         
         // Track origin workspace across multiple calls
-        const currentIndex = window._overflowOriginWorkspace ?? window.get_workspace().index();
-        window._overflowOriginWorkspace = currentIndex;
+        const currentIndex = WindowState.get(window, 'overflowOriginWorkspace') ?? window.get_workspace().index();
+        WindowState.set(window, 'overflowOriginWorkspace', currentIndex);
         
         const nextIndex = currentIndex + 1;
         
@@ -242,8 +243,8 @@ export class WindowingManager {
         
         // Clear flags after settling
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
-            window._movedByOverflow = false;
-            delete window._overflowOriginWorkspace;
+            WindowState.set(window, 'movedByOverflow', false);
+            WindowState.remove(window, 'overflowOriginWorkspace');
             return GLib.SOURCE_REMOVE;
         });
         
