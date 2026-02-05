@@ -85,9 +85,29 @@ export class EdgeTilingManager {
     }
 
     // Check for edge-tiled windows on a specific side
-    _hasEdgeTiledWindows(workspace, side) {
+    // Can use cachedEdgeTiledIds if provided to avoid list_windows() call
+    _hasEdgeTiledWindowsOnSide(workspace, side, cachedEdgeTiledIds = null) {
         if (!workspace) return false;
         
+        // If cached IDs provided, check internal state map directly
+        if (cachedEdgeTiledIds !== null) {
+            for (const [winId, state] of this._windowStates) {
+                if (!cachedEdgeTiledIds.includes(winId)) continue;
+                if (!state || state.zone === TileZone.NONE || state.zone === TileZone.FULLSCREEN) continue;
+                
+                if (side === 'left' && (state.zone === TileZone.LEFT_FULL || 
+                    state.zone === TileZone.TOP_LEFT || state.zone === TileZone.BOTTOM_LEFT)) {
+                    return true;
+                }
+                if (side === 'right' && (state.zone === TileZone.RIGHT_FULL || 
+                    state.zone === TileZone.TOP_RIGHT || state.zone === TileZone.BOTTOM_RIGHT)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        // Fallback: query workspace (expensive)
         const windows = workspace.list_windows();
         for (const win of windows) {
             const state = this._windowStates.get(win.get_id());
@@ -110,7 +130,13 @@ export class EdgeTilingManager {
         return false;
     }
 
-    detectZone(cursorX, cursorY, workArea, workspace) {
+    // Kept for backward compatibility
+    _hasEdgeTiledWindows(workspace, side) {
+        return this._hasEdgeTiledWindowsOnSide(workspace, side, null);
+    }
+
+    // cachedEdgeTiledIds: optional array of window IDs to avoid list_windows() call
+    detectZone(cursorX, cursorY, workArea, workspace, cachedEdgeTiledIds = null) {
         const threshold = constants.EDGE_TILING_THRESHOLD;
         const thirdY = workArea.height / 3;
         
@@ -120,7 +146,7 @@ export class EdgeTilingManager {
         }
         
         if (cursorX < workArea.x + threshold) {
-            const hasLeftWindows = this._hasEdgeTiledWindows(workspace, 'left');
+            const hasLeftWindows = this._hasEdgeTiledWindowsOnSide(workspace, 'left', cachedEdgeTiledIds);
             
             if (!hasLeftWindows) return TileZone.LEFT_FULL;
             
@@ -131,7 +157,7 @@ export class EdgeTilingManager {
         }
         
         if (cursorX > workArea.x + workArea.width - threshold) {
-            const hasRightWindows = this._hasEdgeTiledWindows(workspace, 'right');
+            const hasRightWindows = this._hasEdgeTiledWindowsOnSide(workspace, 'right', cachedEdgeTiledIds);
             
             if (!hasRightWindows) return TileZone.RIGHT_FULL;
             

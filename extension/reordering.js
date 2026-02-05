@@ -140,6 +140,20 @@ export class ReorderingManager {
                     this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
                     this._rejectedSwap = null;
                     this._lastTileState = newState;
+                    
+                    // Update cached positions after swap to enable correct future swap detection
+                    const layout = this._tilingManager.getCachedLayout();
+                    if (layout && this._dragContext?.windows) {
+                        for (const cachedWin of this._dragContext.windows) {
+                            const newPos = layout.find(l => l.id === cachedWin.id);
+                            if (newPos) {
+                                cachedWin.x = newPos.x;
+                                cachedWin.y = newPos.y;
+                                cachedWin.width = newPos.width;
+                                cachedWin.height = newPos.height;
+                            }
+                        }
+                    }
                 }
             }
         }
