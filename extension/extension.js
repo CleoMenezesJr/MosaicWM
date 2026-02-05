@@ -180,7 +180,6 @@ export default class WindowMosaicExtension extends Extension {
                             });
                             
                             if (tiledWindows.length > 0) {
-                                Logger.log('[MOSAIC WM] Opened maximized with tiled window - auto-tiling');
                                 window.unmaximize(Meta.MaximizeFlags.BOTH);
                                 this._windowsOpenedMaximized.delete(windowId);
                             } else {
