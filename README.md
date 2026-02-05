@@ -43,6 +43,11 @@ This aligns with GNOME's philosophy of reducing cognitive load and letting users
 - ⌨️ **Keyboard Shortcuts**: Swap windows with keyboard (configurable)
 - 🖥️ **Multi-Monitor**: Works across multiple displays (experimental)
 
+### Quick Settings
+- 🎛️ **Per-Workspace Toggle**: Enable or disable mosaic on individual workspaces from the Quick Settings menu
+- 🔘 **Global Toggle**: Master switch to quickly enable/disable mosaic on all workspaces
+- 📍 **Dynamic Indicator**: Top bar icon shows mosaic status for the current workspace
+
 ## 📦 Installation
 
 ### From Source
