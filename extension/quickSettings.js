@@ -71,6 +71,16 @@ class MosaicMenuToggle extends QuickSettings.QuickMenuToggle {
         if (enabled) {
             // Enable mosaic on all workspaces
             this._extension._disabledWorkspaces.clear();
+            
+            // Re-tile all workspaces (monitor detection is automatic)
+            const nWorkspaces = this._workspaceManager.get_n_workspaces();
+            for (let i = 0; i < nWorkspaces; i++) {
+                const workspace = this._workspaceManager.get_workspace_by_index(i);
+                if (workspace) {
+                    Logger.log(`[MOSAIC WM] Quick Settings: Re-tiling workspace ${i + 1} (global toggle)`);
+                    this._extension.tilingManager.tileWorkspaceWindows(workspace, null, null, false);
+                }
+            }
         } else {
             // Disable mosaic on all workspaces
             const nWorkspaces = this._workspaceManager.get_n_workspaces();
@@ -158,6 +168,8 @@ class MosaicMenuToggle extends QuickSettings.QuickMenuToggle {
         if (enabled) {
             const workspace = this._workspaceManager.get_workspace_by_index(workspaceIndex);
             if (workspace) {
+                Logger.log(`[MOSAIC WM] Quick Settings: Re-tiling workspace ${workspaceIndex + 1}`);
+                // Monitor detection is automatic in tileWorkspaceWindows
                 this._extension.tilingManager.tileWorkspaceWindows(workspace, null, null, false);
             }
         }

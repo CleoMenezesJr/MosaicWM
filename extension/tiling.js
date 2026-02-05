@@ -1027,6 +1027,24 @@ export class TilingManager {
             return;
         }
         
+        // Auto-detect monitors: if no monitor specified and no reference window,
+        // iterate over all monitors to ensure complete tiling coverage
+        if (_monitor === null || _monitor === undefined) {
+            if (!reference_meta_window) {
+                const nMonitors = global.display.get_n_monitors();
+                if (nMonitors > 1) {
+                    Logger.log(`[MOSAIC WM] Auto-tiling workspace ${workspace.index()} across ${nMonitors} monitors`);
+                }
+                for (let m = 0; m < nMonitors; m++) {
+                    this.tileWorkspaceWindows(workspace, null, m, keep_oversized_windows, excludeFromTiling);
+                }
+                return;
+            } else {
+                // Get monitor from reference window
+                _monitor = reference_meta_window.get_monitor();
+            }
+        }
+        
         // Invalidate window list cache for this operation
         if (this._windowingManager) {
             this._windowingManager.invalidateWindowsCache();
