@@ -731,14 +731,17 @@ export default class WindowMosaicExtension extends Extension {
                 WindowState.remove(window, 'actualMinHeight');
             }
             
-            // UPDATE OPENING SIZE: If user manually resizes larger, update the max restore size
-            // This way the new max becomes whatever size the user chose
+            // UPDATE OPENING SIZE: If user manually resizes, update the stored size
+            // This prevents reverse smart resize from undoing manual resizes
             const currentOpeningSize = this.tilingManager._openingSizes.get(window.get_id());
             if (currentOpeningSize) {
-                if (rect.width > currentOpeningSize.width || rect.height > currentOpeningSize.height) {
+                // Only update if there's a meaningful size difference (avoid noise)
+                const widthDiff = Math.abs(rect.width - currentOpeningSize.width);
+                const heightDiff = Math.abs(rect.height - currentOpeningSize.height);
+                if (widthDiff > 10 || heightDiff > 10) {
                     this.tilingManager._openingSizes.set(window.get_id(), { 
-                        width: Math.max(rect.width, currentOpeningSize.width), 
-                        height: Math.max(rect.height, currentOpeningSize.height) 
+                        width: rect.width, 
+                        height: rect.height 
                     });
                     Logger.log(`[MOSAIC WM] Manual resize: Updated opening size for ${window.get_id()} to ${rect.width}x${rect.height}`);
                 }
