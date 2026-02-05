@@ -2047,7 +2047,9 @@ export default class WindowMosaicExtension extends Extension {
             } else {
                 // Workspace is now empty of mosaic windows
                 // Check if there are ANY related windows (including edge-tiled) before navigating
-                const allRelatedWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR);
+                // Note: window-removed fires BEFORE actual removal, so filter out the removed window
+                const allRelatedWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
+                    .filter(w => w.get_id() !== removedId);
                 if (allRelatedWindows.length === 0) {
                     Logger.log('[MOSAIC WM] _windowRemoved: Workspace truly empty, navigating away');
                     this.windowingManager.renavigate(WORKSPACE, WORKSPACE.active, this._lastVisitedWorkspace);
