@@ -110,9 +110,8 @@ class MosaicMenuToggle extends QuickSettings.QuickMenuToggle {
                 isEnabled
             );
             
-            // Create location pin icon for active workspace
             const icon = new St.Icon({
-                gicon: _getIcon(this._extension, 'pin-location-symbolic'),
+                gicon: _getIcon(this._extension, 'dot-symbolic'),
                 style_class: 'popup-menu-icon',
                 y_align: Clutter.ActorAlign.CENTER,
             });
