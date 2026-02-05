@@ -37,6 +37,10 @@ export class TilingManager {
         // Queue for serializing window opening operations to prevent race conditions
         this._openingQueue = [];
         this._processingQueue = false;
+        
+        // Layout cache to avoid redundant O(n!) permutation calculations
+        this._lastLayoutHash = null;
+        this._cachedTileResult = null;
     }
 
     setEdgeTilingManager(manager) {
@@ -96,6 +100,12 @@ export class TilingManager {
     
     clearExcludedWindow() {
         this._excludedWindow = null;
+    }
+    
+    // Invalidate the layout cache when windows change
+    invalidateLayoutCache() {
+        this._lastLayoutHash = null;
+        this._cachedTileResult = null;
     }
     
     // Queue a window opening operation to prevent race conditions
@@ -327,6 +337,14 @@ export class TilingManager {
         return bestOrder;
     }
 
+    // Generate a hash of window configuration for cache invalidation.
+    // If windows haven't changed IDs/sizes, we can reuse the previous layout.
+    _getLayoutHash(windows, work_area) {
+        const sorted = [...windows].sort((a, b) => a.id - b.id);
+        const parts = sorted.map(w => `${w.id}:${w.width}x${w.height}`);
+        return `${work_area.width}x${work_area.height}|${parts.join(',')}`;
+    }
+
     // Tile windows with dynamic shelf orientation.
     // Selects vertical columns if any window is tall (>65%) or workspace is narrow.
     // Uses optimal permutation search for predictable, best-quality layouts.
@@ -340,6 +358,13 @@ export class TilingManager {
                 levels: [],
                 windows: []
             };
+        }
+        
+        // Check cache: skip permutation search if windows unchanged
+        const hash = this._getLayoutHash(windows, work_area);
+        if (hash === this._lastLayoutHash && this._cachedTileResult) {
+            Logger.log(`[MOSAIC WM] _tile: Cache hit, reusing layout for ${windows.length} windows`);
+            return this._cachedTileResult;
         }
         
         const spacing = constants.WINDOW_SPACING;
@@ -365,8 +390,12 @@ export class TilingManager {
         
         Logger.log(`[MOSAIC WM] _tile: ${windows.length} windows, vertical=${useVerticalShelves}, optimized order`);
         
-        // Execute with optimal order
-        return tilingFn.call(this, optimalWindows, work_area, spacing);
+        // Execute with optimal order and cache result
+        const result = tilingFn.call(this, optimalWindows, work_area, spacing);
+        this._lastLayoutHash = hash;
+        this._cachedTileResult = result;
+        
+        return result;
     }
     
     // Vertical shelves layout - windows stack in columns side by side.
