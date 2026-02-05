@@ -28,6 +28,7 @@ import { TimeoutRegistry, afterWorkspaceSwitch, afterAnimations, afterWindowClos
 import { WindowHandler } from './windowHandler.js';
 import { DragHandler } from './dragHandler.js';
 import { ResizeHandler } from './resizeHandler.js';
+import * as WindowState from './windowState.js';
 
 // Module-level accessor for TilingManager (used by overviewLayout.js for on-demand cache)
 let _tilingManagerInstance = null;
@@ -202,9 +203,9 @@ export default class WindowMosaicExtension extends Extension {
                 }
                 
                 const canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
-                Logger.log(`[TRACE] NEW WINDOW: canFit=${canFit}, movedByOverflow=${window._movedByOverflow}`);
+                Logger.log(`[TRACE] NEW WINDOW: canFit=${canFit}, movedByOverflow=${WindowState.get(window, 'movedByOverflow')}`);
                 
-                if(!canFit && !window._movedByOverflow) {
+                if(!canFit && !WindowState.get(window, 'movedByOverflow')) {
                     // Enqueue to prevent race conditions when multiple windows open
                     this.tilingManager.enqueueWindowOpen(window.get_id(), () => {
                         Logger.log('[MOSAIC WM] Window doesn\'t fit - trying smart resize first');
@@ -258,7 +259,7 @@ export default class WindowMosaicExtension extends Extension {
                         Logger.log('[TRACE] OVERFLOW from: No smart resize possible');
                         this.windowingManager.moveOversizedWindow(window);
                     });
-                } else if (window._movedByOverflow) {
+                } else if (WindowState.get(window, 'movedByOverflow')) {
                     // Skip tiling here - let the delayed retile in moveOversizedWindow handle it
                     Logger.log('[MOSAIC WM] Skipping initial tile - window was just moved by overflow');
                 } else {
@@ -479,7 +480,7 @@ export default class WindowMosaicExtension extends Extension {
                     
                     afterWorkspaceSwitch(() => {
                         afterAnimations(this.animationsManager, () => {
-                                if (!window._movedByOverflow) {
+                                if (!WindowState.get(window, 'movedByOverflow')) {
                                     Logger.log('[MOSAIC WM] DnD departure: Attempting Reverse Smart Resize on source workspace');
                                     const remainingWindows = this.windowingManager.getMonitorWorkspaceWindows(sourceWorkspace, monitor);
                                     const workArea = this.edgeTilingManager.calculateRemainingSpace(sourceWorkspace, monitor);
@@ -716,18 +717,18 @@ export default class WindowMosaicExtension extends Extension {
             }
             
             // CRITICAL: Skip if window is being programmatically resized by Smart Resize or Reverse Smart Resize
-            if (window._isSmartResizing || window._isReverseSmartResizing) {
-                Logger.log(`[MOSAIC WM] Skipping resize detection for window ${window.get_id()} - ${window._isSmartResizing ? 'smart' : 'reverse smart'} resize in progress`);
+            if (WindowState.get(window, 'isSmartResizing') || WindowState.get(window, 'isReverseSmartResizing')) {
+                Logger.log(`[MOSAIC WM] Skipping resize detection for window ${window.get_id()} - ${WindowState.get(window, 'isSmartResizing') ? 'smart' : 'reverse smart'} resize in progress`);
                 this._sizeChanged = false;
                 return;
             }
             
             // CACHE INVALIDATION: If user increased window size beyond cached minimum,
             // clear the cache to allow future Smart Resize to try shrinking this window
-            if (window._actualMinWidth && rect.width > window._actualMinWidth + 20) {
-                Logger.log(`[MOSAIC WM] Window ${window.get_id()} grew from cached min ${window._actualMinWidth}px to ${rect.width}px - invalidating cache`);
-                delete window._actualMinWidth;
-                delete window._actualMinHeight;
+            if (WindowState.get(window, 'actualMinWidth') && rect.width > WindowState.get(window, 'actualMinWidth') + 20) {
+                Logger.log(`[MOSAIC WM] Window ${window.get_id()} grew from cached min ${WindowState.get(window, 'actualMinWidth')}px to ${rect.width}px - invalidating cache`);
+                WindowState.remove(window, 'actualMinWidth');
+                WindowState.remove(window, 'actualMinHeight');
             }
             
             // UPDATE OPENING SIZE: If user manually resizes larger, update the max restore size
@@ -761,7 +762,7 @@ export default class WindowMosaicExtension extends Extension {
             let monitor = window.get_monitor();
             
             // Skip resize handling for windows just moved by overflow
-            if (window._movedByOverflow) {
+            if (WindowState.get(window, 'movedByOverflow')) {
                 Logger.log(`[MOSAIC WM] Skipping resize detection for window ${window.get_id()} - recently moved by overflow`);
                 this._sizeChanged = false;
                 return;
@@ -792,7 +793,7 @@ export default class WindowMosaicExtension extends Extension {
                         
                         if (!canFit && !this._resizeInOverflow) {
                             // Skip new windows - let waitForGeometry handle them with smart resize
-                            if (window._waitingForGeometry || !window._geometryReady) {
+                            if (WindowState.get(window, 'waitingForGeometry') || !WindowState.get(window, 'geometryReady')) {
                                 Logger.log('[MOSAIC WM] Manual resize: skipping new window - waiting for geometry');
                                 return GLib.SOURCE_REMOVE;
                             }
@@ -847,7 +848,7 @@ export default class WindowMosaicExtension extends Extension {
                 }
                 
                 // Skip overflow detection if smart resize is in progress
-                if (workspace._smartResizingInProgress || window._isSmartResizing) {
+                if (workspace._smartResizingInProgress || WindowState.get(window, 'isSmartResizing')) {
                     Logger.log('[MOSAIC WM] Skipping overflow check - smart resize in progress');
                     this._sizeChanged = false;
                     return;
@@ -856,7 +857,7 @@ export default class WindowMosaicExtension extends Extension {
                 if (!canFit) {
                     if (this._resizeOverflowWindow !== window) {
                         // Skip new windows - let waitForGeometry handle them with smart resize
-                        if (window._waitingForGeometry || !window._geometryReady) {
+                        if (WindowState.get(window, 'waitingForGeometry') || !WindowState.get(window, 'geometryReady')) {
                             Logger.log('[MOSAIC WM] Resize overflow detected but window is new - letting waitForGeometry handle');
                             this._sizeChanged = false;
                             return;
@@ -1329,7 +1330,7 @@ export default class WindowMosaicExtension extends Extension {
         
         // Mark windows created during overview to skip slide-in animation
         if (Main.overview.visible) {
-            window._createdDuringOverview = true;
+            WindowState.set(window, 'createdDuringOverview', true);
         }
         
         // Connect to configure signal for slide-in animation setup
@@ -1369,10 +1370,10 @@ export default class WindowMosaicExtension extends Extension {
                         
                         // Animate if there are other windows OR if it's a directional move
                         // BUT skip if window was created during overview (already positioned correctly)
-                        if ((existingWindows.length > 0 || offsetDirection !== 0) && !win._createdDuringOverview) {
-                            win._needsSlideIn = true;
-                            win._slideInExistingWindows = existingWindows;
-                            win._slideInDirection = offsetDirection;
+                        if ((existingWindows.length > 0 || offsetDirection !== 0) && !WindowState.get(win, 'createdDuringOverview')) {
+                            WindowState.set(win, 'needsSlideIn', true);
+                            WindowState.set(win, 'slideInExistingWindows', existingWindows);
+                            WindowState.set(win, 'slideInDirection', offsetDirection);
                             
                             Logger.log(`[MOSAIC WM] SLIDE-IN: Window ${win.get_id()} (Existing: ${existingWindows.length}, Dir: ${offsetDirection}, PrevWS: ${prevWSIndex})`);
                             
@@ -1383,9 +1384,9 @@ export default class WindowMosaicExtension extends Extension {
                                     actor.disconnect(firstFrameId);
                                     
                                     // Apply offset translation NOW that actor is rendered
-                                    if (win._needsSlideIn) {
-                                        const neighbors = win._slideInExistingWindows || [];
-                                        const direction = win._slideInDirection || 0;
+                                    if (WindowState.get(win, 'needsSlideIn')) {
+                                        const neighbors = WindowState.get(win, 'slideInExistingWindows') || [];
+                                        const direction = WindowState.get(win, 'slideInDirection') || 0;
                                         const OFFSET = constants.SLIDE_IN_OFFSET_PX;
                                         
                                         let offsetX = 0, offsetY = 0;
@@ -1437,7 +1438,7 @@ export default class WindowMosaicExtension extends Extension {
                                             Logger.log(`[MOSAIC WM] FIRST-FRAME SLIDE-IN: Applying offset (${offsetX}, ${offsetY}) to window ${win.get_id()} Mode: ${animationMode}`);
                                             
                                             // Mark as animating to prevent other animations from overwriting
-                                            win._slideInAnimating = true;
+                                            WindowState.set(win, 'slideInAnimating', true);
                                             
                                             // FORCE KILL GNOME ANIMATION & PREPARE OURS
                                             actor.remove_all_transitions();
@@ -1457,7 +1458,7 @@ export default class WindowMosaicExtension extends Extension {
                                                     duration: 250,
                                                     mode: animationMode,
                                                     onComplete: () => {
-                                                        delete win._slideInAnimating;
+                                                        WindowState.remove(win, 'slideInAnimating');
                                                     }
                                                 });
                                                 return GLib.SOURCE_REMOVE;
@@ -1465,9 +1466,9 @@ export default class WindowMosaicExtension extends Extension {
                                         }
                                         
                                         // Clear flags
-                                        delete win._needsSlideIn;
-                                        delete win._slideInExistingWindows;
-                                        delete win._slideInDirection;
+                                        WindowState.remove(win, 'needsSlideIn');
+                                        WindowState.remove(win, 'slideInExistingWindows');
+                                        WindowState.remove(win, 'slideInDirection');
                                     }
                                 });
                             }
@@ -1518,7 +1519,7 @@ export default class WindowMosaicExtension extends Extension {
                 
                 if (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index() && timeSinceRemoved < 100) {
                     // Skip if this is an overflow move, not a real drag-drop
-                    if (WINDOW._movedByOverflow) {
+                    if (WindowState.get(WINDOW, 'movedByOverflow')) {
                         Logger.log(`[MOSAIC WM] window-added: Skipping drag-drop handling - window was moved by overflow`);
                     } else {
                         Logger.log(`[MOSAIC WM] window-added: Overview drag-drop - window ${WINDOW.get_id()} from workspace ${previousWorkspaceIndex} to ${WORKSPACE.index()}`);
@@ -1528,7 +1529,7 @@ export default class WindowMosaicExtension extends Extension {
                         WORKSPACE.activate(global.get_current_time());
                         
                         // Mark as DnD arrival - will trigger expansion after tiling
-                        WINDOW._arrivedFromDnD = true;
+                        WindowState.set(WINDOW, 'arrivedFromDnD', true);
                         
                         // Wait for overview to fully close before tiling
                         // This ensures move_resize_frame works correctly
@@ -1546,15 +1547,15 @@ export default class WindowMosaicExtension extends Extension {
                     }
                 }
                 // Mark window as waiting for geometry - prevents premature overflow
-                WINDOW._waitingForGeometry = true;
+                WindowState.set(WINDOW, 'waitingForGeometry', true);
                 
                 const waitForGeometry = () => {
             const rect = WINDOW.get_frame_rect();
             
             if (rect.width > 0 && rect.height > 0) {
                 // Geometry ready - clear flag
-                WINDOW._waitingForGeometry = false;
-                        WINDOW._geometryReady = true;
+                WindowState.set(WINDOW, 'waitingForGeometry', false);
+                        WindowState.set(WINDOW, 'geometryReady', true);
                         
                         // CRITICAL: Skip ALL tiling logic for excluded windows (modals, transients, etc.)
                         // BUT still connect signals to track status changes (e.g. Always on Top)
@@ -1568,7 +1569,7 @@ export default class WindowMosaicExtension extends Extension {
                         Logger.log(`[MOSAIC WM] Window ${WINDOW.get_id()} ready: size=${rect.width}x${rect.height}, workArea=${wa.width}x${wa.height}`);
                         
                         // Skip early tiling for overflow moved windows
-                        if (WINDOW._movedByOverflow) {
+                        if (WindowState.get(WINDOW, 'movedByOverflow')) {
                             Logger.log(`[MOSAIC WM] Skipping early tile in waitForGeometry - window was moved by overflow`);
                             return GLib.SOURCE_REMOVE;
                         }
@@ -1579,7 +1580,7 @@ export default class WindowMosaicExtension extends Extension {
                             Logger.log(`[MOSAIC WM] Window created while overview visible - tiling now + after hide`);
                             
                             // Mark this window to skip slide-in animation after overview closes
-                            WINDOW._createdDuringOverview = true;
+                            WindowState.set(WINDOW, 'createdDuringOverview', true);
                             
                             // Save opening size first
                             this.tilingManager.saveOpeningSize(WINDOW);
@@ -1633,8 +1634,8 @@ export default class WindowMosaicExtension extends Extension {
                         
                         // FALLBACK: If configure signal didn't fire in time, set slide-in flag now
                         // Skip for windows created during overview (already positioned)
-                        if (!WINDOW._needsSlideIn && !WINDOW._slideInChecked && !WINDOW._createdDuringOverview) {
-                            WINDOW._slideInChecked = true;
+                        if (!WindowState.get(WINDOW, 'needsSlideIn') && !WindowState.get(WINDOW, 'slideInChecked') && !WindowState.get(WINDOW, 'createdDuringOverview')) {
+                            WindowState.set(WINDOW, 'slideInChecked', true);
                             const existingWindows = WORKSPACE.list_windows().filter(w =>
                                 w.get_monitor() === MONITOR &&
                                 w.get_id() !== WINDOW.get_id() &&
@@ -1643,14 +1644,14 @@ export default class WindowMosaicExtension extends Extension {
                                 !this.windowingManager.isExcluded(w)
                             );
                             if (existingWindows.length > 0) {
-                                WINDOW._needsSlideIn = true;
-                                WINDOW._slideInExistingWindows = existingWindows;
+                                WindowState.set(WINDOW, 'needsSlideIn', true);
+                                WindowState.set(WINDOW, 'slideInExistingWindows', existingWindows);
                                 Logger.log(`[MOSAIC WM] SLIDE-IN FALLBACK: Marked window ${WINDOW.get_id()} (${existingWindows.length} existing)`);
                             }
                         }
                         
                         // Protect against premature overflow during initial tiling/smart resize
-                        WINDOW._isSmartResizing = true;
+                        WindowState.set(WINDOW, 'isSmartResizing', true);
                         
                         // Attempt smart resize first!
                         // Calculate REAL usable area (subtracting edge tiles)
@@ -1760,7 +1761,7 @@ export default class WindowMosaicExtension extends Extension {
                                         // Abort if window was moved to another workspace
                                         if (WINDOW.get_workspace().index() !== initialWorkspaceIndex) {
                                             WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
-                                            WINDOW._isSmartResizing = false;
+                                            WindowState.set(WINDOW, 'isSmartResizing', false);
                                             return GLib.SOURCE_REMOVE;
                                         }
                                         
@@ -1774,7 +1775,7 @@ export default class WindowMosaicExtension extends Extension {
                                             if (successActor) successActor.opacity = 255;
                                             
                                             WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
-                                            WINDOW._isSmartResizing = false;
+                                            WindowState.set(WINDOW, 'isSmartResizing', false);
                                             this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
                                             
                                             // After tiling, try to expand windows towards their opening sizes
@@ -1812,7 +1813,7 @@ export default class WindowMosaicExtension extends Extension {
                                             const actor50 = WINDOW.get_compositor_private();
                                             if (actor50) actor50.opacity = 255;
                                             WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
-                                            WINDOW._isSmartResizing = false;
+                                            WindowState.set(WINDOW, 'isSmartResizing', false);
                                             this.windowingManager.moveOversizedWindow(WINDOW);
                                             return GLib.SOURCE_REMOVE;
                                         }
@@ -1827,7 +1828,7 @@ export default class WindowMosaicExtension extends Extension {
                                             const actor10 = WINDOW.get_compositor_private();
                                             if (actor10) actor10.opacity = 255;
                                             WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
-                                            WINDOW._isSmartResizing = false;
+                                            WindowState.set(WINDOW, 'isSmartResizing', false);
                                             this.windowingManager.moveOversizedWindow(WINDOW);
                                             return GLib.SOURCE_REMOVE;
                                         }
@@ -1849,7 +1850,7 @@ export default class WindowMosaicExtension extends Extension {
                             }
                             
                             // Window fits or is solo - tile normally
-                            const isDnDArrival = WINDOW._arrivedFromDnD;
+                            const isDnDArrival = WindowState.get(WINDOW, 'arrivedFromDnD');
                             
                             const performTiling = () => {
                                 // If arriving from DnD, pass null to enable animation (since default suppresses)
@@ -1859,7 +1860,7 @@ export default class WindowMosaicExtension extends Extension {
                                 
                                 // If window arrived from DnD, try to expand it towards opening size
                                 if (isDnDArrival) {
-                                    WINDOW._arrivedFromDnD = false;
+                                    WindowState.set(WINDOW, 'arrivedFromDnD', false);
                                     
                                     const monitorWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
                                         .filter(w => !this.edgeTilingManager.isEdgeTiled(w) &&
@@ -1896,7 +1897,7 @@ export default class WindowMosaicExtension extends Extension {
                             
                             // All cross-workspace moves: Wait for FULL workspace animation
                             // This includes DnD, Overflow, and keyboard moves
-                            if (isDnDArrival || WINDOW._movedByOverflow || (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index())) {
+                            if (isDnDArrival || WindowState.get(WINDOW, 'movedByOverflow') || (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index())) {
                                 Logger.log(`[MOSAIC WM] Cross-workspace move: Waiting for workspace animation`);
                                 afterWorkspaceSwitch(performTiling, this._timeoutRegistry);
                             } else {
@@ -1912,19 +1913,19 @@ export default class WindowMosaicExtension extends Extension {
                             // Only clear if NOT managed by _windowAdded polling loop 
                             // (checked via _smartResizeProcessedWindows existing for this window)
                             if (!WORKSPACE._smartResizeProcessedWindows?.has(WINDOW.get_id())) {
-                                WINDOW._isSmartResizing = false;
+                                WindowState.set(WINDOW, 'isSmartResizing', false);
                                 Logger.log('[MOSAIC WM] Smart resize protection cleared (timeout)');
                             }
                             
                             // One final check if things fit now
                             // SKIP if window was already moved by overflow to prevent double movement
-                            if (WINDOW._movedByOverflow) {
+                            if (WindowState.get(WINDOW, 'movedByOverflow')) {
                                 Logger.log('[MOSAIC WM] Skipping final overflow check - window already moved');
                                 return GLib.SOURCE_REMOVE;
                             }
                             
                             // SKIP if smart resize is still running - let pollForFit handle overflow
-                            if (WINDOW._isSmartResizing) {
+                            if (WindowState.get(WINDOW, 'isSmartResizing')) {
                                 Logger.log('[MOSAIC WM] Skipping final overflow check - smart resize in progress');
                                 return GLib.SOURCE_REMOVE;
                             }
@@ -1969,7 +1970,7 @@ export default class WindowMosaicExtension extends Extension {
         
         // SKIP if window was moved by overflow - don't trigger restore for overflow moves
         // This prevents cascade: window overflows → restore grows another → that one overflows too
-        const wasMovedByOverflow = window._movedByOverflow;
+        const wasMovedByOverflow = WindowState.get(window, 'movedByOverflow');
         
         // Capture removed window's size BEFORE any operations (for Reverse Smart Resize)
         const removedFrame = window.get_frame_rect();

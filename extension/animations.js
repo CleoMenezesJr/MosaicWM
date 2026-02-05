@@ -6,6 +6,7 @@ import * as Logger from './logger.js';
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import * as constants from './constants.js';
+import * as WindowState from './windowState.js';
 
 // Animation configuration
 const ANIMATION_DURATION = constants.ANIMATION_DURATION_MS;
@@ -70,13 +71,13 @@ export class AnimationsManager {
 
     shouldAnimateWindow(window, draggedWindow = null) {
         // Skip if slide-in animation is in progress (handled by first-frame)
-        if (window._slideInAnimating) {
+        if (WindowState.get(window, 'slideInAnimating')) {
             return false;
         }
         
         // Skip for windows created during overview - already positioned correctly
-        if (window._createdDuringOverview) {
-            delete window._createdDuringOverview; // Clear after first use
+        if (WindowState.get(window, 'createdDuringOverview')) {
+            WindowState.remove(window, 'createdDuringOverview'); // Clear after first use
             return false;
         }
         

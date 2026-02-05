@@ -5,6 +5,7 @@
 import GLib from 'gi://GLib';
 import * as Logger from './logger.js';
 import { ComputedLayouts } from './tiling.js';
+import * as WindowState from './windowState.js';
 
 export class WindowHandler {
     constructor(extension) {
@@ -174,7 +175,7 @@ export class WindowHandler {
                 
                 if (resizeSuccess) {
                     Logger.log('[MOSAIC WM] Re-include: Smart resize applied - starting fit check polling');
-                    window._isSmartResizing = true;
+                    WindowState.set(window, 'isSmartResizing', true);
                     
                     const initialWorkspaceIndex = workspace.index();
                     const MAX_ATTEMPTS = 12;
@@ -184,7 +185,7 @@ export class WindowHandler {
                     const pollForFit = () => {
                         if (window.get_workspace()?.index() !== initialWorkspaceIndex) {
                             Logger.log(`[MOSAIC WM] Re-include: Window moved workspace - aborting poll`);
-                            window._isSmartResizing = false;
+                            WindowState.set(window, 'isSmartResizing', false);
                             return GLib.SOURCE_REMOVE;
                         }
                         
@@ -193,7 +194,7 @@ export class WindowHandler {
                         
                         if (canFitNow) {
                             Logger.log(`[MOSAIC WM] Re-include: Smart resize success after ${attempts} polls`);
-                            window._isSmartResizing = false;
+                            WindowState.set(window, 'isSmartResizing', false);
                             window._justReturnedFromExclusion = true;
                             this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
                             return GLib.SOURCE_REMOVE;
@@ -201,7 +202,7 @@ export class WindowHandler {
                         
                         if (attempts >= MAX_ATTEMPTS) {
                             Logger.log('[MOSAIC WM] Re-include: Smart resize failed - moving to overflow');
-                            window._isSmartResizing = false;
+                            WindowState.set(window, 'isSmartResizing', false);
                             this.windowingManager.moveOversizedWindow(window);
                             return GLib.SOURCE_REMOVE;
                         }

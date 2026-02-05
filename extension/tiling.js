@@ -10,6 +10,7 @@ import Clutter from 'gi://Clutter';
 
 import * as constants from './constants.js';
 import { TileZone } from './edgeTiling.js';
+import * as WindowState from './windowState.js';
 
 export const ComputedLayouts = new Map();
 
@@ -1131,7 +1132,7 @@ export class TilingManager {
             
             if (!isNewlyAdded && !reference_meta_window._forceOverflow) {
                 Logger.log(`[MOSAIC WM] Skipping overflow for ${reference_meta_window.get_id()} - not a new window`);
-            } else if (reference_meta_window._isSmartResizing) {
+            } else if (WindowState.get(reference_meta_window, 'isSmartResizing')) {
                 Logger.log(`[MOSAIC WM] Skipping overflow for ${reference_meta_window.get_id()} - smart resize in progress`);
             } else {
                 let id = reference_meta_window.get_id();
@@ -1523,7 +1524,7 @@ export class TilingManager {
                 Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: Restoring ${shrunkWindow.window.get_id()} from ${frame.width}x${frame.height} to ${newWidth}x${newHeight} (max: ${shrunkWindow.openingWidth}x${shrunkWindow.openingHeight})`);
                 
                 // Set flag to prevent overflow detection during reverse smart resize
-                shrunkWindow.window._isReverseSmartResizing = true;
+                WindowState.set(shrunkWindow.window, 'isReverseSmartResizing', true);
                 
                 shrunkWindow.window.move_resize_frame(
                     true,  // userOp
@@ -1535,7 +1536,7 @@ export class TilingManager {
                 
                 // Clear flag after a delay to allow resize to complete
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
-                    shrunkWindow.window._isReverseSmartResizing = false;
+                    WindowState.set(shrunkWindow.window, 'isReverseSmartResizing', false);
                     Logger.log(`[MOSAIC WM] Reverse smart resize complete for window ${shrunkWindow.window.get_id()}`);
                     return GLib.SOURCE_REMOVE;
                 });
@@ -1807,14 +1808,14 @@ export class TilingManager {
             const targetHeight = Math.floor(frame.height * shrinkRatio);
             
             this.saveOriginalSize(window);
-            window._isSmartResizing = true;
+            WindowState.set(window, 'isSmartResizing', true);
             
             // Apply resize SYNCHRONOUSLY so tileWorkspaceWindows sees correct sizes
             window.move_resize_frame(true, frame.x, frame.y, targetWidth, targetHeight);
             Logger.log(`[MOSAIC WM] tryFitWithResize: Resized window ${window.get_id()} from ${frame.width}x${frame.height} to ${targetWidth}x${targetHeight}`);
             
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.RESIZE_VERIFICATION_DELAY_MS, () => {
-                window._isSmartResizing = false;
+                WindowState.set(window, 'isSmartResizing', false);
                 return GLib.SOURCE_REMOVE;
             });
         }
