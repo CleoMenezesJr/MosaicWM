@@ -113,6 +113,11 @@ export class TilingManager {
         this._cachedTileResult = null;
     }
     
+    // Get the cached layout result (array of {id, x, y, width, height})
+    getCachedLayout() {
+        return this._cachedTileResult?.windows || null;
+    }
+    
     // Queue a window opening operation to prevent race conditions
     // The callback will be called when it's this window's turn
     enqueueWindowOpen(windowId, callback) {
@@ -231,13 +236,14 @@ export class TilingManager {
     }
 
     // Generate permutations of an array (limited for performance)
-    // For 7+ items, returns heuristic orderings instead of all permutations
-    _generatePermutations(arr, maxPermutations = 720) {
+    // For 6+ items, returns heuristic orderings instead of all permutations
+    _generatePermutations(arr, maxPermutations = 120) {
         if (arr.length <= 1) return [arr];
         if (arr.length === 2) return [arr, [arr[1], arr[0]]];
         
-        // For 7+ windows, use heuristic orderings (by area, descending and ascending)
-        if (arr.length >= 7) {
+        // For 6+ windows, use heuristic orderings (by area, descending and ascending)
+        // This avoids O(n!) complexity: 6! = 720, 7! = 5040 permutations
+        if (arr.length >= 6) {
             const byAreaDesc = [...arr].sort((a, b) => (b.width * b.height) - (a.width * a.height));
             const byAreaAsc = [...arr].sort((a, b) => (a.width * a.height) - (b.width * b.height));
             const byWidthDesc = [...arr].sort((a, b) => b.width - a.width);
