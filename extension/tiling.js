@@ -27,6 +27,7 @@ export class TilingManager {
         this._drawingManager = null;
         this._animationsManager = null;
         this._windowingManager = null;
+        this._extension = null;
         
         // Track original window sizes for smart resize before overflow
         this._originalSizes = new Map();  // windowId -> { width, height } - size before current resize session
@@ -45,6 +46,10 @@ export class TilingManager {
 
     setEdgeTilingManager(manager) {
         this._edgeTilingManager = manager;
+    }
+    
+    setExtension(extension) {
+        this._extension = extension;
     }
 
     setDrawingManager(manager) {
@@ -1016,6 +1021,12 @@ export class TilingManager {
     }
 
     tileWorkspaceWindows(workspace, reference_meta_window, _monitor, keep_oversized_windows, excludeFromTiling = false) {
+        // Check if mosaic is enabled for this workspace
+        if (this._extension && !this._extension.isMosaicEnabledForWorkspace(workspace)) {
+            Logger.log(`[MOSAIC WM] Mosaic disabled for workspace ${workspace.index()} - skipping tiling`);
+            return;
+        }
+        
         // Invalidate window list cache for this operation
         if (this._windowingManager) {
             this._windowingManager.invalidateWindowsCache();

@@ -29,6 +29,7 @@ import { WindowHandler } from './windowHandler.js';
 import { DragHandler } from './dragHandler.js';
 import { ResizeHandler } from './resizeHandler.js';
 import * as WindowState from './windowState.js';
+import { MosaicIndicator } from './quickSettings.js';
 
 // Module-level accessor for TilingManager (used by overviewLayout.js for on-demand cache)
 let _tilingManagerInstance = null;
@@ -46,6 +47,9 @@ export default class WindowMosaicExtension extends Extension {
         this._workspaceEventIds = [];
         this._maximizedWindows = [];
         this._sizeChanged = false;
+        
+        // Per-workspace mosaic toggle (volatile, not persisted)
+        this._disabledWorkspaces = new Set();
         
         this._resizeOverflowWindow = null;
         this._resizeInOverflow = false;
@@ -90,6 +94,20 @@ export default class WindowMosaicExtension extends Extension {
         
         // Centralized timeout management for async operations
         this._timeoutRegistry = new TimeoutRegistry();
+    }
+    
+    // Check if mosaic is enabled for a given workspace
+    isMosaicEnabledForWorkspace(workspace) {
+        if (!workspace) return true;
+        const index = workspace.index();
+        return !this._disabledWorkspaces.has(index);
+    }
+    
+    // Update the indicator icon based on current workspace state
+    _updateIndicatorIcon() {
+        if (this._mosaicIndicator) {
+            this._mosaicIndicator._updateIcon();
+        }
     }
 
     _tileWindowWorkspace(meta_window) {
@@ -2071,6 +2089,7 @@ export default class WindowMosaicExtension extends Extension {
         // Create managers
         this.edgeTilingManager = new EdgeTilingManager();
         this.tilingManager = new TilingManager();
+        this.tilingManager.setExtension(this);
         _tilingManagerInstance = this.tilingManager; // Expose for overviewLayout.js
         this.reorderingManager = new ReorderingManager();
         this.swappingManager = new SwappingManager();
@@ -2109,6 +2128,10 @@ export default class WindowMosaicExtension extends Extension {
         this.windowHandler = new WindowHandler(this);
         this.dragHandler = new DragHandler(this);
         this.resizeHandler = new ResizeHandler(this);
+        
+        // Initialize Quick Settings indicator
+        this._mosaicIndicator = new MosaicIndicator(this);
+        Main.panel.statusArea.quickSettings.addExternalIndicator(this._mosaicIndicator);
         
         this._windowWorkspaceSignals = new Map();
         this._workspaceChangeDebounce = new Map();
@@ -2341,6 +2364,12 @@ export default class WindowMosaicExtension extends Extension {
         if (this.edgeTilingManager) this.edgeTilingManager.destroy();
         if (this.drawingManager) this.drawingManager.destroy();
         if (this.animationsManager) this.animationsManager.destroy();
+        
+        // Destroy Quick Settings indicator
+        if (this._mosaicIndicator) {
+            this._mosaicIndicator.destroy();
+            this._mosaicIndicator = null;
+        }
         
         if (this._tileTimeout) {
             GLib.source_remove(this._tileTimeout);
