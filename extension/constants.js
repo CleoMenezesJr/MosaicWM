@@ -54,6 +54,7 @@ export const LARGE_WINDOW_THRESHOLD = 0.35;  // Window > 35% of workspace = larg
 export const MIN_RESIZE_RATIO = 0.30;        // Minimum 30% of original size when resizing
 export const SMART_RESIZE_ANIMATION_MS = 400; // Dedicated animation duration for auto-resize (smoother)
 export const SMART_RESIZE_MAX_ATTEMPTS = 20;  // Max polling attempts before giving up on smart resize
+export const PRE_FIT_MAX_ATTEMPTS = 10;       // Max attempts for DnD pre-fit checks
 
 // Slide-in animation for new windows
 export const SLIDE_IN_OFFSET_PX = 100;        // Offset in pixels for new window slide-in animation

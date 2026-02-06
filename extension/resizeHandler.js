@@ -4,6 +4,7 @@
 
 import * as Logger from './logger.js';
 import { afterWorkspaceSwitch } from './timing.js';
+import * as WindowState from './windowState.js';
 
 export class ResizeHandler {
     constructor(extension) {
@@ -27,7 +28,7 @@ export class ResizeHandler {
         // Restore pre-maximize size so tiling uses correct dimensions
         if (preMaxSize) {
             Logger.log(`[MOSAIC WM] Undo: Restoring pre-max size ${preMaxSize.width}x${preMaxSize.height} for window ${windowId}`);
-            this.tilingManager._openingSizes.set(windowId, preMaxSize);
+            WindowState.set(window, 'openingSize', preMaxSize);
         }
         
         // Check if original workspace still exists
