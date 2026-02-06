@@ -30,10 +30,12 @@ export class TilingManager {
         this._extension = null;
         
         // Track original window sizes for smart resize before overflow
-        this._originalSizes = new Map();  // windowId -> { width, height } - size before current resize session
+        // windowId -> { width, height } - size before current resize session
+        // Now stored in WindowState.get(window, 'originalSize')
         
         // Track window opening sizes for reverse smart resize (restore on window close)
-        this._openingSizes = new Map();   // windowId -> { width, height } - size when window first opened
+        // windowId -> { width, height } - size when window first opened
+        // Now stored in WindowState.get(window, 'openingSize')
         
         // Queue for serializing window opening operations to prevent race conditions
         this._openingQueue = [];
@@ -137,18 +139,28 @@ export class TilingManager {
         
         Logger.log(`[MOSAIC WM] Processing queue: window ${windowId} (remaining: ${this._openingQueue.length})`);
         
+        // Monitor this processing step
+        const watchdogId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+             Logger.log(`[MOSAIC WM] Queue watchdog: Window ${windowId} callback took too long or stalled - forcing next`);
+             this._processingQueue = false;
+             this._processOpeningQueue();
+             return GLib.SOURCE_REMOVE;
+        });
+
         // Execute the callback
         try {
             callback();
         } catch (e) {
             Logger.log(`[MOSAIC WM] Error processing window ${windowId}: ${e}`);
+        } finally {
+            if (watchdogId) GLib.source_remove(watchdogId);
         }
         
         // Small delay before processing next window to let animations settle
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.QUEUE_PROCESS_DELAY_MS, () => {
-            this._processingQueue = false;
-            this._processOpeningQueue();
-            return GLib.SOURCE_REMOVE;
+             this._processingQueue = false;
+             this._processOpeningQueue();
+             return GLib.SOURCE_REMOVE;
         });
     }
     
@@ -1032,6 +1044,10 @@ export class TilingManager {
             Logger.log(`[MOSAIC WM] Mosaic disabled for workspace ${workspace.index()} - skipping tiling`);
             return { overflow: false, layout: null };
         }
+
+        Logger.log(`[MOSAIC WM] tileWorkspaceWindows: Starting for workspace ${workspace.index()}`);
+
+
         
         // Auto-detect monitors: if no monitor specified and no reference window,
         // iterate over all monitors to ensure complete tiling coverage
@@ -1191,10 +1207,10 @@ export class TilingManager {
         if(overflow && !keep_oversized_windows && reference_meta_window && canOverflow && !this.isDragging) {
             // SAFETY: Only overflow windows that are genuinely new (added within last 2 seconds)
             // This prevents incorrectly expelling existing windows during resize retiling
-            const isNewlyAdded = reference_meta_window._windowAddedTime && 
-                (Date.now() - reference_meta_window._windowAddedTime) < 2000;
+            const addedTime = WindowState.get(reference_meta_window, 'addedTime');
+            const isNewlyAdded = addedTime && (Date.now() - addedTime) < 2000;
             
-            if (!isNewlyAdded && !reference_meta_window._forceOverflow) {
+            if (!isNewlyAdded && !WindowState.get(reference_meta_window, 'forceOverflow')) {
                 Logger.log(`[MOSAIC WM] Skipping overflow for ${reference_meta_window.get_id()} - not a new window`);
             } else if (WindowState.get(reference_meta_window, 'isSmartResizing')) {
                 Logger.log(`[MOSAIC WM] Skipping overflow for ${reference_meta_window.get_id()} - smart resize in progress`);
@@ -1220,10 +1236,10 @@ export class TilingManager {
             let draggedWindow = reference_meta_window;
             
             // Allow animation for windows returning from excluded state
-            if (reference_meta_window && reference_meta_window._justReturnedFromExclusion) {
+            // Allow animation for windows returning from excluded state
+            if (reference_meta_window && WindowState.get(reference_meta_window, 'justReturnedFromExclusion')) {
                 Logger.log(`[MOSAIC WM] Allowing animation for returning excluded window ${reference_meta_window.get_id()}`);
-                draggedWindow = null;
-                delete reference_meta_window._justReturnedFromExclusion;
+                WindowState.remove(reference_meta_window, 'justReturnedFromExclusion');
             }
             
             animationsHandledPositioning = this._animateTileLayout(tile_info, tileArea, meta_windows, draggedWindow);
@@ -1378,11 +1394,10 @@ export class TilingManager {
      // Save original size of a window before resizing
      
     saveOriginalSize(window) {
-        const winId = window.get_id();
-        if (!this._originalSizes.has(winId)) {
+        if (!WindowState.has(window, 'originalSize')) {
             const frame = window.get_frame_rect();
-            this._originalSizes.set(winId, { width: frame.width, height: frame.height });
-            Logger.log(`[MOSAIC WM] saveOriginalSize: Saved ${winId} as ${frame.width}x${frame.height}`);
+            WindowState.set(window, 'originalSize', { width: frame.width, height: frame.height });
+            Logger.log(`[MOSAIC WM] saveOriginalSize: Saved ${window.get_id()} as ${frame.width}x${frame.height}`);
         }
     }
 
@@ -1391,12 +1406,11 @@ export class TilingManager {
      // This is the MAXIMUM size the window can be restored to
      
     saveOpeningSize(window) {
-        const winId = window.get_id();
-        if (!this._openingSizes.has(winId)) {
+        if (!WindowState.has(window, 'openingSize')) {
             const frame = window.get_frame_rect();
             if (frame.width > 0 && frame.height > 0) {
-                this._openingSizes.set(winId, { width: frame.width, height: frame.height });
-                Logger.log(`[MOSAIC WM] saveOpeningSize: Window ${winId} opened at ${frame.width}x${frame.height}`);
+                WindowState.set(window, 'openingSize', { width: frame.width, height: frame.height });
+                Logger.log(`[MOSAIC WM] saveOpeningSize: Window ${window.get_id()} opened at ${frame.width}x${frame.height}`);
             }
         }
     }
@@ -1404,18 +1418,21 @@ export class TilingManager {
     //
      // Clear opening size when window is destroyed
      
-    clearOpeningSize(windowId) {
-        if (this._openingSizes.has(windowId)) {
-            this._openingSizes.delete(windowId);
-            Logger.log(`[MOSAIC WM] clearOpeningSize: Removed ${windowId}`);
+    //
+     // Clear opening size when window is destroyed
+     
+    clearOpeningSize(window) {
+        if (WindowState.has(window, 'openingSize')) {
+            WindowState.remove(window, 'openingSize');
+            Logger.log(`[MOSAIC WM] clearOpeningSize: Removed ${window.get_id()}`);
         }
     }
 
     //
      // Get opening size for a window
      
-    getOpeningSize(windowId) {
-        return this._openingSizes.get(windowId) || null;
+    getOpeningSize(window) {
+        return WindowState.get(window, 'openingSize') || null;
     }
 
     //
@@ -1427,8 +1444,7 @@ export class TilingManager {
         // Find windows that were shrunk (current size < opening size)
         const shrunkWindows = [];
         for (const window of windows) {
-            const winId = window.get_id();
-            const openingSize = this._openingSizes.get(winId);
+            const openingSize = WindowState.get(window, 'openingSize');
             if (!openingSize) continue;
             
             const frame = window.get_frame_rect();
@@ -1612,24 +1628,7 @@ export class TilingManager {
         return restored;
     }
 
-    //
-     // Legacy: Restore windows to their original sizes if possible
-     
-    restoreOriginalSizes(windows, workArea) {
-        for (const window of windows) {
-            const winId = window.get_id();
-            const originalSize = this._originalSizes.get(winId);
-            if (originalSize) {
-                const frame = window.get_frame_rect();
-                // Only restore if current size is smaller than original
-                if (frame.width < originalSize.width || frame.height < originalSize.height) {
-                    Logger.log(`[MOSAIC WM] restoreOriginalSizes: Restoring ${winId} to ${originalSize.width}x${originalSize.height}`);
-                    window.move_resize_frame(false, frame.x, frame.y, originalSize.width, originalSize.height);
-                }
-                this._originalSizes.delete(winId);
-            }
-        }
-    }
+
 
     //
      // Calculate window area as ratio of workspace area
@@ -1904,8 +1903,9 @@ class WindowDescriptor {
         this.index = index;
         this.x = frame.x;
         this.y = frame.y;
-        this.width = frame.width;
-        this.height = frame.height;
+        // Fallback for new windows that report 0 dimensions
+        this.width = Math.max(frame.width, 200);
+        this.height = Math.max(frame.height, 200);
         this.id = meta_window.get_id();
     }
     

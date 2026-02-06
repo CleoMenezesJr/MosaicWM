@@ -21,92 +21,102 @@ export class WindowHandler {
 
     // Connect all signals for a window to track state changes
     connectWindowSignals(window) {
-        const windowId = window.get_id();
-        
         // Workspace change signal
-        const signalId = window.connect('workspace-changed', () => {
-            this._ext._windowWorkspaceChangedHandler(window);
-        });
-        this._ext._windowWorkspaceSignals.set(windowId, signalId);
+        if (!WindowState.has(window, 'workspaceSignalId')) {
+            const signalId = window.connect('workspace-changed', () => {
+                this._ext._windowWorkspaceChangedHandler(window);
+            });
+            WindowState.set(window, 'workspaceSignalId', signalId);
+        }
         
         // Always-on-top state change
-        const aboveSignalId = window.connect('notify::above', () => {
-            Logger.log(`[MOSAIC WM] notify::above triggered for window ${windowId}`);
-            this.handleExclusionStateChange(window);
-        });
-        this._ext._windowAboveSignals = this._ext._windowAboveSignals || new Map();
-        this._ext._windowAboveSignals.set(windowId, aboveSignalId);
-        Logger.log(`[MOSAIC WM] Connected notify::above signal for window ${windowId}`);
+        if (!WindowState.has(window, 'aboveSignalId')) {
+            const aboveSignalId = window.connect('notify::above', () => {
+                Logger.log(`[MOSAIC WM] notify::above triggered for window ${window.get_id()}`);
+                this.handleExclusionStateChange(window);
+            });
+            WindowState.set(window, 'aboveSignalId', aboveSignalId);
+            Logger.log(`[MOSAIC WM] Connected notify::above signal for window ${window.get_id()}`);
+        }
         
         // Sticky (on-all-workspaces) state change
-        const stickySignalId = window.connect('notify::on-all-workspaces', () => {
-            this.handleExclusionStateChange(window);
-        });
-        this._ext._windowStickySignals = this._ext._windowStickySignals || new Map();
-        this._ext._windowStickySignals.set(windowId, stickySignalId);
+        if (!WindowState.has(window, 'stickySignalId')) {
+            const stickySignalId = window.connect('notify::on-all-workspaces', () => {
+                this.handleExclusionStateChange(window);
+            });
+            WindowState.set(window, 'stickySignalId', stickySignalId);
+        }
         
-        // Initialize signal maps if needed
-        this._ext._windowPositionSignals = this._ext._windowPositionSignals || new Map();
-        this._ext._windowSizeSignals = this._ext._windowSizeSignals || new Map();
-
         // Invalidate ComputedLayouts cache on position/size change
-        const posSignalId = window.connect('position-changed', () => {
-            ComputedLayouts.delete(windowId);
-        });
-        this._ext._windowPositionSignals.set(windowId, posSignalId);
+        if (!WindowState.has(window, 'positionSignalId')) {
+            const posSignalId = window.connect('position-changed', () => {
+                ComputedLayouts.delete(window.get_id());
+            });
+            WindowState.set(window, 'positionSignalId', posSignalId);
+        }
 
-        const sizeSignalId = window.connect('size-changed', () => {
-            ComputedLayouts.delete(windowId);
-        });
-        this._ext._windowSizeSignals.set(windowId, sizeSignalId);
+        if (!WindowState.has(window, 'sizeSignalId')) {
+            const sizeSignalId = window.connect('size-changed', () => {
+                ComputedLayouts.delete(window.get_id());
+            });
+            WindowState.set(window, 'sizeSignalId', sizeSignalId);
+        }
         
         // Initialize exclusion state tracking
-        this._ext._windowPreviousExclusionState = this._ext._windowPreviousExclusionState || new Map();
-        this._ext._windowPreviousExclusionState.set(windowId, this.windowingManager.isExcluded(window));
-        Logger.log(`[MOSAIC WM] Initialized exclusion state for window ${windowId}: ${this._ext._windowPreviousExclusionState.get(windowId)}`);
+        const currentExclusion = this.windowingManager.isExcluded(window);
+        WindowState.set(window, 'previousExclusionState', currentExclusion);
+        Logger.log(`[MOSAIC WM] Initialized exclusion state for window ${window.get_id()}: ${currentExclusion}`);
         
         // Track previous workspace for cross-workspace moves
         const currentWorkspace = window.get_workspace();
         if (currentWorkspace) {
-            this._ext._windowPreviousWorkspace.set(windowId, currentWorkspace.index());
-            Logger.log(`[MOSAIC WM] Initialized workspace tracker for window ${windowId} at workspace ${currentWorkspace.index()}`);
+            WindowState.set(window, 'previousWorkspace', currentWorkspace.index());
+            Logger.log(`[MOSAIC WM] Initialized workspace tracker for window ${window.get_id()} at workspace ${currentWorkspace.index()}`);
         }
     }
 
     // Disconnect all signals for a window
     disconnectWindowSignals(window) {
-        const windowId = window.get_id();
-        
         // Disconnect workspace signal
-        const signalId = this._ext._windowWorkspaceSignals.get(windowId);
+        const signalId = WindowState.get(window, 'workspaceSignalId');
         if (signalId) {
             window.disconnect(signalId);
-            this._ext._windowWorkspaceSignals.delete(windowId);
+            WindowState.remove(window, 'workspaceSignalId');
         }
     
         // Disconnect position signal
-        if (this._ext._windowPositionSignals?.has(windowId)) {
-            window.disconnect(this._ext._windowPositionSignals.get(windowId));
-            this._ext._windowPositionSignals.delete(windowId);
+        const posSignalId = WindowState.get(window, 'positionSignalId');
+        if (posSignalId) {
+            window.disconnect(posSignalId);
+            WindowState.remove(window, 'positionSignalId');
         }
 
         // Disconnect size signal
-        if (this._ext._windowSizeSignals?.has(windowId)) {
-            window.disconnect(this._ext._windowSizeSignals.get(windowId));
-            this._ext._windowSizeSignals.delete(windowId);
+        const sizeSignalId = WindowState.get(window, 'sizeSignalId');
+        if (sizeSignalId) {
+            window.disconnect(sizeSignalId);
+            WindowState.remove(window, 'sizeSignalId');
         }
         
-        // Disconnect above signal (Always on Top)
-        if (this._ext._windowAboveSignals?.has(windowId)) {
-            window.disconnect(this._ext._windowAboveSignals.get(windowId));
-            this._ext._windowAboveSignals.delete(windowId);
+        // Disconnect above signal
+        const aboveSignalId = WindowState.get(window, 'aboveSignalId');
+        if (aboveSignalId) {
+            window.disconnect(aboveSignalId);
+            WindowState.remove(window, 'aboveSignalId');
         }
         
-        // Disconnect sticky signal (On All Workspaces)
-        if (this._ext._windowStickySignals?.has(windowId)) {
-            window.disconnect(this._ext._windowStickySignals.get(windowId));
-            this._ext._windowStickySignals.delete(windowId);
+        // Disconnect sticky signal
+        const stickySignalId = WindowState.get(window, 'stickySignalId');
+        if (stickySignalId) {
+            WindowState.remove(window, 'stickySignalId');
         }
+        
+        // Clear layout cache
+        ComputedLayouts.delete(window.get_id());
+        
+        // Clean up other states
+        WindowState.remove(window, 'previousExclusionState');
+        WindowState.remove(window, 'previousWorkspace');
     }
 
     // Handle exclusion state transitions (Always on Top, Sticky, etc.)
@@ -118,9 +128,8 @@ export class WindowHandler {
         const isNowExcluded = this.windowingManager.isExcluded(window);
         
         // Track previous state to detect transitions
-        this._ext._windowPreviousExclusionState = this._ext._windowPreviousExclusionState || new Map();
-        const wasExcluded = this._ext._windowPreviousExclusionState.get(windowId) || false;
-        this._ext._windowPreviousExclusionState.set(windowId, isNowExcluded);
+        const wasExcluded = WindowState.get(window, 'previousExclusionState') || false;
+        WindowState.set(window, 'previousExclusionState', isNowExcluded);
         
         // Only act on actual state transitions
         if (wasExcluded === isNowExcluded) {
@@ -165,7 +174,7 @@ export class WindowHandler {
                 // Check if window fits without resize
                 if (this.tilingManager.canFitWindow(window, workspace, monitor)) {
                     Logger.log(`[MOSAIC WM] Re-included window fits without resize`);
-                    window._justReturnedFromExclusion = true;
+                    WindowState.set(window, 'justReturnedFromExclusion', true);
                     this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
                     return GLib.SOURCE_REMOVE;
                 }
@@ -195,7 +204,7 @@ export class WindowHandler {
                         if (canFitNow) {
                             Logger.log(`[MOSAIC WM] Re-include: Smart resize success after ${attempts} polls`);
                             WindowState.set(window, 'isSmartResizing', false);
-                            window._justReturnedFromExclusion = true;
+                            WindowState.set(window, 'justReturnedFromExclusion', true);
                             this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
                             return GLib.SOURCE_REMOVE;
                         }

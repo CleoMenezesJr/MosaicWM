@@ -17,8 +17,7 @@ const ANIMATION_MODE_SUBTLE = Clutter.AnimationMode.EASE_OUT_QUAD;
 export class AnimationsManager {
     constructor() {
         this._isDragging = false;
-        this._animatingWindows = new Set();
-        this._initialWindowPositions = new Map();
+        this._animatingWindows = new Set(); // Set of Window IDs (kept for efficiency)
         this._justEndedDrag = false;
         this._resizingWindowId = null;
     }
@@ -50,9 +49,8 @@ export class AnimationsManager {
     }
 
     saveInitialPosition(window) {
-        const windowId = window.get_id();
         const rect = window.get_frame_rect();
-        this._initialWindowPositions.set(windowId, {
+        WindowState.set(window, 'initialPosition', {
             x: rect.x,
             y: rect.y,
             width: rect.width,
@@ -61,10 +59,9 @@ export class AnimationsManager {
     }
 
     getAndClearInitialPosition(window) {
-        const windowId = window.get_id();
-        const pos = this._initialWindowPositions.get(windowId);
+        const pos = WindowState.get(window, 'initialPosition');
         if (pos) {
-            this._initialWindowPositions.delete(windowId);
+            WindowState.remove(window, 'initialPosition');
         }
         return pos;
     }
@@ -86,7 +83,7 @@ export class AnimationsManager {
             return false;
         }
         
-        if (this._animatingWindows.has(window.get_id())) {
+        if (this._animatingWindows.has(window)) {
             return false;
         }
         
@@ -124,8 +121,7 @@ export class AnimationsManager {
             return;
         }
         
-        const windowId = window.get_id();
-        this._animatingWindows.add(windowId);
+        this._animatingWindows.add(window);
         
         const currentRect = startRect || window.get_frame_rect();
         
@@ -162,7 +158,7 @@ export class AnimationsManager {
                 mode: animationMode,
                 onComplete: () => {
                     windowActor.set_translation(0, 0, 0);
-                    this._animatingWindows.delete(windowId);
+                    this._animatingWindows.delete(window);
                     if (onComplete) onComplete();
                 }
             });
@@ -176,8 +172,8 @@ export class AnimationsManager {
         windowActor.set_translation(translateX, translateY, 0);
         
         const safetyTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, duration + constants.SAFETY_TIMEOUT_BUFFER_MS, () => {
-            if (this._animatingWindows.has(windowId)) {
-                this._animatingWindows.delete(windowId);
+            if (this._animatingWindows.has(window)) {
+                this._animatingWindows.delete(window);
                 try {
                     windowActor.set_translation(0, 0, 0);
                 } catch (e) {
@@ -194,7 +190,7 @@ export class AnimationsManager {
             onComplete: () => {
                 GLib.source_remove(safetyTimeout);
                 windowActor.set_translation(0, 0, 0);
-                this._animatingWindows.delete(windowId);
+                this._animatingWindows.delete(window);
                 if (onComplete) onComplete();
             }
         });
@@ -207,8 +203,7 @@ export class AnimationsManager {
             return;
         }
         
-        const windowId = window.get_id();
-        this._animatingWindows.add(windowId);
+        this._animatingWindows.add(window);
         
         window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
         
@@ -225,7 +220,7 @@ export class AnimationsManager {
             onComplete: () => {
                 windowActor.set_scale(1.0, 1.0);
                 windowActor.set_opacity(255);
-                this._animatingWindows.delete(windowId);
+                this._animatingWindows.delete(window);
             }
         });
     }
@@ -237,8 +232,7 @@ export class AnimationsManager {
             return;
         }
         
-        const windowId = window.get_id();
-        this._animatingWindows.add(windowId);
+        this._animatingWindows.add(window);
         
         windowActor.set_pivot_point(0.5, 0.5);
         
@@ -249,7 +243,7 @@ export class AnimationsManager {
             duration: ANIMATION_DURATION,
             mode: ANIMATION_MODE,
             onComplete: () => {
-                this._animatingWindows.delete(windowId);
+                this._animatingWindows.delete(window);
                 if (onComplete) onComplete();
             }
         });
@@ -268,8 +262,7 @@ export class AnimationsManager {
             return;
         }
         
-        const windowId = window.get_id();
-        this._animatingWindows.add(windowId);
+        this._animatingWindows.add(window);
         
         const translateX = fromRect.x - toRect.x;
         const translateY = fromRect.y - toRect.y;
@@ -284,7 +277,7 @@ export class AnimationsManager {
             mode: mode,
             onComplete: () => {
                 windowActor.set_translation(0, 0, 0);
-                this._animatingWindows.delete(windowId);
+                this._animatingWindows.delete(window);
                 if (onComplete) onComplete();
             }
         });

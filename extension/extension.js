@@ -33,6 +33,9 @@ import { MosaicIndicator } from './quickSettings.js';
 
 // Module-level accessor for TilingManager (used by overviewLayout.js for on-demand cache)
 let _tilingManagerInstance = null;
+
+// Track windows processed for smart resize per workspace to avoid double-processing in a single burst
+const _smartResizeProcessedWindows = new WeakMap();
 export function getTilingManager() {
     return _tilingManagerInstance;
 }
@@ -45,7 +48,6 @@ export default class WindowMosaicExtension extends Extension {
         this._displayEventIds = [];
         this._workspaceManEventIds = [];
         this._workspaceEventIds = [];
-        this._maximizedWindows = [];
         this._sizeChanged = false;
         
         // Per-workspace mosaic toggle (volatile, not persisted)
@@ -56,10 +58,7 @@ export default class WindowMosaicExtension extends Extension {
         this._resizeDebounceTimeout = null;
         this._resizeGracePeriod = 0;
         this._tileTimeout = null;
-        this._windowPreviousWorkspace = new Map();
-        this._windowRemovedTimestamp = new Map();
-        this._manualWorkspaceMove = new Map();
-        this._overflowMoveTimestamps = new Map();  // Track windows recently moved due to overflow
+
         this._currentWorkspaceIndex = null;
         this._lastVisitedWorkspace = null;
         this._overflowInProgress = false;  // Flag to prevent empty workspace navigation during overflow
@@ -129,7 +128,7 @@ export default class WindowMosaicExtension extends Extension {
             for(let j = 0; j < nMonitors; j++)
                 this.tilingManager.tileWorkspaceWindows(workspace, false, j, true);
         }
-    }
+    };
 
     // =========================================================================
     // SIGNAL HANDLERS - Window Creation & Destruction
@@ -138,10 +137,7 @@ export default class WindowMosaicExtension extends Extension {
     _windowCreatedHandler = (_, window) => {
 
         if (this.windowingManager.isMaximizedOrFullscreen(window)) {
-            if (!this._windowsOpenedMaximized) {
-                this._windowsOpenedMaximized = new Set();
-            }
-            this._windowsOpenedMaximized.add(window.get_id());
+            WindowState.set(window, 'openedMaximized', true);
             Logger.log(`[MOSAIC WM] Window ${window.get_id()} opened maximized - marked for auto-tile check`);
         }
         
@@ -167,7 +163,7 @@ export default class WindowMosaicExtension extends Extension {
                     
                     if(workspaceWindows.length > 1) {
                         const windowId = window.get_id();
-                        const openedMaximized = this._windowsOpenedMaximized && this._windowsOpenedMaximized.has(windowId);
+                        const openedMaximized = WindowState.get(window, 'openedMaximized');
                         
                         if (openedMaximized) {
                             Logger.log('[MOSAIC WM] Opened maximized with tiled window - auto-tiling');
@@ -181,12 +177,12 @@ export default class WindowMosaicExtension extends Extension {
                             
                             if (tiledWindows.length > 0) {
                                 window.unmaximize(Meta.MaximizeFlags.BOTH);
-                                this._windowsOpenedMaximized.delete(windowId);
+                                WindowState.remove(window, 'openedMaximized');
                             } else {
                                 Logger.log('[MOSAIC WM] Opened maximized without tiled window - moving to new workspace');
                                 Logger.log('[TRACE] OVERFLOW from: Opened maximized without tiled window');
                                 this.windowingManager.moveOversizedWindow(window);
-                                this._windowsOpenedMaximized.delete(windowId);
+                                WindowState.remove(window, 'openedMaximized');
                             }
                         } else {
                             Logger.log('[MOSAIC WM] User maximized window - moving to new workspace');
@@ -322,19 +318,29 @@ export default class WindowMosaicExtension extends Extension {
         } else {
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, processWindowCallback);
         }
-    }
+    };
 
     _destroyedHandler = (_, win) => {
         let window = win.meta_window;
         let monitor = window.get_monitor();
         const windowId = window.get_id();
         
-        this._disconnectWindowWorkspaceSignal(window);
+        this.windowHandler.disconnectWindowSignals(window);
         this.edgeTilingManager.clearWindowState(window);
         
-        this._windowPreviousWorkspace.delete(windowId);
-        this._windowRemovedTimestamp.delete(windowId);
-        this._manualWorkspaceMove.delete(windowId);
+        const configureSignalId = WindowState.get(window, 'configureSignalId');
+        if (configureSignalId) {
+             window.disconnect(configureSignalId);
+             WindowState.remove(window, 'configureSignalId');
+        }
+        
+        const debounceId = WindowState.get(window, 'workspaceChangeDebounceId');
+        if (debounceId) {
+             GLib.source_remove(debounceId);
+             WindowState.remove(window, 'workspaceChangeDebounceId');
+        }
+        
+        WindowState.remove(window, 'maximizedUndoInfo');
         
         if(this.windowingManager.isExcluded(window)) {
             Logger.log('[MOSAIC WM] Excluded window closed - no workspace navigation');
@@ -425,7 +431,7 @@ export default class WindowMosaicExtension extends Extension {
                 }
             }
         }
-    }
+    };
 
     // =========================================================================
     // SIGNAL HANDLERS - Workspace Changes
@@ -433,7 +439,7 @@ export default class WindowMosaicExtension extends Extension {
 
     _switchWorkspaceHandler = (_, win) => {
         this._tileWindowWorkspace(win.meta_window);
-    }
+    };
     
     _workspaceSwitchedHandler = () => {
         const newWorkspace = this._workspaceManager.get_active_workspace();
@@ -451,15 +457,17 @@ export default class WindowMosaicExtension extends Extension {
         afterAnimations(this.animationsManager, () => {
             Logger.log(`[MOSAIC WM] Workspace animation complete - ready for operations on workspace ${newIndex}`);
         }, this._timeoutRegistry);
-    }
+    };
 
     _windowWorkspaceChangedHandler = (window) => {
         Logger.log(`[MOSAIC WM] workspace-changed fired for window ${window.get_id()}`);
         const windowId = window.get_id();
         
-        if (this._workspaceChangeDebounce.has(windowId)) {
+        const existingDebounceId = WindowState.get(window, 'workspaceChangeDebounceId');
+        if (existingDebounceId) {
             Logger.log('[MOSAIC WM] Clearing previous debounce timeout');
-            GLib.source_remove(this._workspaceChangeDebounce.get(windowId));
+            GLib.source_remove(existingDebounceId);
+            WindowState.remove(window, 'workspaceChangeDebounceId');
         }
         
         if (this.windowingManager.isMaximizedOrFullscreen(window)) {
@@ -468,10 +476,10 @@ export default class WindowMosaicExtension extends Extension {
         }
         
         const timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.DEBOUNCE_DELAY_MS, () => {
-            this._workspaceChangeDebounce.delete(windowId);
+            WindowState.remove(window, 'workspaceChangeDebounceId');
             
             // Guard: Skip if window was recently moved due to overflow (prevents infinite loop)
-            const lastOverflowMove = this._overflowMoveTimestamps.get(windowId);
+            const lastOverflowMove = WindowState.get(window, 'overflowMoveTimestamp');
             if (lastOverflowMove && (Date.now() - lastOverflowMove) < 2000) {
                 Logger.log(`[MOSAIC WM] Skipping overflow check - window ${windowId} was recently moved for overflow`);
                 return GLib.SOURCE_REMOVE;
@@ -488,7 +496,7 @@ export default class WindowMosaicExtension extends Extension {
             
             const monitor = window.get_monitor();
             
-            const previousWorkspaceIndex = this._windowPreviousWorkspace.get(windowId);
+            const previousWorkspaceIndex = WindowState.get(window, 'previousWorkspace');
             
             if (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== currentWorkspaceIndex) {
                 const sourceWorkspace = global.workspace_manager.get_workspace_by_index(previousWorkspaceIndex);
@@ -513,7 +521,7 @@ export default class WindowMosaicExtension extends Extension {
                 }
             }
             
-            this._windowPreviousWorkspace.set(windowId, currentWorkspaceIndex);
+            WindowState.set(window, 'previousWorkspace', currentWorkspaceIndex);
             
             const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(currentWorkspace, monitor);
             
@@ -573,7 +581,7 @@ export default class WindowMosaicExtension extends Extension {
                 } else {
                     Logger.log('[MOSAIC WM] DnD arrival: Smart Resize failed - moving to new workspace');
                     Logger.log('[TRACE] OVERFLOW from: DnD Smart Resize failed');
-                    this._overflowMoveTimestamps.set(windowId, Date.now());
+                    WindowState.set(window, 'overflowMoveTimestamp', Date.now());
                     this.windowingManager.moveOversizedWindow(window);
                 }
             } else {
@@ -588,90 +596,10 @@ export default class WindowMosaicExtension extends Extension {
             return GLib.SOURCE_REMOVE;
         });
         
-        this._workspaceChangeDebounce.set(windowId, timeoutId);
-    }
+        WindowState.set(window, 'workspaceChangeDebounceId', timeoutId);
+    };
 
-    _connectWindowWorkspaceSignal(window) {
-        const windowId = window.get_id();
-        const signalId = window.connect('workspace-changed', () => {
-            this._windowWorkspaceChangedHandler(window);
-        });
-        this._windowWorkspaceSignals.set(windowId, signalId);
-        
-        // Listen for always-on-top state change
-        const aboveSignalId = window.connect('notify::above', () => {
-            Logger.log(`[MOSAIC WM] notify::above triggered for window ${window.get_id()}`);
-            this.windowHandler.handleExclusionStateChange(window);
-        });
-        this._windowAboveSignals = this._windowAboveSignals || new Map();
-        this._windowAboveSignals.set(windowId, aboveSignalId);
-        Logger.log(`[MOSAIC WM] Connected notify::above signal for window ${windowId}`);
-        
-        // Listen for sticky/on-all-workspaces state change
-        const stickySignalId = window.connect('notify::on-all-workspaces', () => {
-            this.windowHandler.handleExclusionStateChange(window);
-        });
-        this._windowStickySignals = this._windowStickySignals || new Map();
-        this._windowStickySignals.set(windowId, stickySignalId);
-        
-        // Initialize maps if needed
-    this._windowPositionSignals = this._windowPositionSignals || new Map();
-    this._windowSizeSignals = this._windowSizeSignals || new Map();
-
-    // Invalidate cache on position/size change
-    const posSignalId = window.connect('position-changed', () => {
-        ComputedLayouts.delete(windowId);
-    });
-    this._windowPositionSignals.set(windowId, posSignalId);
-
-    const sizeSignalId = window.connect('size-changed', () => {
-        ComputedLayouts.delete(windowId);
-    });
-    this._windowSizeSignals.set(windowId, sizeSignalId);
     
-    // Initialize previous exclusion state for transition tracking
-        this._windowPreviousExclusionState = this._windowPreviousExclusionState || new Map();
-        this._windowPreviousExclusionState.set(windowId, this.windowingManager.isExcluded(window));
-        Logger.log(`[MOSAIC WM] Initialized exclusion state for window ${windowId}: ${this._windowPreviousExclusionState.get(windowId)}`);
-        
-        const currentWorkspace = window.get_workspace();
-        if (currentWorkspace) {
-            this._windowPreviousWorkspace.set(windowId, currentWorkspace.index());
-            Logger.log(`[MOSAIC WM] Initialized workspace tracker for window ${windowId} at workspace ${currentWorkspace.index()}`);
-        }
-    }
-
-    _disconnectWindowWorkspaceSignal(window) {
-        const windowId = window.get_id();
-        const signalId = this._windowWorkspaceSignals.get(windowId);
-        if (signalId) {
-            window.disconnect(signalId);
-            this._windowWorkspaceSignals.delete(windowId);
-        }
-    
-        if (this._windowPositionSignals && this._windowPositionSignals.has(windowId)) {
-            window.disconnect(this._windowPositionSignals.get(windowId));
-            this._windowPositionSignals.delete(windowId);
-        }
-
-        if (this._windowSizeSignals && this._windowSizeSignals.has(windowId)) {
-            window.disconnect(this._windowSizeSignals.get(windowId));
-            this._windowSizeSignals.delete(windowId);
-        }
-        
-        // Disconnect above signal (Always on Top)
-        if (this._windowAboveSignals && this._windowAboveSignals.has(windowId)) {
-            window.disconnect(this._windowAboveSignals.get(windowId));
-            this._windowAboveSignals.delete(windowId);
-        }
-        
-        // Disconnect sticky signal (On All Workspaces)
-        if (this._windowStickySignals && this._windowStickySignals.has(windowId)) {
-            window.disconnect(this._windowStickySignals.get(windowId));
-            this._windowStickySignals.delete(windowId);
-        }
-    }
-
     // =========================================================================
     // SIGNAL HANDLERS - Window Size Changes
     // =========================================================================
@@ -689,25 +617,25 @@ export default class WindowMosaicExtension extends Extension {
                     const originalWorkspaceIndex = workspace.index(); // Save BEFORE move (for undo)
                     
                     // Use openingSize as pre-maximize size (frame is already maximized here)
-                    const preMaxSize = this.tilingManager._openingSizes.get(id);
+                    const preMaxSize = WindowState.get(window, 'openingSize');
                     if (preMaxSize) {
                         Logger.log(`[MOSAIC WM] Saved pre-max size: ${preMaxSize.width}x${preMaxSize.height}`);
                     }
                     
                     let newWorkspace = this.windowingManager.moveOversizedWindow(window);
                     if(newWorkspace) {
-                        this._maximizedWindows[id] = {
+                        WindowState.set(window, 'maximizedUndoInfo', {
                             originalWorkspace: originalWorkspaceIndex,  // Origin (for undo)
                             currentWorkspace: newWorkspace.index(),     // Destination
                             monitor: monitor,
                             preMaxSize: preMaxSize                      // Size before maximize (may be null)
-                        };
+                        });
                         this.tilingManager.tileWorkspaceWindows(workspace, false, monitor, false);
                     }
                 }
             }
         }
-    }
+    };
 
     _sizeChangedHandler = (_, win) => {
         let window = win.meta_window;
@@ -722,13 +650,12 @@ export default class WindowMosaicExtension extends Extension {
             }
             
             // UNMAXIMIZE UNDO: Check if this is an unmaximize of a tracked window
-            const windowId = window.get_id();
-            const maxInfo = this._maximizedWindows[windowId];
+            const maxInfo = WindowState.get(window, 'maximizedUndoInfo');
             
             if (maxInfo && !this.windowingManager.isMaximizedOrFullscreen(window)) {
                 Logger.log(`[MOSAIC WM] Window ${windowId} was unmaximized - attempting undo to workspace ${maxInfo.originalWorkspace}`);
                 this.resizeHandler.handleUnmaximizeUndo(window, maxInfo);
-                delete this._maximizedWindows[windowId];
+                WindowState.remove(window, 'maximizedUndoInfo');
                 this._sizeChanged = false;
                 return; // Skip normal size-changed handling
             }
@@ -750,13 +677,13 @@ export default class WindowMosaicExtension extends Extension {
             
             // UPDATE OPENING SIZE: If user manually resizes, update the stored size
             // This prevents reverse smart resize from undoing manual resizes
-            const currentOpeningSize = this.tilingManager._openingSizes.get(window.get_id());
+            const currentOpeningSize = WindowState.get(window, 'openingSize');
             if (currentOpeningSize) {
                 // Only update if there's a meaningful size difference (avoid noise)
                 const widthDiff = Math.abs(rect.width - currentOpeningSize.width);
                 const heightDiff = Math.abs(rect.height - currentOpeningSize.height);
                 if (widthDiff > 10 || heightDiff > 10) {
-                    this.tilingManager._openingSizes.set(window.get_id(), { 
+                    WindowState.set(window, 'openingSize', { 
                         width: rect.width, 
                         height: rect.height 
                     });
@@ -780,6 +707,8 @@ export default class WindowMosaicExtension extends Extension {
             
             let workspace = window.get_workspace();
             let monitor = window.get_monitor();
+            
+
             
             // Skip resize handling for windows just moved by overflow
             if (WindowState.get(window, 'movedByOverflow')) {
@@ -911,7 +840,7 @@ export default class WindowMosaicExtension extends Extension {
             this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
             this._sizeChanged = false;
         }
-    }
+    };
 
     // =========================================================================
     // SIGNAL HANDLERS - Drag & Drop / Grab Operations
@@ -1277,7 +1206,6 @@ export default class WindowMosaicExtension extends Extension {
                 Logger.log(`[MOSAIC WM] Cleared resize tracking for window ${window.get_id()}`);
             }
             
-            
             if(isResizeEnd) {
                 const tileState = this.edgeTilingManager.getWindowState(window);
                 const isEdgeTiled = tileState && tileState.zone !== TileZone.NONE;
@@ -1377,7 +1305,7 @@ export default class WindowMosaicExtension extends Extension {
                         
                         // Use accurate previous workspace from _windowRemoved handler
                         // This handles both DnD and Move-to-workspace actions reliably
-                        const prevWSIndex = this._windowPreviousWorkspace.get(win.get_id());
+                        const prevWSIndex = WindowState.get(win, 'previousWorkspace');
                         
                         // Check if we have a valid previous workspace index and it's different from current
                         if (prevWSIndex !== undefined && prevWSIndex !== currentWSIndex) {
@@ -1500,16 +1428,13 @@ export default class WindowMosaicExtension extends Extension {
             });
             
             // Track signal for cleanup
-            if (!this._configureSignals) {
-                this._configureSignals = new Map();
-            }
-            this._configureSignals.set(window.get_id(), configureId);
+            WindowState.set(window, 'configureSignalId', configureId);
         } catch (e) {
             Logger.log(`[MOSAIC WM] SLIDE-IN: Failed to connect configure signal: ${e.message}`);
         }
         
         // Mark window as newly added for overflow protection logic
-        window._windowAddedTime = Date.now();
+        WindowState.set(window, 'addedTime', Date.now());
         
         // Save initial position for animation later
         
@@ -1529,15 +1454,16 @@ export default class WindowMosaicExtension extends Extension {
                 }
 
                 
-                const previousWorkspaceIndex = this._windowPreviousWorkspace.get(WINDOW.get_id());
-                const removedTimestamp = this._windowRemovedTimestamp.get(WINDOW.get_id());
+                
+                const previousWorkspaceIndex = WindowState.get(WINDOW, 'previousWorkspace');
+                const removedTimestamp = WindowState.get(WINDOW, 'removedTimestamp');
                 const timeSinceRemoved = removedTimestamp ? Date.now() - removedTimestamp : Infinity;
-                const isManualMove = this._manualWorkspaceMove.get(WINDOW.get_id());
+                const isManualMove = WindowState.get(WINDOW, 'manualWorkspaceMove');
                 
                 const workArea = WORKSPACE.get_work_area_for_monitor(MONITOR);
                 Logger.log(`[MOSAIC WM] window-added: window=${WINDOW.get_id()}, size=${frame.width}x${frame.height}, workArea=${workArea.width}x${workArea.height}, timeSince=${timeSinceRemoved}ms, prevWS=${previousWorkspaceIndex}, currentWS=${WORKSPACE.index()}, isManual=${isManualMove}`);
                 
-                if (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index() && timeSinceRemoved < 100) {
+                if (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index() && timeSinceRemoved < constants.SAFETY_TIMEOUT_BUFFER_MS) {
                     // Skip if this is an overflow move, not a real drag-drop
                     if (WindowState.get(WINDOW, 'movedByOverflow')) {
                         Logger.log(`[MOSAIC WM] window-added: Skipping drag-drop handling - window was moved by overflow`);
@@ -1554,14 +1480,14 @@ export default class WindowMosaicExtension extends Extension {
                         // Wait for overview to fully close before tiling
                         // This ensures move_resize_frame works correctly
                         if (Main.overview.visible) {
-                            WINDOW._deferTilingUntilOverviewHidden = true;
+                            WindowState.set(WINDOW, 'deferTilingUntilOverviewHidden', true);
                             Main.overview.hide();
                         }
                         
                         // Clear DnD tracking - normal flow will handle window
-                        this._windowPreviousWorkspace.delete(WINDOW.get_id());
-                        this._windowRemovedTimestamp.delete(WINDOW.get_id());
-                        this._manualWorkspaceMove.delete(WINDOW.get_id());
+                        WindowState.remove(WINDOW, 'previousWorkspace');
+                        WindowState.remove(WINDOW, 'removedTimestamp');
+                        WindowState.remove(WINDOW, 'manualWorkspaceMove');
                         
                         // Let waitForGeometry flow handle the window
                     }
@@ -1733,14 +1659,17 @@ export default class WindowMosaicExtension extends Extension {
                             
                             // NOTE: Do NOT call tryFitWithResize here - let _windowAdded handle it with proper polling
                             // Just track window ID for tile skip decision
-                            if (!WORKSPACE._smartResizeProcessedWindows) {
-                                WORKSPACE._smartResizeProcessedWindows = new Set();
+                            let processed = _smartResizeProcessedWindows.get(WORKSPACE);
+                            if (!processed) {
+                                processed = new Set();
+                                _smartResizeProcessedWindows.set(WORKSPACE, processed);
                             }
                         }
                         
                         // Only call tileWorkspaceWindows if smart resize was NOT processed
                         // If it was, the delayed callback in _windowAdded will handle tiling
-                        if (!WORKSPACE._smartResizeProcessedWindows?.has(WINDOW.get_id())) {
+                        let processed = _smartResizeProcessedWindows.get(WORKSPACE);
+                        if (!processed || !processed.has(WINDOW.get_id())) {
                             // PRE-FIT CHECK: Verify window will fit BEFORE tiling to avoid mosaic disruption
                             const preFitCheck = this.tilingManager.canFitWindow(WINDOW, WORKSPACE, MONITOR);
                             const mosaicWindowsPreCheck = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
@@ -1762,7 +1691,12 @@ export default class WindowMosaicExtension extends Extension {
                                 if (smartResizeSuccess) {
                                     Logger.log('[MOSAIC WM] PRE-FIT CHECK: Smart Resize initiated - will tile after polling');
                                     // Mark for smart resize polling
-                                    WORKSPACE._smartResizeProcessedWindows.add(WINDOW.get_id());
+                                    let p = _smartResizeProcessedWindows.get(WORKSPACE);
+                                    if (!p) {
+                                        p = new Set();
+                                        _smartResizeProcessedWindows.set(WORKSPACE, p);
+                                    }
+                                    p.add(WINDOW.get_id());
                                     
                                     // GHOST STATE: Make window semi-transparent while calculating fit
                                     const actor = WINDOW.get_compositor_private();
@@ -1780,7 +1714,8 @@ export default class WindowMosaicExtension extends Extension {
                                     const pollForFit = () => {
                                         // Abort if window was moved to another workspace
                                         if (WINDOW.get_workspace().index() !== initialWorkspaceIndex) {
-                                            WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
+                                            let p = _smartResizeProcessedWindows.get(WORKSPACE);
+                                            if (p) p.delete(windowId);
                                             WindowState.set(WINDOW, 'isSmartResizing', false);
                                             return GLib.SOURCE_REMOVE;
                                         }
@@ -1794,7 +1729,9 @@ export default class WindowMosaicExtension extends Extension {
                                             const successActor = WINDOW.get_compositor_private();
                                             if (successActor) successActor.opacity = 255;
                                             
-                                            WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
+                                            let p = _smartResizeProcessedWindows.get(WORKSPACE);
+                                            if (p) p.delete(windowId);
+                                            
                                             WindowState.set(WINDOW, 'isSmartResizing', false);
                                             this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
                                             
@@ -1832,7 +1769,10 @@ export default class WindowMosaicExtension extends Extension {
                                             // Restore opacity before overflow
                                             const actor50 = WINDOW.get_compositor_private();
                                             if (actor50) actor50.opacity = 255;
-                                            WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
+                                            
+                                            let p = _smartResizeProcessedWindows.get(WORKSPACE);
+                                            if (p) p.delete(windowId);
+                                            
                                             WindowState.set(WINDOW, 'isSmartResizing', false);
                                             this.windowingManager.moveOversizedWindow(WINDOW);
                                             return GLib.SOURCE_REMOVE;
@@ -1842,12 +1782,15 @@ export default class WindowMosaicExtension extends Extension {
                                         // It was causing premature rejection when windows COULD fit
                                         // Just let the polling continue until it succeeds or times out
                                         
-                                        if (attempts >= 10) { // Pre-Fit uses max 10 attempts (500ms) for DnD resize
+                                        if (attempts >= constants.PRE_FIT_MAX_ATTEMPTS) { // Pre-Fit uses max 10 attempts (500ms) for DnD resize
                                             Logger.log('[MOSAIC WM] PRE-FIT: Smart resize failed after 10 polls - triggering overflow');
                                             // Restore opacity before overflow
                                             const actor10 = WINDOW.get_compositor_private();
                                             if (actor10) actor10.opacity = 255;
-                                            WORKSPACE._smartResizeProcessedWindows?.delete(windowId);
+                                            
+                                            let p = _smartResizeProcessedWindows.get(WORKSPACE);
+                                            if (p) p.delete(windowId);
+                                            
                                             WindowState.set(WINDOW, 'isSmartResizing', false);
                                             this.windowingManager.moveOversizedWindow(WINDOW);
                                             return GLib.SOURCE_REMOVE;
@@ -1885,7 +1828,7 @@ export default class WindowMosaicExtension extends Extension {
                                     const monitorWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
                                         .filter(w => !this.edgeTilingManager.isEdgeTiled(w) &&
                                                      !this.windowingManager.isExcluded(w));
-                                    const openingSize = this.tilingManager._openingSizes.get(WINDOW.get_id());
+                                    const openingSize = this.tilingManager.getOpeningSize(WINDOW);
                                     
                                     if (openingSize && monitorWindows.length === 1) {
                                         // Solo window - fully restore to opening size
@@ -1932,7 +1875,8 @@ export default class WindowMosaicExtension extends Extension {
                         GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
                             // Only clear if NOT managed by _windowAdded polling loop 
                             // (checked via _smartResizeProcessedWindows existing for this window)
-                            if (!WORKSPACE._smartResizeProcessedWindows?.has(WINDOW.get_id())) {
+                            let p = _smartResizeProcessedWindows.get(WORKSPACE);
+                            if (!p || !p.has(WINDOW.get_id())) {
                                 WindowState.set(WINDOW, 'isSmartResizing', false);
                                 Logger.log('[MOSAIC WM] Smart resize protection cleared (timeout)');
                             }
@@ -1985,8 +1929,8 @@ export default class WindowMosaicExtension extends Extension {
             return;
         }
         
-        this._windowPreviousWorkspace.set(window.get_id(), workspace.index());
-        this._windowRemovedTimestamp.set(window.get_id(), Date.now());
+        WindowState.set(window, 'previousWorkspace', workspace.index());
+        WindowState.set(window, 'removedTimestamp', Date.now());
         
         // SKIP if window was moved by overflow - don't trigger restore for overflow moves
         // This prevents cascade: window overflows → restore grows another → that one overflows too
@@ -2001,7 +1945,7 @@ export default class WindowMosaicExtension extends Extension {
         // Check if window still has an actor (destroyed windows don't)
         const actor = window.get_compositor_private();
         if (!actor) {
-            this.tilingManager.clearOpeningSize(window.get_id());
+            this.tilingManager.clearOpeningSize(window);
         } else {
             Logger.log(`[MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping opening size`);
         }
@@ -2063,7 +2007,7 @@ export default class WindowMosaicExtension extends Extension {
             
             return GLib.SOURCE_REMOVE;
         });
-    }
+    };
 
     _workspaceAddSignal = (_, workspaceIdx) => {
         const workspace = this._workspaceManager.get_workspace_by_index(workspaceIdx);
@@ -2071,7 +2015,7 @@ export default class WindowMosaicExtension extends Extension {
         eventIds.push(workspace.connect("window-added", this._windowAdded));
         eventIds.push(workspace.connect("window-removed", this._windowRemoved));
         this._workspaceEventIds.push([workspace, eventIds]);
-    }
+    };
     
 
     enable() {
@@ -2139,8 +2083,7 @@ export default class WindowMosaicExtension extends Extension {
         this._mosaicIndicator = new MosaicIndicator(this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._mosaicIndicator);
         
-        this._windowWorkspaceSignals = new Map();
-        this._workspaceChangeDebounce = new Map();
+        
         this._windowsOpenedMaximized = new Set();
         
         this._settingsOverrider = new SettingsOverrider();
@@ -2187,6 +2130,20 @@ export default class WindowMosaicExtension extends Extension {
         this._wmEventIds.push(global.window_manager.connect('destroy', this._destroyedHandler));
         this._displayEventIds.push(global.display.connect("grab-op-begin", this._grabOpBeginHandler));
         this._displayEventIds.push(global.display.connect("grab-op-end", this._grabOpEndHandler));
+        
+        this._onOverviewHiddenId = Main.overview.connect('hidden', () => {
+            const workspace = this.windowingManager.getWorkspace();
+            const monitor = global.display.get_primary_monitor();
+            const windows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+            
+            for (const win of windows) {
+                if (WindowState.get(win, 'deferTilingUntilOverviewHidden')) {
+                    Logger.log(`[MOSAIC WM] Overview hidden: Tiling deferred window ${win.get_id()}`);
+                    WindowState.remove(win, 'deferTilingUntilOverviewHidden');
+                    this.tilingManager.tileWorkspaceWindows(workspace, win, monitor, false);
+                }
+            }
+        });
         
         this._workspaceManEventIds.push(global.workspace_manager.connect("active-workspace-changed", this._workspaceSwitchedHandler));
         this._workspaceManEventIds.push(global.workspace_manager.connect("workspace-added", this._workspaceAddSignal));
@@ -2392,35 +2349,17 @@ export default class WindowMosaicExtension extends Extension {
             const eventIds = container[1];
             eventIds.forEach((eventId) => workspace.disconnect(eventId));
         }
+        
+        if (this._onOverviewHiddenId) {
+            Main.overview.disconnect(this._onOverviewHiddenId);
+            this._onOverviewHiddenId = 0;
+        }
 
+        // Cleanup handled by WindowHandler and WindowState
         const allWindows = global.display.get_tab_list(Meta.TabList.NORMAL, null);
-        this._windowWorkspaceSignals.forEach((signalId, windowId) => {
-            const window = allWindows.find(w => w.get_id() === windowId);
-            if (window) {
-                try {
-                    window.disconnect(signalId);
-                } catch (e) {
-                }
-            }
+        allWindows.forEach(w => {
+            if (this.windowHandler) this.windowHandler.disconnectWindowSignals(w);
         });
-        this._windowWorkspaceSignals.clear();
-        
-        // Disconnect additional window signals (above, sticky, position, size)
-        const disconnectSignalMap = (signalMap) => {
-            if (!signalMap) return;
-            signalMap.forEach((signalId, windowId) => {
-                const window = allWindows.find(w => w.get_id() === windowId);
-                if (window) {
-                    try { window.disconnect(signalId); } catch (e) {}
-                }
-            });
-            signalMap.clear();
-        };
-        
-        disconnectSignalMap(this._windowAboveSignals);
-        disconnectSignalMap(this._windowStickySignals);
-        disconnectSignalMap(this._windowPositionSignals);
-        disconnectSignalMap(this._windowSizeSignals);
         
         if (this._workspaceChangeTimeout) {
             GLib.source_remove(this._workspaceChangeTimeout);

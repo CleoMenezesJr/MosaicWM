@@ -8,6 +8,7 @@ import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as animations from './animations.js';
 import * as constants from './constants.js';
+import * as WindowState from './windowState.js';
 
 export const TileZone = {
     NONE: 0,
@@ -23,19 +24,21 @@ export const TileZone = {
 export class EdgeTilingManager {
     constructor() {
         // Module state for window states (pre-tile position/size)
-        this._windowStates = new Map(); // windowId -> { x, y, width, height, zone }
+        // Now using WindowState.get(window, 'edgeTilingState')
 
         // Module state for edge tiling activity
         this._isEdgeTilingActive = false;
         this._activeEdgeTilingWindow = null;
 
         // Module state for interactive resize
-        this._resizeListeners = new Map(); // windowId -> signalId
+        // resizeListeners -> WindowState.get(window, 'edgeResizeSignalId')
         this._isResizing = false; // Flag to prevent recursive resize
-        this._previousSizes = new Map(); // windowId -> { width, height } for delta tracking
+        // previousSizes -> WindowState.get(window, 'edgePreviousSize')
 
         // Auto-tiling dependencies (dependentWindowId -> masterWindowId)
-        this._autoTiledDependencies = new Map();
+        // Auto-tiling dependencies are now handled via WindowState
+        // 'autoTileMaster' on dependent -> masterWindow
+        // 'autoTileDependents' on master -> Set<dependentWindow>
         
         this._animationsManager = null;
     }
@@ -59,20 +62,24 @@ export class EdgeTilingManager {
     }
 
     clearAllStates() {
-        this._resizeListeners.forEach((signalId, winId) => {
-            const window = this._findWindowById(winId);
-            if (window) {
+        // Disconnect resize listeners from all known windows
+        const allWindows = global.display.get_tab_list(Meta.TabList.NORMAL, null);
+        for (const window of allWindows) {
+            const signalId = WindowState.get(window, 'edgeResizeSignalId');
+            if (signalId) {
                 try {
                     window.disconnect(signalId);
                 } catch (e) {
                     // Ignore if window destroyed
                 }
+                WindowState.remove(window, 'edgeResizeSignalId');
             }
-        });
-        this._resizeListeners.clear();
-        this._windowStates.clear();
-        this._autoTiledDependencies.clear();
-        this._previousSizes.clear();
+            // Clear other states
+            WindowState.remove(window, 'edgeTilingState');
+            WindowState.remove(window, 'edgePreviousSize');
+        }
+        
+
         this._isResizing = false;
         this._isEdgeTilingActive = false;
         this._activeEdgeTilingWindow = null;
@@ -85,32 +92,16 @@ export class EdgeTilingManager {
     }
 
     // Check for edge-tiled windows on a specific side
-    // Can use cachedEdgeTiledIds if provided to avoid list_windows() call
+    // cachedEdgeTiledIds is ignored in WeakMap implementation
     _hasEdgeTiledWindowsOnSide(workspace, side, cachedEdgeTiledIds = null) {
         if (!workspace) return false;
         
-        // If cached IDs provided, check internal state map directly
-        if (cachedEdgeTiledIds !== null) {
-            for (const [winId, state] of this._windowStates) {
-                if (!cachedEdgeTiledIds.includes(winId)) continue;
-                if (!state || state.zone === TileZone.NONE || state.zone === TileZone.FULLSCREEN) continue;
-                
-                if (side === 'left' && (state.zone === TileZone.LEFT_FULL || 
-                    state.zone === TileZone.TOP_LEFT || state.zone === TileZone.BOTTOM_LEFT)) {
-                    return true;
-                }
-                if (side === 'right' && (state.zone === TileZone.RIGHT_FULL || 
-                    state.zone === TileZone.TOP_RIGHT || state.zone === TileZone.BOTTOM_RIGHT)) {
-                    return true;
-                }
-            }
-            return false;
-        }
+        // Iterating WeakMap is not possible, so we must query workspace windows
+        // This is robust but slightly more expensive than a Map lookup
         
-        // Fallback: query workspace (expensive)
         const windows = workspace.list_windows();
         for (const win of windows) {
-            const state = this._windowStates.get(win.get_id());
+            const state = WindowState.get(win, 'edgeTilingState');
             if (!state || state.zone === TileZone.NONE || state.zone === TileZone.FULLSCREEN) continue;
             
             if (side === 'left') {
@@ -344,7 +335,7 @@ export class EdgeTilingManager {
 
     saveWindowState(window) {
         const winId = window.get_id();
-        const existingState = this._windowStates.get(winId);
+        const existingState = WindowState.get(window, 'edgeTilingState');
         
         if (existingState) {
             Logger.log(`[MOSAIC WM] Window ${winId} already has saved state (${existingState.width}x${existingState.height}), preserving it`);
@@ -352,7 +343,7 @@ export class EdgeTilingManager {
         }
         
         const frame = window.get_frame_rect();
-        this._windowStates.set(winId, {
+        WindowState.set(window, 'edgeTilingState', {
             x: frame.x,
             y: frame.y,
             width: frame.width,
@@ -363,7 +354,7 @@ export class EdgeTilingManager {
     }
 
     getWindowState(window) {
-        return this._windowStates.get(window.get_id());
+        return WindowState.get(window, 'edgeTilingState');
     }
 
     getEdgeTiledWindows(workspace, monitor) {
@@ -503,7 +494,7 @@ export class EdgeTilingManager {
 
     clearWindowState(window) {
         const winId = window.get_id();
-        const state = this._windowStates.get(winId);
+        const state = WindowState.get(window, 'edgeTilingState');
         
         // If this was a quarter tile, expand the adjacent quarter to FULL
         if (state && state.zone && this._isQuarterZone(state.zone)) {
@@ -525,7 +516,7 @@ export class EdgeTilingManager {
                     if (fullRect) {
                         adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
                         
-                        const adjacentState = this._windowStates.get(adjacentWindow.get_id());
+                        const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
                         if (adjacentState) adjacentState.zone = fullZone;
                         
                         Logger.log(`[MOSAIC WM] Expanded quarter to ${fullZone}: ${fullRect.width}x${fullRect.height}`);
@@ -535,22 +526,30 @@ export class EdgeTilingManager {
         }
         
         // Clean up dependencies
-        this._autoTiledDependencies.forEach((masterId, dependentId) => {
-            if (masterId === winId || dependentId === winId) {
-                this._autoTiledDependencies.delete(dependentId);
-            }
-        });
+        // Cleanup dependencies handled by WindowState automatically
+        // or by removeTile logic if explicit cleanup is needed
         
-        this._windowStates.delete(winId);
+        WindowState.remove(window, 'edgeTilingState');
     }
 
-    registerAutoTileDependency(dependentId, masterId) {
-        this._autoTiledDependencies.set(dependentId, masterId);
-        Logger.log(`[MOSAIC WM] Registered auto-tile dependency: ${dependentId} depends on ${masterId}`);
+    registerAutoTileDependency(dependentWindow, masterWindow) {
+        // Set master ref on dependent
+        WindowState.set(dependentWindow, 'autoTileMaster', masterWindow);
+        
+        // Add dependent to master's set
+        let dependents = WindowState.get(masterWindow, 'autoTileDependents');
+        if (!dependents) {
+            dependents = new Set();
+            WindowState.set(masterWindow, 'autoTileDependents', dependents);
+        }
+        dependents.add(dependentWindow);
+        
+        Logger.log(`[MOSAIC WM] Registered auto-tile dependency: ${dependentWindow.get_id()} depends on ${masterWindow.get_id()}`);
     }
 
     isEdgeTiled(window) {
-        const state = this._windowStates.get(window.get_id());
+        if (!window) return false;
+        const state = WindowState.get(window, 'edgeTilingState');
         return state && state.zone !== TileZone.NONE;
     }
 
@@ -569,7 +568,7 @@ export class EdgeTilingManager {
             const window = leftQuarters[0].window;
             Logger.log(`[MOSAIC WM] Single quarter on left - expanding to LEFT_FULL`);
             
-            const state = this._windowStates.get(window.get_id());
+            const state = WindowState.get(window, 'edgeTilingState');
             if (state) state.zone = TileZone.LEFT_FULL;
             
             const rect = this.getZoneRect(TileZone.LEFT_FULL, workArea, window);
@@ -591,7 +590,7 @@ export class EdgeTilingManager {
             const window = rightQuarters[0].window;
             Logger.log(`[MOSAIC WM] Single quarter on right - expanding to RIGHT_FULL`);
             
-            const state = this._windowStates.get(window.get_id());
+            const state = WindowState.get(window, 'edgeTilingState');
             if (state) state.zone = TileZone.RIGHT_FULL;
             
             const rect = this.getZoneRect(TileZone.RIGHT_FULL, workArea, window);
@@ -632,7 +631,7 @@ export class EdgeTilingManager {
     _findWindowInZone(zone, workspace) {
         const windows = workspace.list_windows();
         for (const win of windows) {
-            const state = this._windowStates.get(win.get_id());
+            const state = WindowState.get(win, 'edgeTilingState');
             if (state && state.zone === zone) return win;
         }
         return null;
@@ -661,14 +660,18 @@ export class EdgeTilingManager {
         
         const winId = window.get_id();
         
-        if (this._autoTiledDependencies.has(winId)) {
+        // Clear potential previous dependencies
+        const oldMaster = WindowState.get(window, 'autoTileMaster');
+        if (oldMaster) {
             Logger.log(`[MOSAIC WM] Manual retile breaks auto-tile dependency for ${winId}`);
-            this._autoTiledDependencies.delete(winId);
+            const deps = WindowState.get(oldMaster, 'autoTileDependents');
+            if (deps) deps.delete(window);
+            WindowState.remove(window, 'autoTileMaster');
         }
         
         if (zone === TileZone.FULLSCREEN) {
             window.maximize(Meta.MaximizeFlags.BOTH);
-            const state = this._windowStates.get(window.get_id());
+            const state = WindowState.get(window, 'edgeTilingState');
             if (state) state.zone = zone;
             Logger.log(`[MOSAIC WM] Maximized window ${window.get_id()}`);
             return true;
@@ -747,7 +750,7 @@ export class EdgeTilingManager {
             
             this.setupResizeListener(window);
             
-            const state = this._windowStates.get(winId);
+            const state = WindowState.get(window, 'edgeTilingState');
             if (state) state.zone = zone;
             
             Logger.log(`[MOSAIC WM] Applied edge tile zone ${zone} to window ${winId}`);
@@ -789,7 +792,7 @@ export class EdgeTilingManager {
                 
                 Logger.log(`[MOSAIC WM] Applied quarter tiles with halfHeight=${halfHeight}px, width=${savedFullTileWidth}px`);
                 
-                const convertedState = this._windowStates.get(fullToQuarterConversion.window.get_id());
+                const convertedState = WindowState.get(fullToQuarterConversion.window, 'edgeTilingState');
                 if (convertedState) {
                     Logger.log(`[MOSAIC WM] Converted window original state: ${convertedState.width}x${convertedState.height} (preserving for restore)`);
                     convertedState.zone = fullToQuarterConversion.newZone;
@@ -853,7 +856,7 @@ export class EdgeTilingManager {
      
     removeTile(window, callback = null) {
         const winId = window.get_id();
-        const savedState = this._windowStates.get(winId);
+        const savedState = WindowState.get(window, 'edgeTilingState');
 
         if (!savedState || savedState.zone === TileZone.NONE) {
             Logger.log(`[MOSAIC WM] removeTile: Window ${winId} is not edge-tiled`);
@@ -871,21 +874,30 @@ export class EdgeTilingManager {
         const savedX = savedState.x;
         const savedY = savedState.y;
         
-        Logger.log(`[MOSAIC WM] removeTile: Checking dependencies for master=${winId}, total dependencies=${this._autoTiledDependencies.size}`);
-        this._autoTiledDependencies.forEach((masterId, dependentId) => {
-            Logger.log(`[MOSAIC WM] removeTile: Dependency: dependent=${dependentId} -> master=${masterId}`);
-            if (masterId === winId) {
-                Logger.log(`[MOSAIC WM] removeTile: Found dependent ${dependentId} of master ${winId}, removing...`);
-                const dependent = this._findWindowById(dependentId);
-                if (dependent) {
-                    Logger.log(`[MOSAIC WM] removeTile: Calling removeTile on dependent ${dependentId}`);
-                    this.removeTile(dependent);
-                } else {
-                    Logger.log(`[MOSAIC WM] removeTile: Could not find window for dependent ${dependentId}`);
-                }
-                this._autoTiledDependencies.delete(dependentId);
+        Logger.log(`[MOSAIC WM] removeTile: Checking dependencies for master=${winId}`);
+        const dependents = WindowState.get(window, 'autoTileDependents');
+        if (dependents && dependents.size > 0) {
+            Logger.log(`[MOSAIC WM] removeTile: Found ${dependents.size} dependents`);
+            // Copy set to avoid modification during iteration
+            const depsArray = Array.from(dependents); 
+            for (const dependent of depsArray) {
+                Logger.log(`[MOSAIC WM] removeTile: Calling removeTile on dependent ${dependent.get_id()}`);
+                this.removeTile(dependent);
+                
+                // Cleanup refs
+                WindowState.remove(dependent, 'autoTileMaster');
             }
-        });
+            dependents.clear();
+            WindowState.remove(window, 'autoTileDependents');
+        }
+        
+        // If this window is a dependent, remove itself from master
+        const master = WindowState.get(window, 'autoTileMaster');
+        if (master) {
+             const masterDeps = WindowState.get(master, 'autoTileDependents');
+             if (masterDeps) masterDeps.delete(window);
+             WindowState.remove(window, 'autoTileMaster');
+        }
         
         if (this._isQuarterZone(savedState.zone)) {
             Logger.log(`[MOSAIC WM] Quarter tile ${winId} being removed from zone ${savedState.zone}`);
@@ -903,7 +915,7 @@ export class EdgeTilingManager {
                     
                     if (fullRect) {
                         adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
-                        const adjacentState = this._windowStates.get(adjacentWindow.get_id());
+                        const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
                         if (adjacentState) adjacentState.zone = fullZone;
                     }
                 }
@@ -1016,9 +1028,7 @@ export class EdgeTilingManager {
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
                     this.applyTile(mosaicWindow, oppositeZone, workArea);
                     
-                    const dependentId = mosaicWindow.get_id();
-                    const masterId = tiledWindow.get_id();
-                    this._autoTiledDependencies.set(dependentId, masterId);
+                    this.registerAutoTileDependency(mosaicWindow, tiledWindow);
                     
                     return GLib.SOURCE_REMOVE;
                 });
@@ -1063,29 +1073,26 @@ export class EdgeTilingManager {
      // Setup resize listener for edge-tiled window
      
     setupResizeListener(window) {
-        const winId = window.get_id();
-        
-        if (this._resizeListeners.has(winId)) return;
+        if (WindowState.has(window, 'edgeResizeSignalId')) return;
         
         const signalId = window.connect('size-changed', () => {
             this._handleWindowResize(window);
         });
         
-        this._resizeListeners.set(winId, signalId);
-        Logger.log(`[MOSAIC WM] Setup resize listener for window ${winId}`);
+        WindowState.set(window, 'edgeResizeSignalId', signalId);
+        Logger.log(`[MOSAIC WM] Setup resize listener for window ${window.get_id()}`);
     }
 
     //
      // Remove resize listener from window
      
     _removeResizeListener(window) {
-        const winId = window.get_id();
-        const signalId = this._resizeListeners.get(winId);
+        const signalId = WindowState.get(window, 'edgeResizeSignalId');
         
         if (signalId) {
             window.disconnect(signalId);
-            this._resizeListeners.delete(winId);
-            Logger.log(`[MOSAIC WM] Removed resize listener from window ${winId}`);
+            WindowState.remove(window, 'edgeResizeSignalId');
+            Logger.log(`[MOSAIC WM] Removed resize listener from window ${window.get_id()}`);
         }
     }
 
@@ -1138,12 +1145,12 @@ export class EdgeTilingManager {
         const adjacentId = adjacentWindow.get_id();
         const resizedFrame = window.get_frame_rect();
         
-        const previousState = this._previousSizes.get(resizedId);
+        const previousState = WindowState.get(window, 'edgePreviousSize');
         
         if (!previousState) {
             const adjacentFrame = adjacentWindow.get_frame_rect();
-            this._previousSizes.set(resizedId, { width: resizedFrame.width, height: resizedFrame.height, y: resizedFrame.y });
-            this._previousSizes.set(adjacentId, { width: adjacentFrame.width, height: adjacentFrame.height, y: adjacentFrame.y });
+            WindowState.set(window, 'edgePreviousSize', { width: resizedFrame.width, height: resizedFrame.height, y: resizedFrame.y });
+            WindowState.set(adjacentWindow, 'edgePreviousSize', { width: adjacentFrame.width, height: adjacentFrame.height, y: adjacentFrame.y });
             return;
         }
         
@@ -1166,8 +1173,8 @@ export class EdgeTilingManager {
                 adjacentWindow.move_frame(false, resizedFrame.x, adjacentY);
                 adjacentWindow.move_resize_frame(false, resizedFrame.x, adjacentY, resizedFrame.width, newAdjacentHeight);
                 
-                this._previousSizes.set(resizedId, { width: resizedFrame.width, height: resizedFrame.height, y: workArea.y });
-                this._previousSizes.set(adjacentId, { width: resizedFrame.width, height: newAdjacentHeight, y: adjacentY });
+                WindowState.set(window, 'edgePreviousSize', { width: resizedFrame.width, height: resizedFrame.height, y: workArea.y });
+                WindowState.set(adjacentWindow, 'edgePreviousSize', { width: resizedFrame.width, height: newAdjacentHeight, y: adjacentY });
             } else {
                 adjacentWindow.move_frame(false, resizedFrame.x, workArea.y);
                 adjacentWindow.move_resize_frame(false, resizedFrame.x, workArea.y, resizedFrame.width, newAdjacentHeight);
@@ -1176,8 +1183,8 @@ export class EdgeTilingManager {
                 window.move_frame(false, resizedFrame.x, resizedY);
                 window.move_resize_frame(false, resizedFrame.x, resizedY, resizedFrame.width, resizedFrame.height);
                 
-                this._previousSizes.set(adjacentId, { width: resizedFrame.width, height: newAdjacentHeight, y: workArea.y });
-                this._previousSizes.set(resizedId, { width: resizedFrame.width, height: resizedFrame.height, y: resizedY });
+                WindowState.set(adjacentWindow, 'edgePreviousSize', { width: resizedFrame.width, height: newAdjacentHeight, y: workArea.y });
+                WindowState.set(window, 'edgePreviousSize', { width: resizedFrame.width, height: resizedFrame.height, y: resizedY });
             }
         } finally {
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ISRESIZING_FLAG_RESET_MS, () => {
@@ -1192,12 +1199,12 @@ export class EdgeTilingManager {
         const adjacentId = adjacentWindow.get_id();
         const resizedFrame = resizedWindow.get_frame_rect();
         
-        const previousState = this._previousSizes.get(resizedId);
+        const previousState = WindowState.get(resizedWindow, 'edgePreviousSize');
         
         if (!previousState) {
             const adjacentFrame = adjacentWindow.get_frame_rect();
-            this._previousSizes.set(resizedId, { width: resizedFrame.width, height: resizedFrame.height, x: resizedFrame.x });
-            this._previousSizes.set(adjacentId, { width: adjacentFrame.width, height: resizedFrame.height, x: adjacentFrame.x });
+            WindowState.set(resizedWindow, 'edgePreviousSize', { width: resizedFrame.width, height: resizedFrame.height, x: resizedFrame.x });
+            WindowState.set(adjacentWindow, 'edgePreviousSize', { width: adjacentFrame.width, height: resizedFrame.height, x: adjacentFrame.x });
             return;
         }
         
@@ -1220,8 +1227,8 @@ export class EdgeTilingManager {
                 adjacentWindow.move_frame(false, workArea.x + resizedFrame.width, workArea.y);
                 adjacentWindow.move_resize_frame(false, workArea.x + resizedFrame.width, workArea.y, newAdjacentWidth, workArea.height);
                 
-                this._previousSizes.set(resizedId, { width: resizedFrame.width, height: workArea.height, x: workArea.x });
-                this._previousSizes.set(adjacentId, { width: newAdjacentWidth, height: workArea.height, x: workArea.x + resizedFrame.width });
+                WindowState.set(resizedWindow, 'edgePreviousSize', { width: resizedFrame.width, height: workArea.height, x: workArea.x });
+                WindowState.set(adjacentWindow, 'edgePreviousSize', { width: newAdjacentWidth, height: workArea.height, x: workArea.x + resizedFrame.width });
             } else {
                 adjacentWindow.move_frame(false, workArea.x, workArea.y);
                 adjacentWindow.move_resize_frame(false, workArea.x, workArea.y, newAdjacentWidth, workArea.height);
@@ -1229,8 +1236,8 @@ export class EdgeTilingManager {
                 resizedWindow.move_frame(false, workArea.x + newAdjacentWidth, workArea.y);
                 resizedWindow.move_resize_frame(false, workArea.x + newAdjacentWidth, workArea.y, resizedFrame.width, workArea.height);
                 
-                this._previousSizes.set(adjacentId, { width: newAdjacentWidth, height: workArea.height, x: workArea.x });
-                this._previousSizes.set(resizedId, { width: resizedFrame.width, height: workArea.height, x: workArea.x + newAdjacentWidth });
+                WindowState.set(adjacentWindow, 'edgePreviousSize', { width: newAdjacentWidth, height: workArea.height, x: workArea.x });
+                WindowState.set(resizedWindow, 'edgePreviousSize', { width: resizedFrame.width, height: workArea.height, x: workArea.x + newAdjacentWidth });
             }
         } finally {
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ISRESIZING_FLAG_RESET_MS, () => {

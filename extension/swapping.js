@@ -4,12 +4,19 @@
 
 import * as Logger from './logger.js';
 import { TileZone } from './edgeTiling.js';
+import * as WindowState from './windowState.js';
 
 export class SwappingManager {
     constructor() {
         this._tilingManager = null;
         this._edgeTilingManager = null;
+        this._edgeTilingManager = null;
     }
+    
+    // Import WindowState dynamically to avoid circular dependency issues if needed,
+    // but typically it's better to pass it or import if safe.
+    // Assuming WindowState is available via global or import.
+    // Since this file imports Logger, let's assume imports work.
 
     setTilingManager(manager) {
         this._tilingManager = manager;
@@ -272,6 +279,14 @@ export class SwappingManager {
         const monitor = window.get_monitor();
         
         Logger.log(`[MOSAIC WM] Swapping window ${window.get_id()} in direction: ${direction}`);
+
+        // Hysteresis: Prevent rapid swapping
+        const lastSwap = WindowState.get(window, 'lastSwapTime');
+        const now = Date.now();
+        if (lastSwap && (now - lastSwap) < 500) {
+             Logger.log(`[MOSAIC WM] Swap throttled for window ${window.get_id()}`);
+             return false;
+        }
         
         const neighbor = this.findNeighbor(window, direction, workspace, monitor);
         if (!neighbor) {
@@ -299,11 +314,15 @@ export class SwappingManager {
                 if (isWindowTiled) {
                     return false;
                 } else {
-                    return this._tileToEmptyZone(window, neighbor.zone, workspace, monitor);
+                    const success = this._tileToEmptyZone(window, neighbor.zone, workspace, monitor);
+                    if (success) WindowState.set(window, 'lastSwapTime', Date.now());
+                    return success;
                 }
             case 'empty_tiling_expand':
                 if (isWindowTiled && this._edgeTilingManager.isQuarterZone(windowState.zone)) {
-                    return this._expandQuarterToFull(window, windowState.zone, neighbor.zone, workspace, monitor);
+                    const success = this._expandQuarterToFull(window, windowState.zone, neighbor.zone, workspace, monitor);
+                    if (success) WindowState.set(window, 'lastSwapTime', Date.now());
+                    return success;
                 }
                 return false;
             default:
@@ -341,6 +360,8 @@ export class SwappingManager {
         this._tilingManager.clearTmpSwap();
         
         this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
+        WindowState.set(window1, 'lastSwapTime', Date.now());
+        WindowState.set(window2, 'lastSwapTime', Date.now());
         return true;
     }
 
@@ -354,6 +375,10 @@ export class SwappingManager {
         const workArea = workspace.get_work_area_for_monitor(monitor);
         this._edgeTilingManager.applyTile(mosaicWindow, tiledZone, workArea, true);
         
+        this._edgeTilingManager.applyTile(mosaicWindow, tiledZone, workArea, true);
+        
+        WindowState.set(mosaicWindow, 'lastSwapTime', Date.now());
+        WindowState.set(tiledWindow, 'lastSwapTime', Date.now());
         return true;
     }
 
@@ -370,6 +395,12 @@ export class SwappingManager {
         this._edgeTilingManager.applyTile(window1, zone2, workArea);
         this._edgeTilingManager.applyTile(window2, zone1, workArea);
         
+        this._edgeTilingManager.applyTile(window1, zone2, workArea);
+        this._edgeTilingManager.applyTile(window2, zone1, workArea);
+        
+        WindowState.set(window1, 'lastSwapTime', Date.now());
+        WindowState.set(window2, 'lastSwapTime', Date.now());
+        
         return true;
     }
 
@@ -379,6 +410,7 @@ export class SwappingManager {
         Logger.log(`[MOSAIC WM] Tiling window ${window.get_id()} to empty zone ${zone}`);
         const workArea = workspace.get_work_area_for_monitor(monitor);
         this._edgeTilingManager.applyTile(window, zone, workArea);
+        WindowState.set(window, 'lastSwapTime', Date.now());
         return true;
     }
 
@@ -388,6 +420,7 @@ export class SwappingManager {
         Logger.log(`[MOSAIC WM] Expanding quarter tile ${window.get_id()} to ${targetZone}`);
         const workArea = workspace.get_work_area_for_monitor(monitor);
         this._edgeTilingManager.applyTile(window, targetZone, workArea);
+        WindowState.set(window, 'lastSwapTime', Date.now());
         return true;
     }
 
