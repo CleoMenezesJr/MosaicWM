@@ -1969,8 +1969,8 @@ export default class WindowMosaicExtension extends Extension {
             Logger.log(`[MOSAIC WM] _windowRemoved: ${remainingWindows.length} remaining windows, freed ${freedWidth}x${freedHeight}, wasOverflowMove=${wasMovedByOverflow}`);
             
             // Try to restore window sizes with freed space (Reverse Smart Resize)
-            // SKIP if window was moved by overflow to prevent cascade overflow
-            if (remainingWindows.length > 0 && !wasMovedByOverflow) {
+            // Note: We deliberately allow this even for overflow moves to recover from failed Smart Resize attempts
+            if (remainingWindows.length > 0) {
                 const workArea = this.tilingManager.getUsableWorkArea(WORKSPACE, MONITOR);
                 const restored = this.tilingManager.tryRestoreWindowSizes(remainingWindows, workArea, freedWidth, freedHeight, WORKSPACE, MONITOR);
                 
