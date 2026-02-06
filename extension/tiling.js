@@ -1030,7 +1030,7 @@ export class TilingManager {
         // Check if mosaic is enabled for this workspace
         if (this._extension && !this._extension.isMosaicEnabledForWorkspace(workspace)) {
             Logger.log(`[MOSAIC WM] Mosaic disabled for workspace ${workspace.index()} - skipping tiling`);
-            return;
+            return { overflow: false, layout: null };
         }
         
         // Auto-detect monitors: if no monitor specified and no reference window,
@@ -1044,7 +1044,7 @@ export class TilingManager {
                 for (let m = 0; m < nMonitors; m++) {
                     this.tileWorkspaceWindows(workspace, null, m, keep_oversized_windows, excludeFromTiling);
                 }
-                return;
+                return { overflow: false, layout: null };
             } else {
                 // Get monitor from reference window
                 _monitor = reference_meta_window.get_monitor();
@@ -1058,7 +1058,7 @@ export class TilingManager {
         
         let working_info = this._getWorkingInfo(workspace, reference_meta_window, _monitor, excludeFromTiling);
         if(!working_info) {
-            return;
+            return { overflow: false, layout: null };
         }
         let meta_windows = working_info.meta_windows;
         let windows = working_info.windows;
@@ -1090,7 +1090,7 @@ export class TilingManager {
                 // Don't move windows during drag - just show preview
                 if (this.isDragging) {
                     Logger.log('[MOSAIC WM] Both sides edge-tiled - deferring overflow until drag ends');
-                    return; // Let preview show but don't move windows
+                    return { overflow: false, layout: null }; // Let preview show but don't move windows
                 }
                 
                 Logger.log('[MOSAIC WM] Both sides edge-tiled - workspace fully occupied, moving mosaic windows');
@@ -1105,7 +1105,7 @@ export class TilingManager {
                     }
                 }
                 
-                return; // Don't tile, edge-tiled windows stay in place
+                return { overflow: false, layout: null }; // Don't tile, edge-tiled windows stay in place
             }
             
             // Single tile or quarter tiles - calculate remaining space
@@ -1137,7 +1137,7 @@ export class TilingManager {
                 // If no non-edge-tiled windows, nothing to tile
                 if (meta_windows.length === 0) {
                     Logger.log('[MOSAIC WM] No non-edge-tiled windows to tile');
-                    return;
+                    return { overflow: false, layout: null };
                 }
             }
         }
@@ -1158,7 +1158,7 @@ export class TilingManager {
         // If no windows left to tile, return early
         if (meta_windows.length === 0) {
             Logger.log('[MOSAIC WM] No windows left to tile after filtering sacred windows');
-            return;
+            return { overflow: false, layout: null };
         }
         
         const tileArea = this.isDragging && this.dragRemainingSpace ? this.dragRemainingSpace : work_area;
@@ -1176,7 +1176,7 @@ export class TilingManager {
         
         // DRY RUN: If dryRun flag is set, return overflow without moving anything
         if (arguments[5] === true) {
-            return overflow;
+            return { overflow, layout: this._cachedTileResult?.windows || null };
         }
 
         // Don't expel windows when edge-tiled windows exist (reduced space is intentional)
@@ -1251,7 +1251,7 @@ export class TilingManager {
             Logger.log(`[MOSAIC WM] Animations handled positioning, skipping drawTile`);
         }
         
-        return overflow;
+        return { overflow, layout: this._cachedTileResult?.windows || null };
     }
 
     canFitWindow(window, workspace, monitor) {
