@@ -126,23 +126,23 @@ export class ReorderingManager {
             if (this._lastTileState !== newState) {
                 // DRY-RUN: Check if swap would cause overflow WITHOUT moving windows
                 this._tilingManager.setTmpSwap(id, target_id);
-                const wouldOverflow = this._tilingManager.tileWorkspaceWindows(
+                const dryRunResult = this._tilingManager.tileWorkspaceWindows(
                     workspace, meta_window, monitor, false, false, true  // dryRun = true
                 );
                 
-                if (wouldOverflow) {
+                if (dryRunResult?.overflow) {
                     // Swap would cause overflow - reject without ever moving windows
                     this._rejectedSwap = target_id;
                     this._tilingManager.clearTmpSwap();
                     this._lastTileState = newState;
                 } else {
                     // Swap is valid - now actually tile the windows
-                    this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
+                    const result = this._tilingManager.tileWorkspaceWindows(workspace, meta_window, monitor);
                     this._rejectedSwap = null;
                     this._lastTileState = newState;
                     
-                    // Update cached positions after swap to enable correct future swap detection
-                    const layout = this._tilingManager.getCachedLayout();
+                    // Update cached positions using returned layout (no separate getter call needed)
+                    const layout = result?.layout;
                     if (layout && this._dragContext?.windows) {
                         for (const cachedWin of this._dragContext.windows) {
                             const newPos = layout.find(l => l.id === cachedWin.id);

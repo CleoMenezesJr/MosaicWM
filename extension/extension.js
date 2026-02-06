@@ -1022,9 +1022,9 @@ export default class WindowMosaicExtension extends Extension {
                      .filter(w => w.get_id() !== this._draggedWindow.get_id() && 
                                  !this.edgeTilingManager.isEdgeTiled(w));
                  
-                 const overflow = this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor, false);
+                 const result = this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor, false);
                  
-                 if (overflow) {
+                 if (result?.overflow) {
                      for (const win of mosaicWindows) {
                          const actor = win.get_compositor_private();
                          if (actor) {
@@ -2051,6 +2051,11 @@ export default class WindowMosaicExtension extends Extension {
                 const allRelatedWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
                     .filter(w => w.get_id() !== removedId);
                 if (allRelatedWindows.length === 0) {
+                    // Guard: verify workspace still valid (GNOME may auto-remove empty workspaces)
+                    if (WORKSPACE.index() < 0) {
+                        Logger.log('[MOSAIC WM] _windowRemoved: Workspace already destroyed, skipping navigation');
+                        return GLib.SOURCE_REMOVE;
+                    }
                     Logger.log('[MOSAIC WM] _windowRemoved: Workspace truly empty, navigating away');
                     this.windowingManager.renavigate(WORKSPACE, WORKSPACE.active, this._lastVisitedWorkspace);
                 }
