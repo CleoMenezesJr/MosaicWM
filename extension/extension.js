@@ -433,7 +433,9 @@ export default class WindowMosaicExtension extends Extension {
         }
     };
 
+    // =========================================================================
     // SIGNAL HANDLERS - Workspace Changes
+    // =========================================================================
 
     _switchWorkspaceHandler = (_, win) => {
         this._tileWindowWorkspace(win.meta_window);
@@ -1777,9 +1779,13 @@ export default class WindowMosaicExtension extends Extension {
                                         const existingTotalWidth = mosaicWins.reduce((sum, w) => sum + w.get_frame_rect().width, 0);
                                         const spacing = (mosaicWins.length + 1) * constants.WINDOW_SPACING;
                                         const availableForNew = workArea.width - existingTotalWidth - spacing;
-                                        const newFrame = WINDOW.get_frame_rect();
-                                        
                                         if (availableForNew <= constants.MIN_AVAILABLE_SPACE_PX) {
+                                            // Defer overflow check while smart resize creates space (geometry may be stale)
+                                            if (WindowState.get(WINDOW, 'isSmartResizing')) {
+                                                Logger.log(`[MOSAIC WM] PRE-FIT: Smart resize in progress - ignoring current space ${availableForNew}px and waiting`);
+                                                return GLib.SOURCE_CONTINUE;
+                                            }
+
                                             Logger.log(`[MOSAIC WM] PRE-FIT: Available space ${availableForNew}px <= ${constants.MIN_AVAILABLE_SPACE_PX}px - overflow unavoidable`);
                                             // Restore opacity before overflow
                                             const actor50 = WINDOW.get_compositor_private();
