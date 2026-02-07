@@ -4,6 +4,7 @@
 // Shared constants for the extension
 
 import Clutter from 'gi://Clutter';
+import Meta from 'gi://Meta';
 
 export const WINDOW_SPACING = 8; // Pixels
 
@@ -62,36 +63,17 @@ export const PRE_FIT_MAX_ATTEMPTS = 10;       // Max attempts for DnD pre-fit ch
 export const SLIDE_IN_OFFSET_PX = 100;        // Offset in pixels for new window slide-in animation
 export const QUEUE_PROCESS_DELAY_MS = 100;    // Delay between processing window opening queue items
 
-// Grab Operation IDs (Meta.GrabOp values)
-// WARNING: These values are not part of the public API and were discovered empirically.
-// Tested on: GNOME Shell 49 / Mutter 49 (Wayland)
-// These may change in future GNOME versions. If resize detection breaks, re-discover
-// by logging grab_op values in the grab-op-begin signal handler.
-// Edge/corner resize operations:
-export const GRAB_OP_RESIZING_NW = 36865;
-export const GRAB_OP_RESIZING_N  = 4097;
-export const GRAB_OP_RESIZING_NE = 8193;
-export const GRAB_OP_RESIZING_E  = 16385;
-export const GRAB_OP_RESIZING_SE = 20481;
-export const GRAB_OP_RESIZING_S  = 24577;
-export const GRAB_OP_RESIZING_SW = 40961;
-export const GRAB_OP_RESIZING_W  = 32769;
-
-// Alternative resize operations (Super+click, menu, keyboard):
-export const GRAB_OP_KEYBOARD_RESIZING = 41217;
-export const GRAB_OP_SUPER_SECONDARY_CLICK = 37889;
-export const GRAB_OP_SUPER_RESIZE_S = 25601;
-export const GRAB_OP_SUPER_RESIZE_SE = 24833;
-export const GRAB_OP_COMPOSITOR_RESIZE = 769;
+// Alternative resize operations:
+const GRAB_OP_SUPER_SECONDARY_CLICK = 37889; // No Enum found yet
+const GRAB_OP_SUPER_RESIZE_S = 25601; // No Enum found yet
+const GRAB_OP_SUPER_RESIZE_SE = 24833; // No Enum found yet
 
 export const RESIZE_GRAB_OPS = [
-    GRAB_OP_RESIZING_NW, GRAB_OP_RESIZING_N, GRAB_OP_RESIZING_NE,
-    GRAB_OP_RESIZING_E, GRAB_OP_RESIZING_SE, GRAB_OP_RESIZING_S,
-    GRAB_OP_RESIZING_SW, GRAB_OP_RESIZING_W,
-    GRAB_OP_KEYBOARD_RESIZING, GRAB_OP_SUPER_SECONDARY_CLICK,
-    GRAB_OP_SUPER_RESIZE_S, GRAB_OP_SUPER_RESIZE_SE, GRAB_OP_COMPOSITOR_RESIZE
+    Meta.GrabOp.RESIZING_NW, Meta.GrabOp.RESIZING_N, Meta.GrabOp.RESIZING_NE,
+    Meta.GrabOp.RESIZING_E, Meta.GrabOp.RESIZING_SE, Meta.GrabOp.RESIZING_S,
+    Meta.GrabOp.RESIZING_SW, Meta.GrabOp.RESIZING_W,
+    Meta.GrabOp.KEYBOARD_RESIZING_UNKNOWN,
+    GRAB_OP_SUPER_SECONDARY_CLICK,
+    GRAB_OP_SUPER_RESIZE_S, GRAB_OP_SUPER_RESIZE_SE,
+    Meta.GrabOp.COMPOSITOR_RESIZE || 769
 ];
-
-// Move grab operations:
-export const GRAB_OP_MOVING = 1;
-export const GRAB_OP_KEYBOARD_MOVING = 1025;

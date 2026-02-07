@@ -76,7 +76,6 @@ export class WindowingManager {
     getMonitorWorkspaceWindows(workspace, monitor, allow_unrelated) {
         if (!workspace) return [];
         
-        // Check cache
         const cacheKey = `${workspace.index()}-${monitor}-${allow_unrelated ? 1 : 0}-${this._cacheGeneration}`;
         if (this._windowsCache.has(cacheKey)) {
             return this._windowsCache.get(cacheKey);
@@ -213,7 +212,6 @@ export class WindowingManager {
         
         let target_workspace = null;
         
-        // Check if next workspace exists and can fit this window
         if (nextIndex < workspaceManager.get_n_workspaces()) {
             const nextWorkspace = workspaceManager.get_workspace_by_index(nextIndex);
             

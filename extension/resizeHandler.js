@@ -47,7 +47,6 @@ export class ResizeHandler {
             return;
         }
         
-        // Check if window will fit in original workspace
         const canFit = this.tilingManager.canFitWindow(window, targetWorkspace, monitor);
         
         if (!canFit) {

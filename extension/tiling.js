@@ -29,14 +29,6 @@ export class TilingManager {
         this._windowingManager = null;
         this._extension = null;
         
-        // Track original window sizes for smart resize before overflow
-        // windowId -> { width, height } - size before current resize session
-        // Now stored in WindowState.get(window, 'originalSize')
-        
-        // Track window opening sizes for reverse smart resize (restore on window close)
-        // windowId -> { width, height } - size when window first opened
-        // Now stored in WindowState.get(window, 'openingSize')
-        
         // Queue for serializing window opening operations to prevent race conditions
         this._openingQueue = [];
         this._processingQueue = false;
@@ -743,8 +735,7 @@ export class TilingManager {
         
         const y = (work_area.height - maxHeight) / 2 + work_area.y;
         level.y = y;
-        
-        // Set targetX/targetY for each window
+
         let xPos = level.x;
         for (const w of level.windows) {
             w.targetX = xPos;
@@ -1039,7 +1030,6 @@ export class TilingManager {
     }
 
     tileWorkspaceWindows(workspace, reference_meta_window, _monitor, keep_oversized_windows, excludeFromTiling = false) {
-        // Check if mosaic is enabled for this workspace
         if (this._extension && !this._extension.isMosaicEnabledForWorkspace(workspace)) {
             Logger.log(`[MOSAIC WM] Mosaic disabled for workspace ${workspace.index()} - skipping tiling`);
             return { overflow: false, layout: null };
@@ -1062,7 +1052,6 @@ export class TilingManager {
                 }
                 return { overflow: false, layout: null };
             } else {
-                // Get monitor from reference window
                 _monitor = reference_meta_window.get_monitor();
             }
         }
@@ -1423,15 +1412,10 @@ export class TilingManager {
         }
     }
 
-    // Get preferred size for a window
-     
     getPreferredSize(window) {
         return WindowState.get(window, 'preferredSize') || null;
     }
 
-    //
-     // Try to restore windows toward their original opening sizes when space is freed
-     
     tryRestoreWindowSizes(windows, workArea, freedWidth, freedHeight, workspace, monitor) {
         Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: ${freedWidth}px width and ${freedHeight}px height freed`);
         

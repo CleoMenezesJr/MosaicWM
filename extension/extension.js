@@ -98,14 +98,12 @@ export default class WindowMosaicExtension extends Extension {
         this._resizeInOverflow = false;
     }
     
-    // Check if mosaic is enabled for a given workspace
     isMosaicEnabledForWorkspace(workspace) {
         if (!workspace) return true;
         // If explicitly set to true in WeakMap, it is disabled. Otherwise enabled.
         return !this._disabledWorkspaceStates.get(workspace);
     }
     
-    // Update the indicator icon based on current workspace state
     _updateIndicatorIcon() {
         if (this._mosaicIndicator) {
             this._mosaicIndicator._updateIcon();
@@ -144,7 +142,6 @@ export default class WindowMosaicExtension extends Extension {
             Logger.log(`[MOSAIC WM] Window ${window.get_id()} opened maximized - marked for auto-tile check`);
         }
         
-        // Defined as callback to be used by either first-frame signal or polling
         const processWindowCallback = () => {
             // Using a closure variable to track if we're inside the timeout loop already or called directly
             let monitor = window.get_monitor();
@@ -312,8 +309,8 @@ export default class WindowMosaicExtension extends Extension {
             
             signalId = actor.connect('first-frame', processOnce);
             
-            // Safety timeout: if first-frame doesn't fire within 500ms (safety fallback), start polling anyway
-            timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+            // Safety timeout: if first-frame doesn't fire within timeout (safety fallback), start polling anyway
+            timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.SAFETY_TIMEOUT_BUFFER_MS + 400, () => {
                 Logger.log('[MOSAIC WM] first-frame timeout - falling back to polling');
                 processOnce();
                 return GLib.SOURCE_REMOVE;
@@ -436,9 +433,7 @@ export default class WindowMosaicExtension extends Extension {
         }
     };
 
-    // =========================================================================
     // SIGNAL HANDLERS - Workspace Changes
-    // =========================================================================
 
     _switchWorkspaceHandler = (_, win) => {
         this._tileWindowWorkspace(win.meta_window);
@@ -649,7 +644,7 @@ export default class WindowMosaicExtension extends Extension {
             }
             
             const rect = window.get_frame_rect();
-            if (rect.width <= 10 || rect.height <= 10) {
+            if (rect.width <= constants.ANIMATION_DIFF_THRESHOLD || rect.height <= constants.ANIMATION_DIFF_THRESHOLD) {
                 return;
             }
             
@@ -692,7 +687,7 @@ export default class WindowMosaicExtension extends Extension {
                     // Only update if there's a meaningful size difference (avoid noise)
                     const widthDiff = Math.abs(rect.width - currentPreferredSize.width);
                     const heightDiff = Math.abs(rect.height - currentPreferredSize.height);
-                    if (widthDiff > 10 || heightDiff > 10) {
+                    if (widthDiff > constants.ANIMATION_DIFF_THRESHOLD || heightDiff > constants.ANIMATION_DIFF_THRESHOLD) {
                         WindowState.set(window, 'preferredSize', { 
                             width: rect.width, 
                             height: rect.height 
@@ -745,7 +740,7 @@ export default class WindowMosaicExtension extends Extension {
                 const windowId = window.get_id();
                 const resizeNow = Date.now();
                 const isActiveResize = isManualResize || 
-                    (this._lastResizeWindow === windowId && (resizeNow - this._lastResizeTime) < 300); // 300ms threshold for continuous resize events
+                    (this._lastResizeWindow === windowId && (resizeNow - this._lastResizeTime) < constants.RESIZE_SETTLE_DELAY_MS * 2); // Threshold for continuous resize events
                 this._lastResizeWindow = windowId;
                 this._lastResizeTime = resizeNow;
                 
@@ -803,7 +798,7 @@ export default class WindowMosaicExtension extends Extension {
                 
                 // Skip automatic overflow detection during grace period after grab-op-end
                 const now = Date.now();
-                if (this._resizeGracePeriod && (now - this._resizeGracePeriod) < 200) { // 200ms grace period
+                if (this._resizeGracePeriod && (now - this._resizeGracePeriod) < constants.REVERSE_RESIZE_PROTECTION_MS) { // Protection period
                     Logger.log('[MOSAIC WM] Skipping automatic overflow check - in grace period');
                     this._sizeChanged = false;
                     return;
@@ -1060,7 +1055,7 @@ export default class WindowMosaicExtension extends Extension {
 
                     // Window logic continues...
                     if ( 
-                        (grabpo === constants.GRAB_OP_MOVING || grabpo === constants.GRAB_OP_KEYBOARD_MOVING) && 
+                        (grabpo === Meta.GrabOp.MOVING || grabpo === Meta.GrabOp.KEYBOARD_MOVING) && 
                         window && !this.windowingManager.isMaximizedOrFullscreen(window)
                     ) {
                          const workspace = window.get_workspace();
@@ -1094,7 +1089,7 @@ export default class WindowMosaicExtension extends Extension {
         }
         
         if( !this.windowingManager.isExcluded(window) &&
-            (grabpo === constants.GRAB_OP_MOVING || grabpo === constants.GRAB_OP_KEYBOARD_MOVING) && 
+            (grabpo === Meta.GrabOp.MOVING || grabpo === Meta.GrabOp.KEYBOARD_MOVING) && 
             !(this.windowingManager.isMaximizedOrFullscreen(window))) {
             Logger.log(`[MOSAIC WM] _grabOpBeginHandler: calling startDrag for window ${window.get_id()}`);
             this.reorderingManager.startDrag(window);
@@ -1139,7 +1134,7 @@ export default class WindowMosaicExtension extends Extension {
             return;
         }
         
-        if (grabpo === constants.GRAB_OP_MOVING && window === this._draggedWindow) {
+        if (grabpo === Meta.GrabOp.MOVING && window === this._draggedWindow) {
             if (this._dragPositionChangedId && window) {
                 try {
                     window.disconnect(this._dragPositionChangedId);
@@ -1274,7 +1269,7 @@ export default class WindowMosaicExtension extends Extension {
                 }
             }
             
-            if( (grabpo === constants.GRAB_OP_MOVING || grabpo === constants.GRAB_OP_KEYBOARD_MOVING) && 
+            if( (grabpo === Meta.GrabOp.MOVING || grabpo === Meta.GrabOp.KEYBOARD_MOVING) && 
                 !(this.windowingManager.isMaximizedOrFullscreen(window)) &&
                 !skipTiling) 
             {
@@ -1785,7 +1780,7 @@ export default class WindowMosaicExtension extends Extension {
                                         const newFrame = WINDOW.get_frame_rect();
                                         
                                         if (availableForNew <= constants.MIN_AVAILABLE_SPACE_PX) {
-                                            Logger.log(`[MOSAIC WM] PRE-FIT: Available space ${availableForNew}px <= 50px - overflow unavoidable`);
+                                            Logger.log(`[MOSAIC WM] PRE-FIT: Available space ${availableForNew}px <= ${constants.MIN_AVAILABLE_SPACE_PX}px - overflow unavoidable`);
                                             // Restore opacity before overflow
                                             const actor50 = WINDOW.get_compositor_private();
                                             if (actor50) actor50.opacity = 255;
@@ -1803,7 +1798,7 @@ export default class WindowMosaicExtension extends Extension {
                                         // Just let the polling continue until it succeeds or times out
                                         
                                         if (attempts >= constants.PRE_FIT_MAX_ATTEMPTS) { // Pre-Fit uses max 10 attempts (500ms) for DnD resize
-                                            Logger.log('[MOSAIC WM] PRE-FIT: Smart resize failed after 10 polls - triggering overflow');
+                                            Logger.log(`[MOSAIC WM] PRE-FIT: Smart resize failed after ${constants.PRE_FIT_MAX_ATTEMPTS} polls - triggering overflow`);
                                             // Restore opacity before overflow
                                             const actor10 = WINDOW.get_compositor_private();
                                             if (actor10) actor10.opacity = 255;
