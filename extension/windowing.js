@@ -4,8 +4,11 @@
 
 import * as Logger from './logger.js';
 import * as constants from './constants.js';
-import Meta from 'gi://Meta';
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
+import Gio from 'gi://Gio';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as WorkspaceSwitcherPopup from 'resource:///org/gnome/shell/ui/workspaceSwitcherPopup.js';
 import { afterWorkspaceSwitch } from './timing.js';
 
 import { TileZone } from './edgeTiling.js';
@@ -106,6 +109,7 @@ export class WindowingManager {
         window.change_workspace(previous_workspace);
         if (active)
             previous_workspace.activate(this.getTimestamp());
+            this.showWorkspaceSwitcher(previous_workspace, window.get_monitor());
         return previous_workspace;
     }
 
@@ -256,6 +260,7 @@ export class WindowingManager {
             
             if (switchFocusToMovedWindow) {
                 target_workspace.activate(global.get_current_time());
+                this.showWorkspaceSwitcher(target_workspace, monitor);
             }
             
             // Re-tile after window has settled
@@ -391,7 +396,7 @@ export class WindowingManager {
 
     // Navigates to an appropriate workspace when current becomes empty.
     // Priority: last visited workspace, unless it's the final (always-empty) workspace
-    renavigate(workspace, condition, lastVisitedIndex = null) {
+    renavigate(workspace, condition, lastVisitedIndex = null, monitorIndex = -1) {
         const workspaceManager = global.workspace_manager;
         const nWorkspaces = workspaceManager.get_n_workspaces();
         const currentIndex = workspace.index();
@@ -403,6 +408,7 @@ export class WindowingManager {
             const leftNeighbor = workspace.get_neighbor(Meta.MotionDirection.LEFT);
             if (leftNeighbor && leftNeighbor.index() !== currentIndex) {
                 leftNeighbor.activate(this.getTimestamp());
+                this.showWorkspaceSwitcher(leftNeighbor, monitorIndex);
             }
             return;
         }
@@ -413,6 +419,7 @@ export class WindowingManager {
             if (lastVisited && lastVisited.index() >= 0 && lastVisited.index() < nWorkspaces) {
                 Logger.log(`[MOSAIC WM] renavigate: Going to last visited workspace ${lastVisitedIndex}`);
                 lastVisited.activate(this.getTimestamp());
+                this.showWorkspaceSwitcher(lastVisited, monitorIndex);
                 return;
             }
         }
@@ -431,6 +438,39 @@ export class WindowingManager {
         if (targetWorkspace && targetWorkspace.index() !== currentIndex && condition) {
             Logger.log(`[MOSAIC WM] renavigate: Falling back to neighbor workspace ${targetWorkspace.index()}`);
             targetWorkspace.activate(this.getTimestamp());
+            this.showWorkspaceSwitcher(targetWorkspace, monitorIndex);
+        }
+    }
+
+    showWorkspaceSwitcher(workspace, monitorIndex = -1) {
+        if (!workspace) return;
+        
+        const index = workspace.index();
+        
+        // Default to primary monitor if none specified
+        if (monitorIndex === -1) {
+            monitorIndex = Main.layoutManager.primaryIndex;
+        }
+        
+        Logger.log(`[MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace ${index} on monitor ${monitorIndex}`);
+        
+        // Use WorkspaceSwitcherPopup for native workspace switching indicator (dots/grid)
+        try {
+            if (!Main.wm._workspaceSwitcherPopup) {
+                Main.wm._workspaceSwitcherPopup = new WorkspaceSwitcherPopup.WorkspaceSwitcherPopup();
+            }
+            
+            // Ensure destruction cleanup
+            if (!WindowState.get(Main.wm._workspaceSwitcherPopup, 'destroyConnected')) {
+                 Main.wm._workspaceSwitcherPopup.connect('destroy', () => {
+                     Main.wm._workspaceSwitcherPopup = null;
+                 });
+                 WindowState.set(Main.wm._workspaceSwitcherPopup, 'destroyConnected', true);
+            }
+
+            Main.wm._workspaceSwitcherPopup.display(index);
+        } catch (e) {
+            Logger.warn(`[MOSAIC WM] WorkspaceSwitcherPopup failed: ${e.message}`);
         }
     }
 

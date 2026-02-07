@@ -4,8 +4,6 @@
 
 import * as Logger from './logger.js';
 import GLib from 'gi://GLib';
-import Meta from 'gi://Meta';
-import Shell from 'gi://Shell';
 import Clutter from 'gi://Clutter';
 
 import * as constants from './constants.js';
@@ -1037,8 +1035,6 @@ export class TilingManager {
 
         Logger.log(`[MOSAIC WM] tileWorkspaceWindows: Starting for workspace ${workspace.index()}`);
 
-
-        
         // Auto-detect monitors: if no monitor specified and no reference window,
         // iterate over all monitors to ensure complete tiling coverage
         if (_monitor === null || _monitor === undefined) {
