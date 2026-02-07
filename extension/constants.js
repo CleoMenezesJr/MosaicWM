@@ -45,6 +45,7 @@ export const RESIZE_VERIFICATION_DELAY_MS = 1500; // Delay for resize verificati
 export const RESIZE_SETTLE_DELAY_MS = 150;       // Delay to let Mutter apply resize before retiling
 export const ISRESIZING_FLAG_RESET_MS = 2;       // Delay to reset isResizing flag
 export const MIN_AVAILABLE_SPACE_PX = 50;        // Minimum available space threshold for smart resize
+export const OVERFLOW_MOVE_DEBOUNCE_MS = 2000;   // Debounce to prevent infinite loops after overflow move
 
 // Threshold for identifying significant changes in window geometry for animations
 export const ANIMATION_DIFF_THRESHOLD = 10;

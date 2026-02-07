@@ -1401,38 +1401,32 @@ export class TilingManager {
         }
     }
 
-    //
-     // Save the opening size of a window (called once when window first appears)
-     // This is the MAXIMUM size the window can be restored to
+    // Save the preferred size of a window (called once when window first appears or user manually resizes)
+    // This is the TARGET size the window wants to be
      
-    saveOpeningSize(window) {
-        if (!WindowState.has(window, 'openingSize')) {
+    savePreferredSize(window) {
+        if (!WindowState.has(window, 'preferredSize')) {
             const frame = window.get_frame_rect();
             if (frame.width > 0 && frame.height > 0) {
-                WindowState.set(window, 'openingSize', { width: frame.width, height: frame.height });
-                Logger.log(`[MOSAIC WM] saveOpeningSize: Window ${window.get_id()} opened at ${frame.width}x${frame.height}`);
+                WindowState.set(window, 'preferredSize', { width: frame.width, height: frame.height });
+                Logger.log(`[MOSAIC WM] savePreferredSize: Window ${window.get_id()} prefers ${frame.width}x${frame.height}`);
             }
         }
     }
     
-    //
-     // Clear opening size when window is destroyed
+    // Clear preferred size when window is destroyed
      
-    //
-     // Clear opening size when window is destroyed
-     
-    clearOpeningSize(window) {
-        if (WindowState.has(window, 'openingSize')) {
-            WindowState.remove(window, 'openingSize');
-            Logger.log(`[MOSAIC WM] clearOpeningSize: Removed ${window.get_id()}`);
+    clearPreferredSize(window) {
+        if (WindowState.has(window, 'preferredSize')) {
+            WindowState.remove(window, 'preferredSize');
+            Logger.log(`[MOSAIC WM] clearPreferredSize: Removed ${window.get_id()}`);
         }
     }
 
-    //
-     // Get opening size for a window
+    // Get preferred size for a window
      
-    getOpeningSize(window) {
-        return WindowState.get(window, 'openingSize') || null;
+    getPreferredSize(window) {
+        return WindowState.get(window, 'preferredSize') || null;
     }
 
     //
@@ -1441,15 +1435,15 @@ export class TilingManager {
     tryRestoreWindowSizes(windows, workArea, freedWidth, freedHeight, workspace, monitor) {
         Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: ${freedWidth}px width and ${freedHeight}px height freed`);
         
-        // Find windows that were shrunk (current size < opening size)
+        // Find windows that were shrunk (current size < preferred size)
         const shrunkWindows = [];
         for (const window of windows) {
-            const openingSize = WindowState.get(window, 'openingSize');
-            if (!openingSize) continue;
+            const preferredSize = WindowState.get(window, 'preferredSize');
+            if (!preferredSize) continue;
             
             const frame = window.get_frame_rect();
-            const widthDiff = openingSize.width - frame.width;
-            const heightDiff = openingSize.height - frame.height;
+            const widthDiff = preferredSize.width - frame.width;
+            const heightDiff = preferredSize.height - frame.height;
             
             // Window was shrunk if it's smaller than opening size
             if (widthDiff > 10 || heightDiff > 10) {
@@ -1457,8 +1451,8 @@ export class TilingManager {
                     window,
                     currentWidth: frame.width,
                     currentHeight: frame.height,
-                    openingWidth: openingSize.width,
-                    openingHeight: openingSize.height,
+                    openingWidth: preferredSize.width,
+                    openingHeight: preferredSize.height,
                     widthDeficit: Math.max(0, widthDiff),
                     heightDeficit: Math.max(0, heightDiff)
                 });
@@ -1475,6 +1469,57 @@ export class TilingManager {
         // Determine orientation (use width for landscape, height for portrait)
         const isLandscape = workArea.width > workArea.height;
         
+        // Check if we have valid freed dimensions, otherwise calculate them
+        if (freedWidth === undefined || freedHeight === undefined || isNaN(freedWidth) || isNaN(freedHeight)) {
+            Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: Freed dimensions undefined/NaN - calculating from work area`);
+            
+            // Calculate currently used space by remaining windows
+            let usedWidth = 0;
+            let usedHeight = 0;
+            
+            if (windows.length > 0) {
+                 if (isLandscape) {
+                    // For landscape, we care about width usage
+                    // Simple approximation: sum of widths (valid for single row)
+                    // For multiple rows/columns, this is complex, but we can try to estimate
+                    // using the bbox of the windows
+                    let minX = Infinity;
+                    let maxX = -Infinity;
+                    for (const w of windows) {
+                        const f = w.get_frame_rect();
+                        minX = Math.min(minX, f.x);
+                        maxX = Math.max(maxX, f.x + f.width);
+                    }
+                    usedWidth = (maxX - minX) > 0 ? (maxX - minX) : 0;
+                 } else {
+                    // For portrait, we care about height usage
+                    let minY = Infinity;
+                    let maxY = -Infinity;
+                    for (const w of windows) {
+                        const f = w.get_frame_rect();
+                        minY = Math.min(minY, f.y);
+                        maxY = Math.max(maxY, f.y + f.height);
+                    }
+                    usedHeight = (maxY - minY) > 0 ? (maxY - minY) : 0;
+                 }
+            }
+            
+            // Add spacing for gaps between windows
+            const spacing = (Math.max(0, windows.length - 1)) * constants.WINDOW_SPACING;
+            
+            if (isLandscape) {
+                freedWidth = Math.max(0, workArea.width - usedWidth - spacing);
+                // Assume height matches work area for single row simplification
+                freedHeight = workArea.height; 
+            } else {
+                freedHeight = Math.max(0, workArea.height - usedHeight - spacing);
+                // Assume width matches work area for single column simplification
+                freedWidth = workArea.width;
+            }
+            
+            Logger.log(`[MOSAIC WM] tryRestoreWindowSizes: Calculated available space: ${freedWidth}x${freedHeight}`);
+        }
+
         // The freedSpace IS the available space (the removed window's space is now free)
         const freedSpace = isLandscape ? freedWidth : freedHeight;
         
@@ -1617,6 +1662,17 @@ export class TilingManager {
                 // Clear flag after a delay to allow resize to complete
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.REVERSE_RESIZE_PROTECTION_MS, () => {
                     WindowState.set(shrunkWindow.window, 'isReverseSmartResizing', false);
+                    
+                    // If fully restored, clear the constraint flag!
+                    const finalFrame = shrunkWindow.window.get_frame_rect();
+                    const pSize = WindowState.get(shrunkWindow.window, 'preferredSize');
+                    if (pSize && 
+                        Math.abs(finalFrame.width - pSize.width) < 10 && 
+                        Math.abs(finalFrame.height - pSize.height) < 10) {
+                        WindowState.set(shrunkWindow.window, 'isConstrainedByMosaic', false);
+                        Logger.log(`[MOSAIC WM] Window ${shrunkWindow.window.get_id()} fully restored - constraint cleared`);
+                    }
+                    
                     Logger.log(`[MOSAIC WM] Reverse smart resize complete for window ${shrunkWindow.window.get_id()}`);
                     return GLib.SOURCE_REMOVE;
                 });
@@ -1872,6 +1928,8 @@ export class TilingManager {
             
             this.saveOriginalSize(window);
             WindowState.set(window, 'isSmartResizing', true);
+            // Mark window as constrained so we don't treat this shrink as a manual resize preference
+            WindowState.set(window, 'isConstrainedByMosaic', true);
             
             // Apply resize SYNCHRONOUSLY so tileWorkspaceWindows sees correct sizes
             window.move_resize_frame(true, frame.x, frame.y, targetWidth, targetHeight);

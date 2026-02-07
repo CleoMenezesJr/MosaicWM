@@ -232,10 +232,5 @@ export class WindowHandler {
         }
     }
     
-    // =========================================================================
-    // FUTURE: The following methods could be extracted from extension.js:
-    // - waitForGeometry(): Window geometry polling and readiness detection
-    // - windowCreated(): Handle window-created signal
-    // - windowDestroyed(): Handle window destruction and cleanup
-    // =========================================================================
+
 }
