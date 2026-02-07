@@ -262,7 +262,7 @@ export default class WindowMosaicExtension extends Extension {
                                 // Use a small timeout to give Mutter time to process resize
                                 // before tileWorkspaceWindows reads the new frame_rect sizes
                                 Logger.log('[MOSAIC WM] Smart resize applied - waiting for resize to propagate');
-                                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+                                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.POLL_INTERVAL_MS, () => {
                                     this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
                                     return GLib.SOURCE_REMOVE;
                                 });
@@ -312,7 +312,7 @@ export default class WindowMosaicExtension extends Extension {
             
             signalId = actor.connect('first-frame', processOnce);
             
-            // Safety timeout: if first-frame doesn't fire within 500ms, start polling anyway
+            // Safety timeout: if first-frame doesn't fire within 500ms (safety fallback), start polling anyway
             timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
                 Logger.log('[MOSAIC WM] first-frame timeout - falling back to polling');
                 processOnce();
@@ -483,7 +483,7 @@ export default class WindowMosaicExtension extends Extension {
             
             // Guard: Skip if window was recently moved due to overflow (prevents infinite loop)
             const lastOverflowMove = WindowState.get(window, 'overflowMoveTimestamp');
-            if (lastOverflowMove && (Date.now() - lastOverflowMove) < 2000) {
+            if (lastOverflowMove && (Date.now() - lastOverflowMove) < constants.OVERFLOW_MOVE_DEBOUNCE_MS) {
                 Logger.log(`[MOSAIC WM] Skipping overflow check - window ${windowId} was recently moved for overflow`);
                 return GLib.SOURCE_REMOVE;
             }
@@ -509,10 +509,11 @@ export default class WindowMosaicExtension extends Extension {
                     afterWorkspaceSwitch(() => {
                         afterAnimations(this.animationsManager, () => {
                                 if (!WindowState.get(window, 'movedByOverflow')) {
-                                    Logger.log('[MOSAIC WM] DnD departure: Attempting Reverse Smart Resize on source workspace');
+                                    Logger.log('[MOSAIC WM] Source Workspace Departure: Attempting Reverse Smart Resize on source workspace');
                                     const remainingWindows = this.windowingManager.getMonitorWorkspaceWindows(sourceWorkspace, monitor);
                                     const workArea = this.edgeTilingManager.calculateRemainingSpace(sourceWorkspace, monitor);
                                     if (workArea) {
+                                        // Pass undefined for freed dimensions to trigger the new auto-calculation in tiling.js
                                         this.tilingManager.tryRestoreWindowSizes(remainingWindows, workArea, undefined, undefined, sourceWorkspace, monitor);
                                     } else {
                                         Logger.log('[MOSAIC WM] extension.js: Skipped restore - invalid workArea');
@@ -619,8 +620,8 @@ export default class WindowMosaicExtension extends Extension {
                     Logger.log('[MOSAIC WM] User maximized window - moving to new workspace');
                     const originalWorkspaceIndex = workspace.index(); // Save BEFORE move (for undo)
                     
-                    // Use openingSize as pre-maximize size (frame is already maximized here)
-                    const preMaxSize = WindowState.get(window, 'openingSize');
+                    // Use preferredSize as pre-maximize size (frame is already maximized here)
+                    const preMaxSize = WindowState.get(window, 'preferredSize');
                     if (preMaxSize) {
                         Logger.log(`[MOSAIC WM] Saved pre-max size: ${preMaxSize.width}x${preMaxSize.height}`);
                     }
@@ -678,20 +679,36 @@ export default class WindowMosaicExtension extends Extension {
                 WindowState.remove(window, 'actualMinHeight');
             }
             
-            // UPDATE OPENING SIZE: If user manually resizes, update the stored size
+            // UPDATE PREFERRED SIZE: If user manually resizes, update the stored size
             // This prevents reverse smart resize from undoing manual resizes
-            const currentOpeningSize = WindowState.get(window, 'openingSize');
-            if (currentOpeningSize) {
-                // Only update if there's a meaningful size difference (avoid noise)
-                const widthDiff = Math.abs(rect.width - currentOpeningSize.width);
-                const heightDiff = Math.abs(rect.height - currentOpeningSize.height);
-                if (widthDiff > 10 || heightDiff > 10) {
-                    WindowState.set(window, 'openingSize', { 
-                        width: rect.width, 
-                        height: rect.height 
-                    });
-                    Logger.log(`[MOSAIC WM] Manual resize: Updated opening size for ${window.get_id()} to ${rect.width}x${rect.height}`);
+            // CRITICAL: Only update if the user explicitly resized it (GrabOp) OR if the window is NOT constrained by Mosaic
+            
+            const isConstrained = WindowState.get(window, 'isConstrainedByMosaic');
+            const isManualResizeAction = this._currentGrabOp && constants.RESIZE_GRAB_OPS.includes(this._currentGrabOp);
+            
+            if (!isConstrained || isManualResizeAction) {
+                const currentPreferredSize = WindowState.get(window, 'preferredSize');
+                if (currentPreferredSize) {
+                    // Only update if there's a meaningful size difference (avoid noise)
+                    const widthDiff = Math.abs(rect.width - currentPreferredSize.width);
+                    const heightDiff = Math.abs(rect.height - currentPreferredSize.height);
+                    if (widthDiff > 10 || heightDiff > 10) {
+                        WindowState.set(window, 'preferredSize', { 
+                            width: rect.width, 
+                            height: rect.height 
+                        });
+                        
+                        // If user explicitly resized, we should clear the constraint flag
+                        if (isConstrained && isManualResizeAction) {
+                            WindowState.set(window, 'isConstrainedByMosaic', false);
+                            Logger.log(`[MOSAIC WM] Manual resize action detected - cleared constraint flag for ${window.get_id()}`);
+                        }
+                        
+                        Logger.log(`[MOSAIC WM] Updated preferred size for ${window.get_id()} to ${rect.width}x${rect.height}`);
+                    }
                 }
+            } else {
+                 Logger.log(`[MOSAIC WM] Ignored size change for ${window.get_id()} - Window is constrained by Mosaic logic`);
             }
             
             if (this._skipNextTiling === window.get_id()) {
@@ -728,7 +745,7 @@ export default class WindowMosaicExtension extends Extension {
                 const windowId = window.get_id();
                 const resizeNow = Date.now();
                 const isActiveResize = isManualResize || 
-                    (this._lastResizeWindow === windowId && (resizeNow - this._lastResizeTime) < 300);
+                    (this._lastResizeWindow === windowId && (resizeNow - this._lastResizeTime) < 300); // 300ms threshold for continuous resize events
                 this._lastResizeWindow = windowId;
                 this._lastResizeTime = resizeNow;
                 
@@ -786,7 +803,7 @@ export default class WindowMosaicExtension extends Extension {
                 
                 // Skip automatic overflow detection during grace period after grab-op-end
                 const now = Date.now();
-                if (this._resizeGracePeriod && (now - this._resizeGracePeriod) < 200) {
+                if (this._resizeGracePeriod && (now - this._resizeGracePeriod) < 200) { // 200ms grace period
                     Logger.log('[MOSAIC WM] Skipping automatic overflow check - in grace period');
                     this._sizeChanged = false;
                     return;
@@ -1531,8 +1548,8 @@ export default class WindowMosaicExtension extends Extension {
                             // Mark this window to skip slide-in animation after overview closes
                             WindowState.set(WINDOW, 'createdDuringOverview', true);
                             
-                            // Save opening size first
-                            this.tilingManager.saveOpeningSize(WINDOW);
+                            // Save preferred size first
+                            this.tilingManager.savePreferredSize(WINDOW);
                             this.windowHandler.connectWindowSignals(WINDOW);
                             
                             // Tile immediately (positions may reflect in overview via MosaicLayoutStrategy)
@@ -1577,9 +1594,9 @@ export default class WindowMosaicExtension extends Extension {
                             return GLib.SOURCE_REMOVE;
                         }
                         
-                        // CRITICAL: Save opening size NOW when geometry is ready but BEFORE Smart Resize
+                        // CRITICAL: Save preferred size NOW when geometry is ready but BEFORE Smart Resize
                         // This captures the window's actual size for Reverse Smart Resize
-                        this.tilingManager.saveOpeningSize(WINDOW);
+                        this.tilingManager.savePreferredSize(WINDOW);
                         
                         // FALLBACK: If configure signal didn't fire in time, set slide-in flag now
                         // Skip for windows created during overview (already positioned)
@@ -1831,18 +1848,18 @@ export default class WindowMosaicExtension extends Extension {
                                     const monitorWindows = this.windowingManager.getMonitorWorkspaceWindows(WORKSPACE, MONITOR)
                                         .filter(w => !this.edgeTilingManager.isEdgeTiled(w) &&
                                                      !this.windowingManager.isExcluded(w));
-                                    const openingSize = this.tilingManager.getOpeningSize(WINDOW);
+                                    const preferredSize = this.tilingManager.getPreferredSize(WINDOW);
                                     
-                                    if (openingSize && monitorWindows.length === 1) {
-                                        // Solo window - fully restore to opening size
+                                    if (preferredSize && monitorWindows.length === 1) {
+                                        // Solo window - fully restore to preferred size
                                         const wa = WORKSPACE.get_work_area_for_monitor(MONITOR);
                                         const win = monitorWindows[0];
                                         const currentRect = win.get_frame_rect();
                                         const x = currentRect.x;
                                         const y = currentRect.y;
                                         
-                                        const targetW = Math.min(openingSize.width, wa.width - constants.WINDOW_SPACING * 2);
-                                        const targetH = Math.min(openingSize.height, wa.height - constants.WINDOW_SPACING * 2);
+                                        const targetW = Math.min(preferredSize.width, wa.width - constants.WINDOW_SPACING * 2);
+                                        const targetH = Math.min(preferredSize.height, wa.height - constants.WINDOW_SPACING * 2);
                                         
                                         Logger.log(`[MOSAIC WM] DnD Solo: Fully restoring window to ${targetW}x${targetH}`);
                                         win.move_resize_frame(true, x, y, targetW, targetH);
@@ -1853,7 +1870,7 @@ export default class WindowMosaicExtension extends Extension {
                                         const wa = WORKSPACE.get_work_area_for_monitor(MONITOR);
                                         const availableExtra = wa.width - usedWidth - totalSpacing;
                                         
-                                        if (availableExtra > 20) {
+                                        if (availableExtra > constants.ANIMATION_DIFF_THRESHOLD) { // Only expand if meaningful space available
                                             Logger.log(`[MOSAIC WM] DnD arrival: Extra space ${availableExtra}px - trying expansion`);
                                             this.tilingManager.tryRestoreWindowSizes(monitorWindows, wa, availableExtra, wa.height, WORKSPACE, MONITOR);
                                         }
@@ -1920,7 +1937,7 @@ export default class WindowMosaicExtension extends Extension {
                     return GLib.SOURCE_CONTINUE;
                 };
                 
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10, waitForGeometry);
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.GEOMETRY_CHECK_DELAY_MS, waitForGeometry);
                 return GLib.SOURCE_REMOVE;
             }
             return GLib.SOURCE_CONTINUE;
@@ -1948,9 +1965,9 @@ export default class WindowMosaicExtension extends Extension {
         // Check if window still has an actor (destroyed windows don't)
         const actor = window.get_compositor_private();
         if (!actor) {
-            this.tilingManager.clearOpeningSize(window);
+            this.tilingManager.clearPreferredSize(window);
         } else {
-            Logger.log(`[MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping opening size`);
+            Logger.log(`[MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping preferred size`);
         }
         
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, () => {

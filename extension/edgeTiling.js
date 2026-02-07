@@ -24,7 +24,6 @@ export const TileZone = {
 export class EdgeTilingManager {
     constructor() {
         // Module state for window states (pre-tile position/size)
-        // Now using WindowState.get(window, 'edgeTilingState')
 
         // Module state for edge tiling activity
         this._isEdgeTilingActive = false;
@@ -36,7 +35,6 @@ export class EdgeTilingManager {
         // previousSizes -> WindowState.get(window, 'edgePreviousSize')
 
         // Auto-tiling dependencies (dependentWindowId -> masterWindowId)
-        // Auto-tiling dependencies are now handled via WindowState
         // 'autoTileMaster' on dependent -> masterWindow
         // 'autoTileDependents' on master -> Set<dependentWindow>
         
@@ -851,9 +849,6 @@ export class EdgeTilingManager {
         return true;
     }
 
-    //
-     // Remove edge tiling and restore window to previous state
-     
     removeTile(window, callback = null) {
         const winId = window.get_id();
         const savedState = WindowState.get(window, 'edgeTilingState');
@@ -970,9 +965,6 @@ export class EdgeTilingManager {
         }
     }
 
-    //
-     // Handle mosaic overflow after edge tiling is applied
-     
     _handleMosaicOverflow(tiledWindow, zone) {
         Logger.log(`[MOSAIC WM] _handleMosaicOverflow: called for zone=${zone}`);
         
@@ -1069,9 +1061,6 @@ export class EdgeTilingManager {
         }
     }
 
-    //
-     // Setup resize listener for edge-tiled window
-     
     setupResizeListener(window) {
         if (WindowState.has(window, 'edgeResizeSignalId')) return;
         
@@ -1083,9 +1072,6 @@ export class EdgeTilingManager {
         Logger.log(`[MOSAIC WM] Setup resize listener for window ${window.get_id()}`);
     }
 
-    //
-     // Remove resize listener from window
-     
     _removeResizeListener(window) {
         const signalId = WindowState.get(window, 'edgeResizeSignalId');
         
@@ -1096,9 +1082,6 @@ export class EdgeTilingManager {
         }
     }
 
-    //
-     // Handle window resize event
-     
     _handleWindowResize(window) {
         const state = this.getWindowState(window);
         if (!state || state.zone === TileZone.NONE) return;
@@ -1265,9 +1248,6 @@ export class EdgeTilingManager {
         return adjacent ? adjacent.window : null;
     }
 
-    //
-     // Fix tiled pair sizes after resize ends
-     
     fixTiledPairSizes(resizedWindow, zone) {
         const workspace = resizedWindow.get_workspace();
         const monitor = resizedWindow.get_monitor();
@@ -1341,9 +1321,6 @@ export class EdgeTilingManager {
         }
     }
 
-    //
-     // Fix edge tile size and retile mosaic after resize ends (when no adjacent edge tile)
-     
     fixMosaicAfterEdgeResize(edgeTiledWindow, zone) {
         const workspace = edgeTiledWindow.get_workspace();
         const monitor = edgeTiledWindow.get_monitor();
@@ -1432,9 +1409,6 @@ export class EdgeTilingManager {
         }
     }
     
-    //
-     // Fix quarter tile pair sizes after vertical resize ends
-     
     fixQuarterPairSizes(resizedWindow, zone) {
         const workspace = resizedWindow.get_workspace();
         const monitor = resizedWindow.get_monitor();
@@ -1516,18 +1490,12 @@ export class EdgeTilingManager {
     }
 
 
-    //
-     // Find window by ID across all workspaces
-     
     _findWindowById(windowId) {
         const allWindows = global.display.get_tab_list(Meta.TabList.NORMAL, null);
         return allWindows.find(w => w.get_id() === windowId) || null;
     }
 }
 
-//
- // Check if a zone is a quarter zone
- 
 export function isQuarterZone(zone) {
     return zone === TileZone.TOP_LEFT || zone === TileZone.BOTTOM_LEFT ||
            zone === TileZone.TOP_RIGHT || zone === TileZone.BOTTOM_RIGHT;
