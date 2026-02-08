@@ -89,10 +89,45 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
             return this._computeDefaultSlots(filteredClones, area);
         }
 
-        // All windows have cached positions - use mosaic layout
-        let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
-        const usedRects = new Map();
+        // Determine workspace from the first clone that has a metaWindow
+        let workspace = null;
+        for (const clone of filteredClones) {
+            const mw = clone.metaWindow || clone.source?.metaWindow;
+            if (mw) {
+                workspace = mw.get_workspace();
+                break;
+            }
+        }
+        
+        if (!workspace) {
+            return this._computeDefaultSlots(filteredClones, area);
+        }
 
+        // --- STABLE SCALING (Viewport Mirror) ---
+        // Instead of scaling based on the bounding box of windows (which is unstable),
+        // we scale based on the real Monitor Work Area. This ensures 1:1 spatial memory.
+        const monitorIndex = this._monitor.index;
+        const workArea = workspace.get_work_area_for_monitor(monitorIndex);
+
+        if (!workArea || workArea.width <= 0 || workArea.height <= 0) {
+            return this._computeDefaultSlots(filteredClones, area);
+        }
+
+        // Calculate uniform scale based on Work Area
+        const scale = Math.min(
+            area.width / workArea.width,
+            area.height / workArea.height,
+            1.0
+        );
+
+        // Center the "mirror" within the overview slot
+        const scaledWidth = workArea.width * scale;
+        const scaledHeight = workArea.height * scale;
+        const offsetX = (area.width - scaledWidth) / 2;
+        const offsetY = (area.height - scaledHeight) / 2;
+
+        // Return layout slots
+        const slots = [];
         for (const clone of filteredClones) {
             let winId = null;
             if (clone.metaWindow) {
@@ -101,40 +136,16 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
                 winId = clone.source.metaWindow.get_id();
             }
 
-            const cached = ComputedLayouts.get(winId);
-            const rect = cached; // We know it's valid from the check above
+            const rect = ComputedLayouts.get(winId);
+            if (!rect) continue;
             
-            usedRects.set(clone, rect);
-            minX = Math.min(minX, rect.x);
-            minY = Math.min(minY, rect.y);
-            maxX = Math.max(maxX, rect.x + rect.width);
-            maxY = Math.max(maxY, rect.y + rect.height);
-        }
-
-        const mosaicWidth = maxX - minX;
-        const mosaicHeight = maxY - minY;
-
-        // Calculate uniform scale
-        const scale = Math.min(
-            area.width / mosaicWidth,
-            area.height / mosaicHeight,
-            1.0
-        );
-
-        // Center layout
-        const scaledWidth = mosaicWidth * scale;
-        const scaledHeight = mosaicHeight * scale;
-        const offsetX = (area.width - scaledWidth) / 2;
-        const offsetY = (area.height - scaledHeight) / 2;
-
-        // Return layout slots
-        const slots = [];
-        for (const clone of filteredClones) {
-            const rect = usedRects.get(clone);
-            const x = (rect.x - minX) * scale + area.x + offsetX;
-            const y = (rect.y - minY) * scale + area.y + offsetY;
+            // Map absolute screen coordinates to the Overview slot
+            // Formula: (DesktopPos - DesktopOrigin) * Scale + OverviewSlotOrigin + CenteringOffset
+            const x = (rect.x - workArea.x) * scale + area.x + offsetX;
+            const y = (rect.y - workArea.y) * scale + area.y + offsetY;
             const w = rect.width * scale;
             const h = rect.height * scale;
+            
             slots.push([x, y, w, h, clone]);
         }
 
