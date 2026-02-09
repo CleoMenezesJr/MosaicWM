@@ -1262,8 +1262,8 @@ export class TilingManager {
         return { overflow, layout: this._cachedTileResult?.windows || null };
     }
 
-    canFitWindow(window, workspace, monitor) {
-        Logger.log(`[MOSAIC WM] canFitWindow: Checking if window can fit in workspace ${workspace.index()}`);
+    canFitWindow(window, workspace, monitor, relaxed = false) {
+        Logger.log(`[MOSAIC WM] canFitWindow: Checking if window can fit in workspace ${workspace.index()} (relaxed=${relaxed})`);
         
         // Excluded windows (Always on Top, Sticky) always "fit" - they don't participate in tiling
         // This allows them to coexist with fullscreen/maximized windows
@@ -1360,7 +1360,7 @@ export class TilingManager {
             Logger.log('[MOSAIC WM] canFitWindow: Window already in workspace - checking current layout');
         }
         
-        const FIT_PADDING_BUFFER = 50; // Ensure at least 50px of spare room to be considered a "fit"
+        const FIT_PADDING_BUFFER = relaxed ? 0 : 50; // Use no buffer if relaxed (exact fit required)
         const paddedSpace = {
             x: availableSpace.x,
             y: availableSpace.y,
@@ -1940,10 +1940,8 @@ export class TilingManager {
             window.move_resize_frame(true, frame.x, frame.y, targetWidth, targetHeight);
             Logger.log(`[MOSAIC WM] tryFitWithResize: Resized window ${window.get_id()} from ${frame.width}x${frame.height} to ${targetWidth}x${targetHeight}`);
             
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.RESIZE_VERIFICATION_DELAY_MS, () => {
-                WindowState.set(window, 'isSmartResizing', false);
-                return GLib.SOURCE_REMOVE;
-            });
+            // NOTE: Flag clearing is now handled by the polling loop in extension.js
+            // to ensure state sync between the trigger window and tiled windows.
         }
         
         return true;

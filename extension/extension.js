@@ -871,6 +871,15 @@ export default class WindowMosaicExtension extends Extension {
                             return;
                         }
                         
+                        // Protect veteran windows from being expelled by newcomers during layout shifts
+                        const addedTime = WindowState.get(window, 'addedTime');
+                        const isVeteran = addedTime && (Date.now() - addedTime) > 3000;
+                        if (isVeteran && !this._isManualResize && !WindowState.get(window, 'forceOverflow')) {
+                            Logger.log(`[MOSAIC WM] Resize overflow detected for veteran window ${window.get_id()} - ignoring to prevent incorrect expulsion`);
+                            this._sizeChanged = false;
+                            return;
+                        }
+
                         Logger.log('[MOSAIC WM] Resize overflow detected (automatic) - moving window');
                         this._resizeOverflowWindow = window;
                         
@@ -1773,16 +1782,23 @@ export default class WindowMosaicExtension extends Extension {
                                     let consecutiveNoChange = 0;
                                     
                                     const pollForFit = () => {
-                                        // Abort if window was moved to another workspace
-                                        if (WINDOW.get_workspace().index() !== initialWorkspaceIndex) {
+                                        // Helper to clear resizing state for all involved windows
+                                        const clearResizingState = () => {
+                                            WindowState.set(WINDOW, 'isSmartResizing', false);
+                                            existingForResize.forEach(w => WindowState.set(w, 'isSmartResizing', false));
                                             let p = _smartResizeProcessedWindows.get(WORKSPACE);
                                             if (p) p.delete(windowId);
-                                            WindowState.set(WINDOW, 'isSmartResizing', false);
+                                        };
+
+                                        // Abort if window was moved to another workspace
+                                        if (WINDOW.get_workspace().index() !== initialWorkspaceIndex) {
+                                            clearResizingState();
                                             return GLib.SOURCE_REMOVE;
                                         }
                                         
                                         attempts++;
-                                        const canFitNow = this.tilingManager.canFitWindow(WINDOW, WORKSPACE, MONITOR);
+                                        // Use RELAXED=true to avoid conflicting with the 50px buffer during active resize
+                                        const canFitNow = this.tilingManager.canFitWindow(WINDOW, WORKSPACE, MONITOR, true);
                                         
                                         if (canFitNow) {
                                             Logger.log(`[MOSAIC WM] PRE-FIT: Smart resize successful after ${attempts} polls`);
@@ -1790,10 +1806,8 @@ export default class WindowMosaicExtension extends Extension {
                                             const successActor = WINDOW.get_compositor_private();
                                             if (successActor) successActor.opacity = 255;
                                             
-                                            let p = _smartResizeProcessedWindows.get(WORKSPACE);
-                                            if (p) p.delete(windowId);
+                                            clearResizingState();
                                             
-                                            WindowState.set(WINDOW, 'isSmartResizing', false);
                                             this.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
                                             
                                             // After tiling, try to expand windows towards their opening sizes
@@ -1807,7 +1821,6 @@ export default class WindowMosaicExtension extends Extension {
                                             const totalSpacing = (allWins.length + 1) * constants.WINDOW_SPACING;
                                             const availableExtra = workArea.width - usedWidth - totalSpacing;
                                             
-                                            // Logger.log(`[MOSAIC WM] PRE-FIT expansion check: usedWidth=${usedWidth}, workArea.width=${workArea.width}, availableExtra=${availableExtra}`);
                                             if (availableExtra > 20) { // Only expand if meaningful space available
                                                 Logger.log(`[MOSAIC WM] DnD: Extra space ${availableExtra}px available - trying expansion`);
                                                 this.tilingManager.tryRestoreWindowSizes(allWins, workArea, availableExtra, workArea.height, WORKSPACE, MONITOR);
@@ -1836,17 +1849,10 @@ export default class WindowMosaicExtension extends Extension {
                                             const actor50 = WINDOW.get_compositor_private();
                                             if (actor50) actor50.opacity = 255;
                                             
-                                            let p = _smartResizeProcessedWindows.get(WORKSPACE);
-                                            if (p) p.delete(windowId);
-                                            
-                                            WindowState.set(WINDOW, 'isSmartResizing', false);
+                                            clearResizingState();
                                             this.windowingManager.moveOversizedWindow(WINDOW);
                                             return GLib.SOURCE_REMOVE;
                                         }
-                                        
-                                        // Note: We removed the shrink ratio check here
-                                        // It was causing premature rejection when windows COULD fit
-                                        // Just let the polling continue until it succeeds or times out
                                         
                                         if (attempts >= constants.PRE_FIT_MAX_ATTEMPTS) { // Pre-Fit uses max 10 attempts (500ms) for DnD resize
                                             Logger.log(`[MOSAIC WM] PRE-FIT: Smart resize failed after ${constants.PRE_FIT_MAX_ATTEMPTS} polls - triggering overflow`);
@@ -1854,10 +1860,7 @@ export default class WindowMosaicExtension extends Extension {
                                             const actor10 = WINDOW.get_compositor_private();
                                             if (actor10) actor10.opacity = 255;
                                             
-                                            let p = _smartResizeProcessedWindows.get(WORKSPACE);
-                                            if (p) p.delete(windowId);
-                                            
-                                            WindowState.set(WINDOW, 'isSmartResizing', false);
+                                            clearResizingState();
                                             this.windowingManager.moveOversizedWindow(WINDOW);
                                             return GLib.SOURCE_REMOVE;
                                         }
