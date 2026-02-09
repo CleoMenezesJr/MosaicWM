@@ -871,11 +871,11 @@ export default class WindowMosaicExtension extends Extension {
                             return;
                         }
                         
-                        // Protect veteran windows from being expelled by newcomers during layout shifts
-                        const addedTime = WindowState.get(window, 'addedTime');
-                        const isVeteran = addedTime && (Date.now() - addedTime) > 3000;
-                        if (isVeteran && !this._isManualResize && !WindowState.get(window, 'forceOverflow')) {
-                            Logger.log(`[MOSAIC WM] Resize overflow detected for veteran window ${window.get_id()} - ignoring to prevent incorrect expulsion`);
+                        // FIX: Professional Tiling Lock check.
+                        // Skip automatic overflow if the workspace is currently being tiled.
+                        // This prevents veteran windows from being expelled by intruders during layout shifts.
+                        if (this.windowHandler && this.windowHandler.isWorkspaceLocked(workspace)) {
+                            Logger.log(`[MOSAIC WM] Resize overflow suppressed for window ${window.get_id()} - workspace ${workspace.index()} is locked for tiling`);
                             this._sizeChanged = false;
                             return;
                         }

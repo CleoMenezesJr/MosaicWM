@@ -10,6 +10,34 @@ import * as WindowState from './windowState.js';
 export class WindowHandler {
     constructor(extension) {
         this._ext = extension;
+        this._workspaceLocks = new WeakMap();
+    }
+
+    /**
+     * Lock a workspace to indicate a tiling operation is in progress.
+     * This prevents recursive or conflicting tiling triggers and spurious overflow detection.
+     */
+    lockWorkspace(workspace) {
+        if (!workspace) return;
+        this._workspaceLocks.set(workspace, true);
+        Logger.log(`[MOSAIC WM] Workspace ${workspace.index()} LOCKED for tiling`);
+    }
+
+    /**
+     * Unlock a workspace after tiling is complete.
+     */
+    unlockWorkspace(workspace) {
+        if (!workspace) return;
+        this._workspaceLocks.delete(workspace);
+        Logger.log(`[MOSAIC WM] Workspace ${workspace.index()} UNLOCKED`);
+    }
+
+    /**
+     * Check if a workspace is currently locked for tiling.
+     */
+    isWorkspaceLocked(workspace) {
+        if (!workspace) return false;
+        return this._workspaceLocks.get(workspace) === true;
     }
 
     // Accessor shortcuts
@@ -260,7 +288,7 @@ export class WindowHandler {
                         }
                         
                         attempts++;
-                        const canFitNow = this.tilingManager.canFitWindow(window, workspace, monitor);
+                        const canFitNow = this.tilingManager.canFitWindow(window, workspace, monitor, true);
                         
                         if (canFitNow) {
                             Logger.log(`[MOSAIC WM] Re-include: Smart resize success after ${attempts} polls`);

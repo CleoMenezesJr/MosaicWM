@@ -1019,6 +1019,16 @@ export class TilingManager {
             
             this._animationsManager.animateReTiling(windowLayouts, draggedWindow);
         }
+
+        // UNLOCK: Release workspace lock after signals from move_resize have likely fired.
+        // We use a safe delay matching the animation duration.
+        if (this._extension && this._extension.windowHandler) {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ANIMATION_DURATION_MS + 100, () => {
+                this._extension.windowHandler.unlockWorkspace(workspace);
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+
         return true;
     }
 
@@ -1030,6 +1040,11 @@ export class TilingManager {
 
         Logger.log(`[MOSAIC WM] tileWorkspaceWindows: Starting for workspace ${workspace.index()}`);
 
+        // LOCK: Prevent spurious overflow detection during tiling shifts
+        if (this._extension && this._extension.windowHandler) {
+            this._extension.windowHandler.lockWorkspace(workspace);
+        }
+
         // Auto-detect monitors: if no monitor specified and no reference window,
         // iterate over all monitors to ensure complete tiling coverage
         if (_monitor === null || _monitor === undefined) {
@@ -1040,6 +1055,15 @@ export class TilingManager {
                 }
                 for (let m = 0; m < nMonitors; m++) {
                     this.tileWorkspaceWindows(workspace, null, m, keep_oversized_windows, excludeFromTiling);
+                }
+                
+                // UNLOCK: The recursive calls will handle their own monitor-specific locks,
+                // but we need to ensure the final state is unlocked after a safe delay.
+                if (this._extension && this._extension.windowHandler) {
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ANIMATION_DURATION_MS + 50, () => {
+                        this._extension.windowHandler.unlockWorkspace(workspace);
+                        return GLib.SOURCE_REMOVE;
+                    });
                 }
                 return { overflow: false, layout: null };
             } else {
