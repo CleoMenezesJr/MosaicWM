@@ -10,10 +10,18 @@ import * as constants from './constants.js';
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
 
+import GObject from 'gi://GObject';
+
 export const ComputedLayouts = new Map();
 
-export class TilingManager {
-    constructor(extension) {
+export const TilingManager = GObject.registerClass({
+    GTypeName: 'MosaicTilingManager',
+    Signals: {
+        'mosaic-changed': { param_types: [GObject.TYPE_OBJECT] }, // Emitted when layout changes (param: workspace)
+    },
+}, class TilingManager extends GObject.Object {
+    _init(extension) {
+        super._init();
         this.masks = [];
         this.working_windows = [];
         this.tmp_swap = [];
@@ -1278,7 +1286,9 @@ export class TilingManager {
             Logger.log(`[MOSAIC WM] Animations handled positioning, skipping drawTile`);
         }
         
-        return { overflow, layout: this._cachedTileResult?.windows || null };
+        const result = { overflow, layout: this._cachedTileResult?.windows || null };
+        this.emit('mosaic-changed', workspace);
+        return result;
     }
 
     canFitWindow(window, workspace, monitor, relaxed = false, overrideSize = null) {
@@ -1935,8 +1945,7 @@ export class TilingManager {
         this._animationsManager = null;
         this._windowingManager = null;
     }
-
-}
+});
 
 class WindowDescriptor {
     constructor(meta_window, index) {

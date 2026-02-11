@@ -11,23 +11,20 @@ import * as constants from './constants.js';
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
 
-export class EdgeTilingManager {
-    constructor() {
-        // Module state for window states (pre-tile position/size)
+import GObject from 'gi://GObject';
 
+export const EdgeTilingManager = GObject.registerClass({
+    GTypeName: 'MosaicEdgeTilingManager',
+    Signals: {
+        'edge-tiling-changed': { param_types: [GObject.TYPE_OBJECT, GObject.TYPE_INT] }, // (window, zone)
+    },
+}, class EdgeTilingManager extends GObject.Object {
+    _init() {
+        super._init();
         // Module state for edge tiling activity
         this._isEdgeTilingActive = false;
         this._activeEdgeTilingWindow = null;
-
-        // Module state for interactive resize
-        // resizeListeners -> WindowState.get(window, 'edgeResizeSignalId')
-        this._isResizing = false; // Flag to prevent recursive resize
-        // previousSizes -> WindowState.get(window, 'edgePreviousSize')
-
-        // Auto-tiling dependencies (dependentWindowId -> masterWindowId)
-        // 'autoTileMaster' on dependent -> masterWindow
-        // 'autoTileDependents' on master -> Set<dependentWindow>
-        
+        this._isResizing = false;
         this._animationsManager = null;
     }
     
@@ -657,6 +654,7 @@ export class EdgeTilingManager {
             const state = WindowState.get(window, 'edgeTilingState');
             if (state) state.zone = zone;
             Logger.log(`[MOSAIC WM] Maximized window ${window.get_id()}`);
+            this.emit('edge-tiling-changed', window, zone);
             return true;
         }
         
@@ -779,6 +777,11 @@ export class EdgeTilingManager {
                 if (convertedState) {
                     Logger.log(`[MOSAIC WM] Converted window original state: ${convertedState.width}x${convertedState.height} (preserving for restore)`);
                     convertedState.zone = fullToQuarterConversion.newZone;
+                }
+                
+                this.emit('edge-tiling-changed', window, zone);
+                if (fullToQuarterConversion) {
+                    this.emit('edge-tiling-changed', fullToQuarterConversion.window, fullToQuarterConversion.newZone);
                 }
                 
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.POLL_INTERVAL_MS, () => {
@@ -1483,7 +1486,7 @@ export class EdgeTilingManager {
         const allWindows = global.display.get_tab_list(Meta.TabList.NORMAL, null);
         return allWindows.find(w => w.get_id() === windowId) || null;
     }
-}
+});
 
 export function isQuarterZone(zone) {
     return zone === TileZone.TOP_LEFT || zone === TileZone.BOTTOM_LEFT ||

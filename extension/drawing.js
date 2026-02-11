@@ -5,8 +5,13 @@ import * as Logger from './logger.js';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-export class DrawingManager {
-    constructor() {
+import GObject from 'gi://GObject';
+
+export const DrawingManager = GObject.registerClass({
+    GTypeName: 'MosaicDrawingManager',
+}, class DrawingManager extends GObject.Object {
+    _init() {
+        super._init();
         // Active feedback boxes
         this._boxes = [];
         // Pool of reusable boxes (avoids create/destroy churn)
@@ -104,4 +109,4 @@ export class DrawingManager {
     destroy() {
         this.clearActors();
     }
-}
+});

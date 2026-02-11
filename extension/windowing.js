@@ -6,7 +6,6 @@ import * as Logger from './logger.js';
 import * as constants from './constants.js';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
-import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as WorkspaceSwitcherPopup from 'resource:///org/gnome/shell/ui/workspaceSwitcherPopup.js';
 import { afterWorkspaceSwitch } from './timing.js';
@@ -19,14 +18,23 @@ const BLACKLISTED_WM_CLASSES = [
     'Gnome-screenshot',
 ];
 
-export class WindowingManager {
-    constructor() {
+import GObject from 'gi://GObject';
+
+export const WindowingManager = GObject.registerClass({
+    GTypeName: 'MosaicWindowingManager',
+}, class WindowingManager extends GObject.Object {
+    _init() {
+        super._init();
         this._edgeTilingManager = null;
         this._animationsManager = null;
         this._tilingManager = null;
         this._timeoutRegistry = null;
         this._overflowStartCallback = null;
         this._overflowEndCallback = null;
+        
+        // Cache for getMonitorWorkspaceWindows - invalidated at start of each tiling operation
+        this._windowsCache = new Map();
+        this._cacheGeneration = 0;
     }
 
     setEdgeTilingManager(manager) {
@@ -66,9 +74,6 @@ export class WindowingManager {
         return this.getMonitorWorkspaceWindows(this.getWorkspace(), monitor, allow_unrelated);
     }
 
-    // Cache for getMonitorWorkspaceWindows - invalidated at start of each tiling operation
-    _windowsCache = new Map();
-    _cacheGeneration = 0;
     
     // Call this at start of tiling operations to invalidate cache
     invalidateWindowsCache() {
@@ -478,9 +483,8 @@ export class WindowingManager {
             Logger.warn(`[MOSAIC WM] WorkspaceSwitcherPopup failed: ${e.message}`);
         }
     }
-
     destroy() {
         this._edgeTilingManager = null;
         this._animationsManager = null;
     }
-}
+});

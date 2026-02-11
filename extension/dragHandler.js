@@ -12,8 +12,13 @@ import * as constants from './constants.js';
 import * as WindowState from './windowState.js';
 import { afterAnimations } from './timing.js';
 
-export class DragHandler {
-    constructor(extension) {
+import GObject from 'gi://GObject';
+
+export const DragHandler = GObject.registerClass({
+    GTypeName: 'MosaicDragHandler',
+}, class DragHandler extends GObject.Object {
+    _init(extension) {
+        super._init();
         this._ext = extension;
         
         // Drag state
@@ -454,4 +459,4 @@ export class DragHandler {
         
         this.clearGhostWindows();
     }
-}
+} );

@@ -14,14 +14,20 @@ import * as constants from './constants.js';
 import { afterWorkspaceSwitch, afterAnimations, afterWindowClose } from './timing.js';
 
 
-export class WindowHandler {
-    constructor(extension) {
+import GObject from 'gi://GObject';
+
+export const WindowHandler = GObject.registerClass({
+    GTypeName: 'MosaicWindowHandler',
+}, class WindowHandler extends GObject.Object {
+    _init(extension) {
+        super._init();
         this._ext = extension;
         this._workspaceLocks = new WeakMap();
         this._smartResizeProcessedWindows = new WeakMap();
         this._sizeChangeTimeouts = new Map();
         
         this._overflowInProgress = false; // Moved from extension.js
+        this._windowSignals = new Map(); // Store signal IDs for cleanup
     }
 
     // Lock a workspace to prevent recursive or conflicting tiling triggers.
@@ -51,137 +57,63 @@ export class WindowHandler {
     get animationsManager() { return this._ext.animationsManager; }
     get _timeoutRegistry() { return this._ext._timeoutRegistry; }
 
-    // Connect all signals for a window to track state changes
+    // Connect deterministic signals for window lifecycle
     connectWindowSignals(window) {
-        // Workspace change signal
-        if (!WindowState.has(window, 'workspaceSignalId')) {
-            const signalId = window.connect('workspace-changed', () => {
-                this.onWindowWorkspaceChanged(window);
-            });
-            WindowState.set(window, 'workspaceSignalId', signalId);
-        }
+        if (!window || this._windowSignals.has(window)) return;
         
-        // Always-on-top state change
-        if (!WindowState.has(window, 'aboveSignalId')) {
-            const aboveSignalId = window.connect('notify::above', () => {
-                Logger.log(`[MOSAIC WM] notify::above triggered for window ${window.get_id()}`);
-                this.handleExclusionStateChange(window);
-            });
-            WindowState.set(window, 'aboveSignalId', aboveSignalId);
-            Logger.log(`[MOSAIC WM] Connected notify::above signal for window ${window.get_id()}`);
-        }
+        Logger.log(`[MOSAIC WM] Connecting signals for window ${window.get_id()}`);
+        let ids = [];
         
-        // Sticky (on-all-workspaces) state change
-        if (!WindowState.has(window, 'stickySignalId')) {
-            const stickySignalId = window.connect('notify::on-all-workspaces', () => {
-                this.handleExclusionStateChange(window);
-            });
-            WindowState.set(window, 'stickySignalId', stickySignalId);
-        }
+        // Final cleanup signal
+        ids.push(window.connect('unmanaged', (win) => {
+            Logger.log(`[MOSAIC WM] Window ${win.get_id()} (unmanaged) - cleaning up`);
+            this.onWindowRemoved(win.get_workspace(), win);
+            this.disconnectWindowSignals(win);
+        }));
         
-        // Invalidate ComputedLayouts cache on position/size change
-        if (!WindowState.has(window, 'positionSignalId')) {
-            const posSignalId = window.connect('position-changed', () => {
-                ComputedLayouts.delete(window.get_id());
-            });
-            WindowState.set(window, 'positionSignalId', posSignalId);
-        }
+        // Immediate unmaximize detection
+        ids.push(window.connect('notify::maximized-horizontally', (win) => {
+            if (!this.windowingManager.isMaximizedOrFullscreen(win)) {
+                Logger.log(`[MOSAIC WM] Window ${win.get_id()} unmaximized - retiling`);
+                this.onWindowUnmaximized(win);
+            }
+        }));
+        
+        // Confirmation of smart resize completion
+        ids.push(window.connect('size-changed', (win) => {
+            ComputedLayouts.delete(win.get_id());
+            if (WindowState.get(win, 'isSmartResizing')) {
+                this.tilingManager.tileWorkspaceWindows(win.get_workspace(), null, win.get_monitor());
+            }
+        }));
 
-        if (!WindowState.has(window, 'sizeSignalId')) {
-            const sizeSignalId = window.connect('size-changed', () => {
-                ComputedLayouts.delete(window.get_id());
-                
-                // Trigger retile on size change if not currently being managed by Mosaic/User
-                // This handles windows that grow after initial creation
-                if (!WindowState.get(window, 'isSmartResizing') && 
-                    !WindowState.get(window, 'isReverseSmartResizing') &&
-                    !this._ext._resizeDebounceTimeout) {
-                    
-                    const windowId = window.get_id();
-                    if (this._sizeChangeTimeouts.has(windowId)) {
-                        GLib.source_remove(this._sizeChangeTimeouts.get(windowId));
-                    }
-                    
-                    const timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-                        this._sizeChangeTimeouts.delete(windowId);
-                        const workspace = window.get_workspace();
-                        const monitor = window.get_monitor();
-                        if (workspace && monitor >= 0) {
-                            Logger.log(`[MOSAIC WM] size-changed: Triggering retile for window ${windowId} due to external resize`);
-                            // Mark as forced overflow to bypass "new window" checks in tiling.js
-                            WindowState.set(window, 'forceOverflow', true);
-                            this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
-                            // Clear flag after a short delay
-                            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-                                WindowState.set(window, 'forceOverflow', false);
-                                return GLib.SOURCE_REMOVE;
-                            });
-                        }
-                        return GLib.SOURCE_REMOVE;
-                    });
-                    this._sizeChangeTimeouts.set(windowId, timeoutId);
-                }
-            });
-            WindowState.set(window, 'sizeSignalId', sizeSignalId);
-        }
+        ids.push(window.connect('position-changed', (win) => {
+            ComputedLayouts.delete(win.get_id());
+        }));
+        
+        // Track for lifecycle exclusion updates
+        ids.push(window.connect('notify::above', (win) => this.handleExclusionStateChange(win)));
+        ids.push(window.connect('notify::on-all-workspaces', (win) => this.handleExclusionStateChange(win)));
+
+        this._windowSignals.set(window, ids);
         
         // Initialize exclusion state tracking
         const currentExclusion = this.windowingManager.isExcluded(window);
         WindowState.set(window, 'previousExclusionState', currentExclusion);
-        Logger.log(`[MOSAIC WM] Initialized exclusion state for window ${window.get_id()}: ${currentExclusion}`);
         
         // Track previous workspace for cross-workspace moves
         const currentWorkspace = window.get_workspace();
         if (currentWorkspace) {
             WindowState.set(window, 'previousWorkspace', currentWorkspace.index());
-            Logger.log(`[MOSAIC WM] Initialized workspace tracker for window ${window.get_id()} at workspace ${currentWorkspace.index()}`);
         }
     }
 
-    // Disconnect all signals for a window
     disconnectWindowSignals(window) {
-        // Disconnect workspace signal
-        const signalId = WindowState.get(window, 'workspaceSignalId');
-        if (signalId) {
-            window.disconnect(signalId);
-            WindowState.remove(window, 'workspaceSignalId');
-        }
-    
-        // Disconnect position signal
-        const posSignalId = WindowState.get(window, 'positionSignalId');
-        if (posSignalId) {
-            window.disconnect(posSignalId);
-            WindowState.remove(window, 'positionSignalId');
-        }
-
-        // Disconnect size signal
-        const sizeSignalId = WindowState.get(window, 'sizeSignalId');
-        if (sizeSignalId) {
-            window.disconnect(sizeSignalId);
-            WindowState.remove(window, 'sizeSignalId');
-        }
-        
-        // Disconnect above signal
-        const aboveSignalId = WindowState.get(window, 'aboveSignalId');
-        if (aboveSignalId) {
-            window.disconnect(aboveSignalId);
-            WindowState.remove(window, 'aboveSignalId');
-        }
-
-        // Disconnect maximize signals
-        
-        // Disconnect sticky signal
-        const stickySignalId = WindowState.get(window, 'stickySignalId');
-        if (stickySignalId) {
-            window.disconnect(stickySignalId);
-            WindowState.remove(window, 'stickySignalId');
-        }
-        
-        // Disconnect initial configuration signal
-        const configureSignalId = WindowState.get(window, 'configureSignalId');
-        if (configureSignalId) {
-            window.disconnect(configureSignalId);
-            WindowState.remove(window, 'configureSignalId');
+        let ids = this._windowSignals.get(window);
+        if (ids) {
+            ids.forEach(id => window.disconnect(id));
+            this._windowSignals.delete(window);
+            Logger.log(`[MOSAIC WM] Disconnected signals for window ${window.get_id()}`);
         }
         
         // Clear layout cache
@@ -190,6 +122,25 @@ export class WindowHandler {
         // Clean up other states
         WindowState.remove(window, 'previousExclusionState');
         WindowState.remove(window, 'previousWorkspace');
+    }
+
+    // Handle window unmaximize event.
+    onWindowUnmaximized(window) {
+        const workspace = window.get_workspace();
+        if (!workspace) return;
+        
+        const monitor = window.get_monitor();
+        const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+        
+        // Check if we should retile or if it's a standalone window
+        if (workspaceWindows.length > 1) {
+            // Restore preferred size if it was edge-constrained or smart-resized
+            if (WindowState.get(window, 'isConstrainedByMosaic')) {
+                this.tilingManager.restorePreferredSize(window);
+            }
+            
+            this.tilingManager.tileWorkspaceWindows(workspace, window, monitor);
+        }
     }
 
     // Handle exclusion state transitions (Always on Top, Sticky, etc.)
@@ -537,7 +488,6 @@ export class WindowHandler {
                     });
                 }
                 
-                this.connectWindowSignals(window);
                 return GLib.SOURCE_REMOVE;
             }
             return GLib.SOURCE_CONTINUE;
@@ -557,19 +507,39 @@ export class WindowHandler {
                 if (timeoutId) GLib.source_remove(timeoutId);
                 
                 if (processWindowCallback() === GLib.SOURCE_CONTINUE) {
+                    // One small safety polling if initial callback failed (rare)
                     GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, processWindowCallback);
                 }
+                
+                // Now that window is processed, connect standard signals
+                this.connectWindowSignals(window);
             };
             
-            signalId = actor.connect('first-frame', processOnce);
+            // USE MAPPED SIGNAL: Triggers when the window is added to the scene but before paint.
+            // This allows us to position it "before" it appears, as the user requested.
+            if (actor.mapped) {
+                processOnce();
+            } else {
+                signalId = actor.connect('notify::mapped', () => {
+                    if (actor.mapped) processOnce();
+                });
+            }
             
-            timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.SAFETY_TIMEOUT_BUFFER_MS + 400, () => {
-                Logger.log('[MOSAIC WM] first-frame timeout - falling back to polling');
+            // Safety timeout (reduced from 800ms to 400ms)
+            timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+                Logger.log('[MOSAIC WM] window map timeout - falling back to immediate processing');
                 processOnce();
                 return GLib.SOURCE_REMOVE;
             });
         } else {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, processWindowCallback);
+            // Fallback for non-actor windows (rare in Shell)
+            const fallbackId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, () => {
+                 if (processWindowCallback() === GLib.SOURCE_REMOVE) {
+                     this.connectWindowSignals(window);
+                     return GLib.SOURCE_REMOVE;
+                 }
+                 return GLib.SOURCE_CONTINUE;
+            });
         }
     }
 
@@ -628,8 +598,8 @@ export class WindowHandler {
                             // Connect to first-frame for visual animation
                             const actor = win.get_compositor_private();
                             if (actor) {
-                                const firstFrameId = actor.connect('first-frame', () => {
-                                    actor.disconnect(firstFrameId);
+                                const applySlideIn = () => {
+                                    if (!actor.mapped) return;
                                     
                                     // Apply offset translation NOW that actor is rendered
                                     if (WindowState.get(win, 'needsSlideIn')) {
@@ -680,7 +650,7 @@ export class WindowHandler {
                                         }
                                         
                                         if (offsetX !== 0 || offsetY !== 0) {
-                                            Logger.log(`[MOSAIC WM] FIRST-FRAME SLIDE-IN: Applying offset (${offsetX}, ${offsetY}) to window ${win.get_id()} Mode: ${animationMode}`);
+                                            Logger.log(`[MOSAIC WM] MAPPED SLIDE-IN: Applying offset (${offsetX}, ${offsetY}) to window ${win.get_id()} Mode: ${animationMode}`);
                                             
                                             // Mark as animating to prevent other animations from overwriting
                                             WindowState.set(win, 'slideInAnimating', true);
@@ -715,7 +685,18 @@ export class WindowHandler {
                                         WindowState.remove(win, 'slideInExistingWindows');
                                         WindowState.remove(win, 'slideInDirection');
                                     }
-                                });
+                                };
+
+                                if (actor.mapped) {
+                                    applySlideIn();
+                                } else {
+                                    const mappedId = actor.connect('notify::mapped', () => {
+                                        if (actor.mapped) {
+                                            actor.disconnect(mappedId);
+                                            applySlideIn();
+                                        }
+                                    });
+                                }
                             }
                         } else {
                             Logger.log(`[MOSAIC WM] SLIDE-IN: First window ${win.get_id()} - no animation needed`);
@@ -1229,6 +1210,5 @@ export class WindowHandler {
             return GLib.SOURCE_CONTINUE;
         };
 
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, POLL_INTERVAL, poll);
     }
-}
+});

@@ -5,8 +5,13 @@
 import * as Logger from './logger.js';
 import { TileZone } from './constants.js';
 
-export class ReorderingManager {
-    constructor() {
+import GObject from 'gi://GObject';
+
+export const ReorderingManager = GObject.registerClass({
+    GTypeName: 'MosaicReorderingManager',
+}, class ReorderingManager extends GObject.Object {
+    _init() {
+        super._init();
         this.dragStart = false;
         this._positionChangedId = 0;
         this._rejectedSwap = null;  // Track rejected swap to avoid repeated overflow checks
@@ -254,4 +259,4 @@ export class ReorderingManager {
         this._edgeTilingManager = null;
         this._animationsManager = null;
     }
-}
+});

@@ -8,14 +8,19 @@ import GLib from 'gi://GLib';
 import * as constants from './constants.js';
 import * as WindowState from './windowState.js';
 
+import GObject from 'gi://GObject';
+
 // Animation configuration
 const ANIMATION_DURATION = constants.ANIMATION_DURATION_MS;
 const ANIMATION_MODE = Clutter.AnimationMode.EASE_OUT_BACK;
 const ANIMATION_MODE_MOMENTUM = Clutter.AnimationMode.EASE_OUT_BACK;
 const ANIMATION_MODE_SUBTLE = Clutter.AnimationMode.EASE_OUT_QUAD;
 
-export class AnimationsManager {
-    constructor() {
+export const AnimationsManager = GObject.registerClass({
+    GTypeName: 'MosaicAnimationsManager',
+}, class AnimationsManager extends GObject.Object {
+    _init() {
+        super._init();
         this._isDragging = false;
         this._animatingWindows = new Set(); // Set of Window IDs (kept for efficiency)
         this._justEndedDrag = false;
@@ -314,4 +319,4 @@ export class AnimationsManager {
     destroy() {
         this.cleanup();
     }
-}
+});

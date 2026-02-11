@@ -6,8 +6,13 @@ import * as Logger from './logger.js';
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
 
-export class SwappingManager {
-    constructor() {
+import GObject from 'gi://GObject';
+
+export const SwappingManager = GObject.registerClass({
+    GTypeName: 'MosaicSwappingManager',
+}, class SwappingManager extends GObject.Object {
+    _init() {
+        super._init();
         this._tilingManager = null;
         this._edgeTilingManager = null;
     }
@@ -423,4 +428,4 @@ export class SwappingManager {
         this._tilingManager = null;
         this._edgeTilingManager = null;
     }
-}
+});

@@ -9,8 +9,13 @@ import { afterWorkspaceSwitch } from './timing.js';
 import * as WindowState from './windowState.js';
 import * as constants from './constants.js';
 
-export class ResizeHandler {
-    constructor(extension) {
+import GObject from 'gi://GObject';
+
+export const ResizeHandler = GObject.registerClass({
+    GTypeName: 'MosaicResizeHandler',
+}, class ResizeHandler extends GObject.Object {
+    _init(extension) {
+        super._init();
         this._ext = extension;
         
         // Resize state
@@ -220,6 +225,15 @@ export class ResizeHandler {
                             if (actor) actor.opacity = 128;
                             this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true, false);
                         } else {
+                            // Recovery logic: if it fits again, clear overflow state
+                            if (canFit && this._resizeInOverflow) {
+                                this._resizeInOverflow = false;
+                                this._resizeOverflowWindow = null;
+                                const actor = window.get_compositor_private();
+                                if (actor) actor.opacity = 255;
+                                Logger.log(`[MOSAIC WM] Window ${window.get_id()} recovered from resize overflow`);
+                            }
+                            
                             const excludeWindow = this._resizeInOverflow ? window : null;
                             const excludeFromTiling = this._resizeInOverflow;
                             this.tilingManager.tileWorkspaceWindows(workspace, excludeWindow, monitor, true, excludeFromTiling);
@@ -378,4 +392,4 @@ export class ResizeHandler {
             return GLib.SOURCE_REMOVE;
         });
     }
-}
+} );
