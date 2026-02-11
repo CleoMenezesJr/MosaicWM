@@ -13,7 +13,6 @@ import * as WindowState from './windowState.js';
 import * as constants from './constants.js';
 import { afterWorkspaceSwitch, afterAnimations, afterWindowClose } from './timing.js';
 
-
 import GObject from 'gi://GObject';
 
 export const WindowHandler = GObject.registerClass({
@@ -325,7 +324,6 @@ export const WindowHandler = GObject.registerClass({
             }
         }
     }
-
 
     // Handle new window creation.
     onWindowCreated(window) {
@@ -1209,6 +1207,7 @@ export const WindowHandler = GObject.registerClass({
 
             return GLib.SOURCE_CONTINUE;
         };
-
+        
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, POLL_INTERVAL, poll);
     }
 });
