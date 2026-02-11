@@ -4,7 +4,8 @@
 
 import * as Logger from './logger.js';
 import GLib from 'gi://GLib';
-import Clutter from 'gi://Clutter';
+import Clutter from 'gi://Clutter'; // CRITICAL: Used for Enums (AnimationMode, etc)
+
 
 import * as constants from './constants.js';
 import { TileZone } from './constants.js';
@@ -1326,13 +1327,12 @@ export const TilingManager = GObject.registerClass({
         }
         
         let availableSpace = working_info.work_area;
-        
-        Logger.log(`[MOSAIC WM] canFitWindow: Found ${edgeTiledWindows.length} edge-tiled windows`);
+        const newWindowId = window.get_id();
+
         
         if (edgeTiledWindows.length > 0) {
             const otherEdgeTiles = edgeTiledWindows.filter(w => w.window.get_id() !== window.get_id());
             const zones = otherEdgeTiles.map(w => w.zone);
-            const hasLeftFull = zones.includes(TileZone.LEFT_FULL);
             const hasRightFull = zones.includes(TileZone.RIGHT_FULL);
             const hasLeftQuarters = zones.some(z => z === TileZone.TOP_LEFT || z === TileZone.BOTTOM_LEFT);
             const hasRightQuarters = zones.some(z => z === TileZone.TOP_RIGHT || z === TileZone.BOTTOM_RIGHT);
@@ -1366,10 +1366,6 @@ export const TilingManager = GObject.registerClass({
             }
         }
         
-        Logger.log(`[MOSAIC WM] canFitWindow: Current non-edge-tiled windows: ${windows.length}`);
-
-        
-        const newWindowId = window.get_id();
         const windowAlreadyInWorkspace = windows.some(w => w.id === newWindowId);
         
         if (!windowAlreadyInWorkspace) {
@@ -1411,17 +1407,9 @@ export const TilingManager = GObject.registerClass({
 
         const tile_result = this._tile(windows, paddedSpace, true);
         
-        Logger.log(`[MOSAIC WM] canFitWindow: Tile result overflow: ${tile_result.overflow} (using ${FIT_PADDING_BUFFER}px buffer)`);
+
         
-        let fits = !tile_result.overflow;
-        
-        if (fits) {
-            Logger.log('[MOSAIC WM] canFitWindow: Window fits!');
-        } else {
-            Logger.log('[MOSAIC WM] canFitWindow: Window does NOT fit (overflow)');
-        }
-        
-        return fits;
+        return !tile_result.overflow;
     }
 
      // Save original size of a window before resizing
@@ -1724,7 +1712,6 @@ export const TilingManager = GObject.registerClass({
         
         Logger.log(`[MOSAIC WM] tryFitWithResize: Orientation is ${isLandscape ? 'LANDSCAPE (using width)' : 'PORTRAIT (using height)'}`);
 
-
         const workspaceMargin = 2; // Safety margin
         const usableSpace = workArea[dim] - (workspaceMargin * 2);
         
@@ -1762,7 +1749,6 @@ export const TilingManager = GObject.registerClass({
             resizeRatio = 1.0; // No resize possible, check if it fits as-is
         }
 
-
         const totalSpaceNeeded = fixedSpace + resizableSpace + spacing;
 
         // IMPORTANT: 1D check is not enough - verify with actual 2D tile simulation
@@ -1785,157 +1771,78 @@ export const TilingManager = GObject.registerClass({
 
         
         // Run tile simulation (with isSimulation=true to avoid cache pollution)
-        const tileResult = this._tile(simulatedWindows, workArea, true);
-        
-        if (!tileResult.overflow) {
-            Logger.log(`[MOSAIC WM] tryFitWithResize: 2D tile simulation confirms fit - returning true`);
-            return true;
-        }
-        
-        Logger.log(`[MOSAIC WM] tryFitWithResize: 2D tile simulation shows overflow with current sizes - attempting resize`);
-        
-        // Shrink resizable windows to fit workArea height.
-        
-        if (resizableCandidates.length === 0) {
-            Logger.log(`[MOSAIC WM] tryFitWithResize: No resizable windows - cannot fix overflow`);
-            return false;
-        }
-        
         const FIT_PADDING_BUFFER = 5;
-        // spacing is already defined in outer scope
-        
-        // 1. Calculate total minimum required width/height
-        let totalMinWidth = 0;
-        let totalMinHeight = 0;
-        
-        for (const w of existingWindows) {
-            const isResizable = resizableCandidates.some(c => c.window.get_id() === w.get_id());
-            if (isResizable) {
-                totalMinWidth += constants.MIN_WINDOW_WIDTH;
-                totalMinHeight += constants.MIN_WINDOW_HEIGHT;
-            } else {
-                const f = w.get_frame_rect();
-                totalMinWidth += f.width;
-                totalMinHeight += f.height;
-            }
-        }
-        
-        // Add new window min dimensions
-        totalMinWidth += newFrame.width > constants.MIN_WINDOW_WIDTH ? newFrame.width : constants.MIN_WINDOW_WIDTH;
-        totalMinHeight += newFrame.height > constants.MIN_WINDOW_HEIGHT ? newFrame.height : constants.MIN_WINDOW_HEIGHT;
-        
-        // Add spacing
-        const count = existingWindows.length + 1;
-        const totalSpacing = (count - 1) * spacing;
-        
-        totalMinWidth += totalSpacing;
-        totalMinHeight += totalSpacing;
-        
-        // 2. Check if it fits in 1D (simplification for determining possibility)
-        // Note: This is a heuristic. For true 2D packing, we still dry-run _tile.
-        // But if 1D area fails, 2D definitely fails.
-        const effectiveWorkArea = {
+        const paddedSpace = {
+            x: workArea.x,
+            y: workArea.y,
             width: Math.max(0, workArea.width - FIT_PADDING_BUFFER),
             height: Math.max(0, workArea.height - FIT_PADDING_BUFFER)
         };
         
-        const isHorizontal = workArea.width > workArea.height;
-        const canFit1D = isHorizontal ? totalMinWidth <= effectiveWorkArea.width : totalMinHeight <= effectiveWorkArea.height;
+        // 1. First check: Does it fit if we just squeeze the resizable windows?
+        // We simulate this by calculating the target size for resizable windows
         
-        if (!canFit1D) {
-             Logger.log(`[MOSAIC WM] tryFitWithResize: Total min required ${isHorizontal ? 'width' : 'height'} (${isHorizontal ? totalMinWidth : totalMinHeight}) exceeds available (${isHorizontal ? effectiveWorkArea.width : effectiveWorkArea.height}) - overflow`);
-             return false;
+        let simulationFailed = false;
+        
+        // If we have resizable windows, try to shrink them to make room
+        if (resizableCandidates.length > 0) {
+             let shrinkRatio = 0.95; // Start with 5% shrink
+             let attempts = 0;
+             let fitsAfterResize = false;
+             
+             while (attempts < 10 && !fitsAfterResize) {
+                const shrunkSimulation = simulatedWindows.map(w => {
+                    const candidate = resizableCandidates.find(c => c.window.get_id() === w.id);
+                    if (candidate) {
+                        return { 
+                            id: w.id, 
+                            width: Math.floor(w.width * shrinkRatio), 
+                            height: Math.floor(w.height * shrinkRatio) 
+                        };
+                    }
+                    return w;
+                });
+                
+                const shrunkResult = this._tile(shrunkSimulation, paddedSpace, true);
+                
+                if (!shrunkResult.overflow) {
+                    fitsAfterResize = true;
+                    Logger.log(`[MOSAIC WM] tryFitWithResize: Found working shrink ratio ${shrinkRatio.toFixed(2)}`);
+                    
+                    // Apply the resize to resizable windows
+                     for (const candidate of resizableCandidates) {
+                        const { window, frame } = candidate;
+                        const targetWidth = Math.floor(frame.width * shrinkRatio);
+                        const targetHeight = Math.floor(frame.height * shrinkRatio);
+                        
+                        this.saveOriginalSize(window);
+                        WindowState.set(window, 'isSmartResizing', true);
+                        WindowState.set(window, 'isConstrainedByMosaic', true);
+                        
+                        window.move_resize_frame(true, frame.x, frame.y, targetWidth, targetHeight);
+                    }
+                    return true;
+                } else {
+                    shrinkRatio -= 0.05;
+                    attempts++;
+                }
+             }
+        }
+        
+        // If we are here, either no resizable windows or max shrink failed.
+        // Last Check: does it fit naturally? (Should be covered by canFitWindow, but safe to check)
+        const naturalResult = this._tile(simulatedWindows, paddedSpace, true);
+        if(!naturalResult.overflow) {
+             Logger.log(`[MOSAIC WM] tryFitWithResize: Fits naturally without resize (unexpected path)`);
+             return true;
         }
 
-        // 3. It theoretically fits! Calculate exact shrink ratio.
-        // We know at least MIN_WINDOW_WIDTH fits.
-        // Let's try to fit with current sizes scaled down just enough.
+
+        Logger.log(`[MOSAIC WM] tryFitWithResize: 2D simulation failed - returning false (overflow)`);
+        return false;
         
-        let shrinkRatio = 0.95; 
-        let fitsAfterResize = false;
-        let attempts = 0;
-        const maxAttempts = 15; // Increased attempts since we know it *should* fit
+
         
-        // We still iterate to find the *largest possible* size that fits 2D layout
-        // But we no longer cap it at an arbitrary "Safe" threshold.
-        // We stop only if we hit MIN_WINDOW_WIDTH implied limit (checked by _tile indirectly via 2D packing)
-        
-        while (!fitsAfterResize && attempts < maxAttempts) {
-            // Create simulated windows with shrunk sizes for resizable windows
-            const shrunkSimulation = [];
-            
-            for (const w of existingWindows) {
-                const frame = w.get_frame_rect();
-                const isResizable = resizableCandidates.some(c => c.window.get_id() === w.get_id());
-                
-                if (isResizable) {
-                    shrunkSimulation.push({
-                        id: w.get_id(),
-                        width: Math.floor(frame.width * shrinkRatio),
-                        height: Math.floor(frame.height * shrinkRatio)
-                    });
-                } else {
-                    shrunkSimulation.push({
-                        id: w.get_id(),
-                        width: frame.width,
-                        height: frame.height
-                    });
-                }
-            }
-            
-            // Add new window (unchanged)
-            shrunkSimulation.push({
-                id: newWindow.get_id(),
-                width: newFrame.width,
-                height: newFrame.height
-            });
-            
-            // Test this configuration with padding buffer
-            const paddedSpace = {
-                x: workArea.x,
-                y: workArea.y,
-                width: Math.max(0, workArea.width - FIT_PADDING_BUFFER),
-                height: Math.max(0, workArea.height - FIT_PADDING_BUFFER)
-            };
-            
-            const shrunkResult = this._tile(shrunkSimulation, paddedSpace, true);
-            
-            if (!shrunkResult.overflow) {
-                fitsAfterResize = true;
-                Logger.log(`[MOSAIC WM] tryFitWithResize: Found working shrink ratio ${shrinkRatio.toFixed(2)}`);
-            } else {
-                shrinkRatio -= 0.05; // Try 5% smaller
-                attempts++;
-            }
-        }
-        
-        if (!fitsAfterResize) {
-            Logger.log(`[MOSAIC WM] tryFitWithResize: Cannot fit even after max shrink - returning false`);
-            return false;
-        }
-        
-        // Apply the resize to resizable windows
-        Logger.log(`[MOSAIC WM] tryFitWithResize: Applying resize with ratio ${shrinkRatio.toFixed(2)} to ${resizableCandidates.length} windows`);
-        
-        for (const candidate of resizableCandidates) {
-            const { window, frame } = candidate;
-            const targetWidth = Math.floor(frame.width * shrinkRatio);
-            const targetHeight = Math.floor(frame.height * shrinkRatio);
-            
-            this.saveOriginalSize(window);
-            WindowState.set(window, 'isSmartResizing', true);
-            // Mark window as constrained so we don't treat this shrink as a manual resize preference
-            WindowState.set(window, 'isConstrainedByMosaic', true);
-            
-            // Apply resize SYNCHRONOUSLY so tileWorkspaceWindows sees correct sizes
-            window.move_resize_frame(true, frame.x, frame.y, targetWidth, targetHeight);
-            Logger.log(`[MOSAIC WM] tryFitWithResize: Resized window ${window.get_id()} from ${frame.width}x${frame.height} to ${targetWidth}x${targetHeight}`);
-            
-            // NOTE: Flag clearing is now handled by the polling loop in extension.js
-            // to ensure state sync between the trigger window and tiled windows.
-        }
-        
-        return true;
     }
 
     destroy() {

@@ -3,9 +3,8 @@
 // ResizeHandler - Manages window resize operations and maximize undo.
 
 import GLib from 'gi://GLib';
-import Meta from 'gi://Meta';
 import * as Logger from './logger.js';
-import { afterWorkspaceSwitch } from './timing.js';
+import { afterWorkspaceSwitch, afterAnimations } from './timing.js';
 import * as WindowState from './windowState.js';
 import * as constants from './constants.js';
 
@@ -246,6 +245,7 @@ export const ResizeHandler = GObject.registerClass({
                 }
                 
                 let canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
+                let fits = canFit; // CRITICAL: Used by older logic/refactors - DO NOT REMOVE
                 const now = Date.now();
                 if (this._resizeGracePeriod && (now - this._resizeGracePeriod) < constants.REVERSE_RESIZE_PROTECTION_MS) {
                     this._sizeChanged = false;
@@ -287,9 +287,14 @@ export const ResizeHandler = GObject.registerClass({
                     this._resizeOverflowWindow = null;
                 }
                 
+                // If it fits, we MUST still tile to ensure other windows move out of the way (live tiling)
+                // However, we throttle it slightly to avoid excessive calculations during smooth resizing
                 if (canFit) {
-                    this._sizeChanged = false;
-                    return;
+                    if (this._lastTileTime && (now - this._lastTileTime < 30)) {
+                         this._sizeChanged = false;
+                         return; 
+                    }
+                    this._lastTileTime = now;
                 }
             }
             
