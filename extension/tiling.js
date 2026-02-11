@@ -13,7 +13,7 @@ import * as WindowState from './windowState.js';
 
 import GObject from 'gi://GObject';
 
-export const ComputedLayouts = new Map();
+export const ComputedLayouts = new WeakMap();
 
 export const TilingManager = GObject.registerClass({
     GTypeName: 'MosaicTilingManager',
@@ -1861,6 +1861,7 @@ class WindowDescriptor {
         this.index = index;
         this.x = frame.x;
         this.y = frame.y;
+        this.metaWindow = meta_window;
         
         // Use target dimensions if unmaximizing, as physical frame might still be maximized.
         const targetSize = WindowState.get(meta_window, 'targetRestoredSize');
@@ -1951,7 +1952,9 @@ Level.prototype.draw_horizontal = function(meta_windows, work_area, y, masks, is
         if (!dryRun)
             Logger.log(`[MOSAIC WM] Window ${window.id} target: ${drawX},${drawY} (${window.width}x${window.height})`);
         
-        ComputedLayouts.set(window.id, { x: drawX, y: drawY, width: window.width, height: window.height });
+        if (window.metaWindow) {
+            ComputedLayouts.set(window.metaWindow, { x: drawX, y: drawY, width: window.width, height: window.height });
+        }
 
         window.draw(meta_windows, drawX, drawY, masks, isDragging, drawingManager, dryRun);
         x += window.width + constants.WINDOW_SPACING;
@@ -1968,7 +1971,9 @@ Level.prototype.draw_vertical = function(meta_windows, x, masks, isDragging, dra
         if (!dryRun)
             Logger.log(`[MOSAIC WM] Window ${window.id} target: ${drawX},${drawY} (${window.width}x${window.height})`);
         
-        ComputedLayouts.set(window.id, { x: drawX, y: drawY, width: window.width, height: window.height });
+        if (window.metaWindow) {
+            ComputedLayouts.set(window.metaWindow, { x: drawX, y: drawY, width: window.width, height: window.height });
+        }
         
         window.draw(meta_windows, drawX, drawY, masks, isDragging, drawingManager, dryRun);
         y += window.height + constants.WINDOW_SPACING;

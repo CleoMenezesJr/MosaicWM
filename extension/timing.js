@@ -138,43 +138,78 @@ export function afterWorkspaceSwitch(callback, registry) {
 }
 
 export function afterAnimations(animationsManager, callback, registry, maxWait = 1000) {
-    if (!getAnimationsEnabled()) {
+    if (!getAnimationsEnabled() || !animationsManager?.hasActiveAnimations?.()) {
         callback();
         return;
     }
     
-    const startTime = Date.now();
-    const adjustedMaxWait = Math.ceil(maxWait * getSlowDownFactor());
-    
-    const check = () => {
-        if (animationsManager?.hasActiveAnimations?.() && (Date.now() - startTime) < adjustedMaxWait) {
-            registry.add(50, check);
-            return GLib.SOURCE_REMOVE;
-        }
-        callback();
-        return GLib.SOURCE_REMOVE;
+    let processed = false;
+    let timeoutId = null;
+    let signalId = null;
+
+    const cleanup = () => {
+        processed = true;
+        if (timeoutId) registry.remove(timeoutId);
+        if (signalId) animationsManager.disconnect(signalId);
+        timeoutId = null;
+        signalId = null;
     };
-    
-    registry.add(50, check);
+
+    const trigger = () => {
+        if (processed) return;
+        cleanup();
+        callback();
+    };
+
+    // 1. Connect to our new deterministic signal
+    signalId = animationsManager.connect('animations-completed', trigger);
+
+    // 2. Safety fallback
+    const adjustedMaxWait = Math.ceil(maxWait * getSlowDownFactor());
+    timeoutId = registry.add(adjustedMaxWait, () => {
+        Logger.log('[MOSAIC WM] afterAnimations: Safety timeout triggered');
+        trigger();
+        return GLib.SOURCE_REMOVE;
+    });
 }
 
 export function waitForGeometry(window, callback, registry, maxAttempts = constants.GEOMETRY_WAIT_MAX_ATTEMPTS) {
-    let attempts = 0;
+    const frame = window.get_frame_rect();
+    if (frame.width > 10 && frame.height > 10) {
+        callback(window);
+        return;
+    }
     
-    const check = () => {
-        attempts++;
-        const frame = window.get_frame_rect();
-        
-        if (frame.width > 10 && frame.height > 10 || attempts >= maxAttempts) {
-            callback(window);
-            return GLib.SOURCE_REMOVE;
-        }
-        
-        registry.add(constants.GEOMETRY_CHECK_DELAY_MS, check);
-        return GLib.SOURCE_REMOVE;
+    let signalId = null;
+    let timeoutId = null;
+    let processed = false;
+
+    const cleanup = () => {
+        processed = true;
+        if (signalId) window.disconnect(signalId);
+        if (timeoutId) registry.remove(timeoutId);
     };
-    
-    check();
+
+    const trigger = () => {
+        if (processed) return;
+        cleanup();
+        callback(window);
+    };
+
+    // Use size-changed as deterministic signal
+    signalId = window.connect('size-changed', () => {
+        const f = window.get_frame_rect();
+        if (f.width > 10 && f.height > 10) {
+            trigger();
+        }
+    });
+
+    // Safety timeout
+    timeoutId = registry.add(1000, () => {
+        Logger.log('[MOSAIC WM] waitForGeometry: Safety timeout triggered');
+        trigger();
+        return GLib.SOURCE_REMOVE;
+    });
 }
 
 export function afterWindowClose(callback, registry) {

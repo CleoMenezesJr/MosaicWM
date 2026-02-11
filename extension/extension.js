@@ -211,7 +211,7 @@ export default class WindowMosaicExtension extends Extension {
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._mosaicIndicator);
         
         
-        this._windowsOpenedMaximized = new Set();
+
         
         this._settingsOverrider = new SettingsOverrider();
         

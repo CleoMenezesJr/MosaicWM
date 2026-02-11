@@ -33,8 +33,8 @@ export const WindowingManager = GObject.registerClass({
         this._overflowEndCallback = null;
         
         // Cache for getMonitorWorkspaceWindows - invalidated at start of each tiling operation
-        this._windowsCache = new Map();
-        this._cacheGeneration = 0;
+        // WeakMap<Workspace, Map<String, Window[]>>
+        this._windowsCache = new WeakMap();
     }
 
     setEdgeTilingManager(manager) {
@@ -77,16 +77,21 @@ export const WindowingManager = GObject.registerClass({
     
     // Call this at start of tiling operations to invalidate cache
     invalidateWindowsCache() {
-        this._cacheGeneration++;
-        this._windowsCache.clear();
+        this._windowsCache = new WeakMap();
     }
 
     getMonitorWorkspaceWindows(workspace, monitor, allow_unrelated) {
         if (!workspace) return [];
         
-        const cacheKey = `${workspace.index()}-${monitor}-${allow_unrelated ? 1 : 0}-${this._cacheGeneration}`;
-        if (this._windowsCache.has(cacheKey)) {
-            return this._windowsCache.get(cacheKey);
+        let workspaceCache = this._windowsCache.get(workspace);
+        if (!workspaceCache) {
+            workspaceCache = new Map();
+            this._windowsCache.set(workspace, workspaceCache);
+        }
+
+        const cacheKey = `${monitor}-${allow_unrelated ? 1 : 0}`;
+        if (workspaceCache.has(cacheKey)) {
+            return workspaceCache.get(cacheKey);
         }
         
         let _windows = [];
@@ -96,7 +101,7 @@ export const WindowingManager = GObject.registerClass({
                 _windows.push(window);
         
         // Store in cache
-        this._windowsCache.set(cacheKey, _windows);
+        workspaceCache.set(cacheKey, _windows);
         return _windows;
     }
 

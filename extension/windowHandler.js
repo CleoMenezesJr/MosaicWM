@@ -23,10 +23,9 @@ export const WindowHandler = GObject.registerClass({
         this._ext = extension;
         this._workspaceLocks = new WeakMap();
         this._smartResizeProcessedWindows = new WeakMap();
-        this._sizeChangeTimeouts = new Map();
         
         this._overflowInProgress = false; // Moved from extension.js
-        this._windowSignals = new Map(); // Store signal IDs for cleanup
+        this._windowSignals = new WeakMap(); // Store signal IDs for cleanup using WeakMap for memory safety
     }
 
     // Lock a workspace to prevent recursive or conflicting tiling triggers.
@@ -80,14 +79,14 @@ export const WindowHandler = GObject.registerClass({
         
         // Confirmation of smart resize completion
         ids.push(window.connect('size-changed', (win) => {
-            ComputedLayouts.delete(win.get_id());
+            ComputedLayouts.delete(win);
             if (WindowState.get(win, 'isSmartResizing')) {
                 this.tilingManager.tileWorkspaceWindows(win.get_workspace(), null, win.get_monitor());
             }
         }));
 
         ids.push(window.connect('position-changed', (win) => {
-            ComputedLayouts.delete(win.get_id());
+            ComputedLayouts.delete(win);
         }));
         
         // Track for lifecycle exclusion updates
@@ -116,7 +115,7 @@ export const WindowHandler = GObject.registerClass({
         }
         
         // Clear layout cache
-        ComputedLayouts.delete(window.get_id());
+        ComputedLayouts.delete(window);
         
         // Clean up other states
         WindowState.remove(window, 'previousExclusionState');
@@ -443,7 +442,7 @@ export const WindowHandler = GObject.registerClass({
                         if (existingWindows.length > 0) {
                             const resizeSuccess = this.tilingManager.tryFitWithResize(window, existingWindows, workArea);
                             if (resizeSuccess) {
-                                Logger.log('[MOSAIC WM] Smart resize applied - starting fit check polling');
+                                Logger.log('[MOSAIC WM] Smart resize applied - waiting for geometry signals');
                                 
                                 let p = this._smartResizeProcessedWindows.get(workspace);
                                 if (!p) {
@@ -452,10 +451,10 @@ export const WindowHandler = GObject.registerClass({
                                 }
                                 p.add(window.get_id());
                                 
-                                // Reset flags for the window being added to ensure polling starts clean
+                                // Reset flags for the window being added to ensure detection starts clean
                                 WindowState.set(window, 'isSmartResizing', true);
                                 
-                                this._pollForFit(window, workspace, monitor, existingWindows, workArea);
+                                this._waitForFit(window, workspace, monitor, existingWindows, workArea);
                                 return;
                             }
                         }
@@ -1148,28 +1147,45 @@ export const WindowHandler = GObject.registerClass({
         return GLib.SOURCE_CONTINUE;
     }
 
-    // Poll for fit after a smart resize operation.
-    _pollForFit(window, workspace, monitor, existingWindows, workArea) {
+    // Wait for fit after a smart resize operation using deterministic signals.
+    _waitForFit(window, workspace, monitor, existingWindows, workArea) {
         const initialWorkspaceIndex = workspace.index();
         const windowId = window.get_id();
-        const MAX_ATTEMPTS = 15;
-        const POLL_INTERVAL = constants.POLL_INTERVAL_MS;
-        let attempts = 0;
+        
+        let signalIds = [];
+        let timeoutId = null;
+        let processed = false;
 
-        const poll = () => {
+        const cleanup = () => {
+            processed = true;
+            if (timeoutId) {
+                GLib.source_remove(timeoutId);
+                timeoutId = null;
+            }
+            signalIds.forEach(item => {
+                if (item.win && item.id) {
+                    item.win.disconnect(item.id);
+                }
+            });
+            signalIds = [];
+        };
+
+        const checkFit = () => {
+            if (processed) return;
+            
             // Guard: Stop if window moved workspace or was destroyed
             if (!window.get_workspace() || window.get_workspace().index() !== initialWorkspaceIndex) {
-                Logger.log(`[MOSAIC WM] pollForFit: Window ${windowId} moved or destroyed - aborting`);
+                Logger.log(`[MOSAIC WM] waitForFit: Window ${windowId} moved or destroyed - aborting`);
                 WindowState.set(window, 'isSmartResizing', false);
-                return GLib.SOURCE_REMOVE;
+                cleanup();
+                return;
             }
 
-            attempts++;
-            // Check fit with relaxed path (ignoring buffer during intermediate resize states)
+            // Check fit with relaxed path
             const canFitNow = this.tilingManager.canFitWindow(window, workspace, monitor, true);
 
             if (canFitNow) {
-                Logger.log(`[MOSAIC WM] pollForFit: Window ${windowId} fits after ${attempts} attempts - triggering tile`);
+                Logger.log(`[MOSAIC WM] waitForFit: Window ${windowId} fits via geometry signal - triggering tile`);
                 
                 // Success: Clear flags for ALL windows in workspace
                 const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
@@ -1181,33 +1197,54 @@ export const WindowHandler = GObject.registerClass({
                 let p = this._smartResizeProcessedWindows.get(workspace);
                 if (p) p.delete(windowId);
 
+                cleanup();
                 this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
-                return GLib.SOURCE_REMOVE;
             }
-
-            if (attempts >= MAX_ATTEMPTS) {
-                Logger.log(`[MOSAIC WM] pollForFit: Window ${windowId} still doesn't fit after ${attempts} attempts - moving to overflow`);
-                
-                const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
-                for (const win of workspaceWindows) {
-                    WindowState.set(win, 'isSmartResizing', false);
-                }
-                
-                let p = this._smartResizeProcessedWindows.get(workspace);
-                if (p) p.delete(windowId);
-
-                this.windowingManager.moveOversizedWindow(window);
-                return GLib.SOURCE_REMOVE;
-            }
-
-            // Optional: Re-trigger shrink if we seem stuck (nudges the layout)
-            if (attempts % 5 === 0) {
-                 this.tilingManager.tryFitWithResize(window, existingWindows, workArea);
-            }
-
-            return GLib.SOURCE_CONTINUE;
         };
+
+        // 1. Identify and connect to resizable windows that were triggered
+        const resizableWindows = existingWindows.filter(win => WindowState.get(win, 'isSmartResizing'));
         
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, POLL_INTERVAL, poll);
+        if (resizableWindows.length === 0) {
+            // Fallback if no windows are marked (shouldn't happen on success)
+            Logger.log(`[MOSAIC WM] waitForFit: No resized windows found - triggering immediate check`);
+            checkFit();
+            if (!processed) {
+                // Last ditch effort: try tiling anyway
+                this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
+                cleanup();
+            }
+            return;
+        }
+
+        Logger.log(`[MOSAIC WM] waitForFit: Connecting to ${resizableWindows.length} resized windows for geometry signals`);
+        
+        resizableWindows.forEach(win => {
+            // We use size-changed as the primary signal
+            const id = win.connect('size-changed', () => checkFit());
+            signalIds.push({ win, id });
+            
+            // Also notify::allocation for Clutter-level stability
+            const actor = win.get_compositor_private();
+            if (actor) {
+                const allocId = actor.connect('notify::allocation', () => checkFit());
+                signalIds.push({ win: actor, id: allocId });
+            }
+        });
+
+        // 2. Safety timeout - if signals never fire or geometry gets stuck
+        timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => {
+            if (!processed) {
+                Logger.log(`[MOSAIC WM] waitForFit: Signal timeout - forcing final check`);
+                checkFit();
+                if (!processed) {
+                    // Force overflow if it really doesn't fit
+                    Logger.log(`[MOSAIC WM] waitForFit: Still doesn't fit - moving to overflow`);
+                    this.windowingManager.moveOversizedWindow(window);
+                    cleanup();
+                }
+            }
+            return GLib.SOURCE_REMOVE;
+        });
     }
 });

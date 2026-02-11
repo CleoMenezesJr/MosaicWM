@@ -18,6 +18,9 @@ const ANIMATION_MODE_SUBTLE = Clutter.AnimationMode.EASE_OUT_QUAD;
 
 export const AnimationsManager = GObject.registerClass({
     GTypeName: 'MosaicAnimationsManager',
+    Signals: {
+        'animations-completed': {},
+    },
 }, class AnimationsManager extends GObject.Object {
     _init() {
         super._init();
@@ -39,6 +42,12 @@ export const AnimationsManager = GObject.registerClass({
     // Used by async utilities to wait for animations to complete
     hasActiveAnimations() {
         return this._animatingWindows.size > 0;
+    }
+
+    _checkAllAnimationsComplete() {
+        if (this._animatingWindows.size === 0) {
+            this.emit('animations-completed');
+        }
     }
 
     setDragging(dragging) {
@@ -164,6 +173,7 @@ export const AnimationsManager = GObject.registerClass({
                 onComplete: () => {
                     windowActor.set_translation(0, 0, 0);
                     this._animatingWindows.delete(window);
+                    this._checkAllAnimationsComplete();
                     if (onComplete) onComplete();
                 }
             });
@@ -179,6 +189,7 @@ export const AnimationsManager = GObject.registerClass({
         const safetyTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, duration + constants.SAFETY_TIMEOUT_BUFFER_MS, () => {
             if (this._animatingWindows.has(window)) {
                 this._animatingWindows.delete(window);
+                this._checkAllAnimationsComplete();
                 try {
                     windowActor.set_translation(0, 0, 0);
                 } catch (e) {
@@ -196,6 +207,7 @@ export const AnimationsManager = GObject.registerClass({
                 GLib.source_remove(safetyTimeout);
                 windowActor.set_translation(0, 0, 0);
                 this._animatingWindows.delete(window);
+                this._checkAllAnimationsComplete();
                 if (onComplete) onComplete();
             }
         });
@@ -226,6 +238,7 @@ export const AnimationsManager = GObject.registerClass({
                 windowActor.set_scale(1.0, 1.0);
                 windowActor.set_opacity(255);
                 this._animatingWindows.delete(window);
+                this._checkAllAnimationsComplete();
             }
         });
     }
@@ -249,6 +262,7 @@ export const AnimationsManager = GObject.registerClass({
             mode: ANIMATION_MODE,
             onComplete: () => {
                 this._animatingWindows.delete(window);
+                this._checkAllAnimationsComplete();
                 if (onComplete) onComplete();
             }
         });
@@ -283,6 +297,7 @@ export const AnimationsManager = GObject.registerClass({
             onComplete: () => {
                 windowActor.set_translation(0, 0, 0);
                 this._animatingWindows.delete(window);
+                this._checkAllAnimationsComplete();
                 if (onComplete) onComplete();
             }
         });
@@ -313,6 +328,7 @@ export const AnimationsManager = GObject.registerClass({
 
     cleanup() {
         this._animatingWindows.clear();
+        this._checkAllAnimationsComplete();
         this._isDragging = false;
     }
 
