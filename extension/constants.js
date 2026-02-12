@@ -62,13 +62,8 @@ export const OVERFLOW_MOVE_DEBOUNCE_MS = 2000;   // Debounce to prevent infinite
 // Threshold for identifying significant changes in window geometry for animations
 export const ANIMATION_DIFF_THRESHOLD = 10;
 
-// Smart resize thresholds
-export const SMALL_WINDOW_THRESHOLD = 0.25;  // Window < 25% of workspace = small
-export const LARGE_WINDOW_THRESHOLD = 0.35;  // Window > 35% of workspace = large (lowered to catch Medium windows)
-export const MIN_RESIZE_RATIO = 0.30;        // Minimum 30% of original size when resizing
+// Smart resize
 export const SMART_RESIZE_ANIMATION_MS = 400; // Dedicated animation duration for auto-resize (smoother)
-export const SMART_RESIZE_MAX_ATTEMPTS = 20;  // Max polling attempts before giving up on smart resize
-export const PRE_FIT_MAX_ATTEMPTS = 40;       // Max attempts for DnD pre-fit checks (40 * 50ms = 2s)
 
 // Slide-in animation for new windows
 export const SLIDE_IN_OFFSET_PX = 100;        // Offset in pixels for new window slide-in animation

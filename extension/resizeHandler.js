@@ -41,6 +41,14 @@ export const ResizeHandler = GObject.registerClass({
     onResizeBegin(window, grabpo) {
         this._resizeInOverflow = false;
         this.animationsManager.setResizingWindow(window.get_id());
+        
+        // CRITICAL: Clear smart-resize mode so manual resize can trigger overflow check
+        if (WindowState.get(window, 'isSmartResizing')) {
+            Logger.log(`[MOSAIC WM] Manual resize started for ${window.get_id()} - clearing smart-resize state`);
+            WindowState.set(window, 'isSmartResizing', false);
+            WindowState.set(window, 'targetSmartResizeSize', null);
+        }
+        
         Logger.log(`[MOSAIC WM] Tracking resize for window ${window.get_id()}, grabpo=${grabpo}`);
     }
 
