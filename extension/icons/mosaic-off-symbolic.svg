@@ -1,163 +1,81 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
 <svg
-   xmlns:osb="http://www.openswatchbook.org/uri/2009/osb"
-   xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-   xmlns:svg="http://www.w3.org/2000/svg"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   inkscape:version="1.0.1 (3bc2e813f5, 2020-09-07, custom)"
-   sodipodi:docname="gnome-mosaic-auto-off-symbolic.svg"
-   width="16.031464"
+   width="16"
+   height="16"
+   viewBox="0 0 4.2333332 4.2333333"
    version="1.1"
-   style="enable-background:new"
-   id="svg7384"
-   height="16">
+   id="svg1"
+   sodipodi:docname="mosaic-off-symbolic.svg"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
   <sodipodi:namedview
-     inkscape:current-layer="svg7384"
-     inkscape:window-maximized="0"
-     inkscape:window-y="23"
-     inkscape:window-x="26"
-     inkscape:cy="7.8736667"
-     inkscape:cx="5.4863836"
-     inkscape:zoom="47.743848"
-     showgrid="true"
-     id="namedview26"
-     inkscape:window-height="1032"
-     inkscape:window-width="1904"
-     inkscape:pageshadow="2"
-     inkscape:pageopacity="0"
-     guidetolerance="10"
-     gridtolerance="10"
-     objecttolerance="10"
-     borderopacity="1"
-     bordercolor="#666666"
+     id="namedview1"
      pagecolor="#ffffff"
-     inkscape:snap-intersection-paths="true"
-     inkscape:snap-smooth-nodes="true"
-     inkscape:document-rotation="0">
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="true"
+     inkscape:zoom="46.3191"
+     inkscape:cx="8.9811763"
+     inkscape:cy="10.190181"
+     inkscape:window-width="1920"
+     inkscape:window-height="1011"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1">
     <inkscape:grid
-       type="xygrid"
-       id="grid834" />
+       id="grid1"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="0.26458333"
+       spacingy="0.26458333"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       enabled="true"
+       visible="true" />
   </sodipodi:namedview>
-  <metadata
-     id="metadata90">
-    <rdf:RDF>
-      <cc:Work
-         rdf:about="">
-        <dc:format>image/svg+xml</dc:format>
-        <dc:type
-           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title>GNOME Mosaic Symbolic Icon Theme</dc:title>
-        <cc:license
-           rdf:resource="http://creativecommons.org/licenses/by-sa/4.0/" />
-      </cc:Work>
-      <cc:License
-         rdf:about="http://creativecommons.org/licenses/by-sa/4.0/">
-        <cc:permits
-           rdf:resource="http://creativecommons.org/ns#Reproduction" />
-        <cc:permits
-           rdf:resource="http://creativecommons.org/ns#Distribution" />
-        <cc:requires
-           rdf:resource="http://creativecommons.org/ns#Notice" />
-        <cc:requires
-           rdf:resource="http://creativecommons.org/ns#Attribution" />
-        <cc:permits
-           rdf:resource="http://creativecommons.org/ns#DerivativeWorks" />
-        <cc:requires
-           rdf:resource="http://creativecommons.org/ns#ShareAlike" />
-      </cc:License>
-    </rdf:RDF>
-  </metadata>
-  <title
-     id="title8473">GNOME Mosaic Symbolic Icon Theme</title>
   <defs
-     id="defs7386">
-    <linearGradient
-       osb:paint="solid"
-       id="linearGradient8297">
-      <stop
-         style="stop-color:#000000;stop-opacity:1;"
-         offset="0"
-         id="stop8295" />
-    </linearGradient>
-    <linearGradient
-       osb:paint="solid"
-       id="linearGradient6882">
-      <stop
-         style="stop-color:#555555;stop-opacity:1;"
-         offset="0"
-         id="stop6884" />
-    </linearGradient>
-    <linearGradient
-       osb:paint="solid"
-       id="linearGradient5606">
-      <stop
-         style="stop-color:#000000;stop-opacity:1;"
-         offset="0"
-         id="stop5608" />
-    </linearGradient>
-    <filter
-       style="color-interpolation-filters:sRGB"
-       id="filter7554">
-      <feBlend
-         mode="darken"
-         in2="BackgroundImage"
-         id="feBlend7556" />
-    </filter>
+     id="defs1">
+    <inkscape:path-effect
+       effect="fillet_chamfer"
+       id="path-effect6"
+       is_visible="true"
+       lpeversion="1"
+       nodesatellites_param="F,0,0,1,0,0.26458329,0,1 @ F,0,0,1,0,0.26458331,0,1 @ F,0,0,1,0,0,0,1 @ F,0,0,1,0,0.52916659,0,1 @ F,0,0,1,0,0,0,1 @ F,0,0,1,0,0.26458339,0,1"
+       radius="0"
+       unit="px"
+       method="auto"
+       mode="F"
+       chamfer_steps="1"
+       flexible="false"
+       use_knot_distance="true"
+       apply_no_radius="true"
+       apply_with_radius="true"
+       only_selected="false"
+       hide_knots="false" />
   </defs>
   <g
-     transform="translate(-1124.0002,555.55128)"
-     style="display:inline"
-     id="layer9" />
-  <g
-     transform="translate(-1124.0002,555.55128)"
-     style="display:inline;filter:url(#filter7554)"
-     id="layer10" />
-  <g
-     transform="translate(-883,-61.448718)"
-     style="display:inline"
-     id="layer1" />
-  <g
-     transform="translate(-1124.0002,555.55128)"
-     style="display:inline"
-     id="layer14" />
-  <g
-     transform="translate(-1124.0002,555.55128)"
-     style="display:inline"
-     id="layer15" />
-  <g
-     transform="translate(-1124.0002,555.55128)"
-     style="display:inline"
-     id="g71291" />
-  <g
-     transform="translate(-883,88.551282)"
-     style="display:inline"
-     id="layer2" />
-  <g
-     transform="translate(-1124.0002,555.55128)"
-     style="display:inline"
-     id="layer12" />
-  <path
-     style="fill:#4c5263;fill-opacity:0.988327;stroke:none;stroke-width:2;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-     d="m 11,9.5512818 v 1.1992192 c 0,0.979903 -0.820878,1.800781 -1.800781,1.800781 H 4 v 1.199219 c 0,0.4432 0.3575812,0.800781 0.8007812,0.800781 H 13.199219 C 13.642419,14.551282 14,14.193701 14,13.750501 V 9.5512818 Z"
-     id="rect3162"
-     inkscape:connector-curvature="0"
-     sodipodi:nodetypes="csscsssscc" />
-  <path
-     style="fill:#4c5263;fill-opacity:0.988327;stroke:none;stroke-width:2;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-     d="M 6.8007812,1.5512818 C 6.3575812,1.5512818 6,1.908863 6,2.352063 v 1.1992188 h 3.199219 c 0.979903,0 1.777249,0.8211611 1.800781,1.8007812 v 3.1992188 h 4.199219 C 15.642419,8.5512818 16,8.1937006 16,7.7505006 V 2.352063 c 0,-0.4432 -0.357581,-0.8007812 -0.800781,-0.8007812 z"
-     id="rect3160"
-     inkscape:connector-curvature="0"
-     sodipodi:nodetypes="sscsscsssss" />
-  <rect
-     height="7"
-     id="rect3158"
-     ry="0.80000001"
-     style="fill:#4c5263;fill-opacity:0.988327;stroke:none;stroke-width:113.386;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-     width="10"
-     x="0"
-     y="4.5512819" />
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       id="rect1"
+       style="fill:#000000;stroke-width:0.264583"
+       d="M 0.52916667,0 C 0.23600835,0 0,0.23600835 0,0.52916667 V 3.7041667 C 0,3.997325 0.23600835,4.2333333 0.52916667,4.2333333 H 3.7041667 c 0.2931583,0 0.5291666,-0.2360083 0.5291666,-0.5291666 V 0.52916667 C 4.2333333,0.23600835 3.997325,0 3.7041667,0 Z M 0.79375,0.52916667 H 2.9104167 C 3.056542,0.52916672 3.175,0.64762469 3.175,0.79375 V 1.3229167 H 1.8520833 c -0.2922506,0 -0.5291666,0.236916 -0.5291666,0.5291666 l -10e-8,1.0583332 H 0.79374998 c -0.14612537,0 -0.26458337,-0.1184579 -0.26458332,-0.2645833 l 10e-9,-1.8520832 C 0.52916665,0.64762465 0.64762465,0.52916665 0.79375,0.52916667 Z M 1.8520833,1.5874999 h 1.5875 c 0.1465792,0 0.2645833,0.1180042 0.2645833,0.2645834 l 10e-8,1.5875 c 0,0.1465792 -0.1180042,0.2645834 -0.2645834,0.2645834 h -1.5875 C 1.7055041,3.7041667 1.5875,3.5861625 1.5875,3.4395833 l 0,-1.5875 c 0,-0.1465792 0.1180041,-0.2645834 0.2645833,-0.2645834 z"
+       sodipodi:nodetypes="sssssssssccscsscscccsssssssss" />
+  </g>
 </svg>
