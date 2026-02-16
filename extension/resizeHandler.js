@@ -194,7 +194,7 @@ export const ResizeHandler = GObject.registerClass({
                     }
                 }
                 
-                // If it's still sacred, but moving, we must block saves
+                // If it's still maximized/fullscreen but moving, block size updates
                 this._sizeChanged = false;
                 return;
             }
@@ -291,8 +291,12 @@ export const ResizeHandler = GObject.registerClass({
                         const mosaicWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
                             .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
                         const isSolo = mosaicWindows.length <= 1;
+                        
+                        // CRITICAL: Do NOT move windows during smart resize
+                        // This prevents existing windows from being expelled when smart resize reverts
+                        const isSmartResizing = this.tilingManager._isSmartResizingBlocked;
 
-                        if (!canFit && !this._resizeInOverflow && !isSolo) {
+                        if (!canFit && !this._resizeInOverflow && !isSolo && !isSmartResizing) {
                             if (WindowState.get(window, 'waitingForGeometry') || !WindowState.get(window, 'geometryReady')) {
                                 return GLib.SOURCE_REMOVE;
                             }
@@ -366,7 +370,7 @@ export const ResizeHandler = GObject.registerClass({
                     this._resizeOverflowWindow = null;
                 }
                 
-                // If it fits, we MUST still tile to ensure other windows move out of the way (live tiling)
+                // If it fits, perform tiling to ensure other windows move out of the way (live tiling)
                 // However, we throttle it slightly to avoid excessive calculations during smooth resizing
                 if (canFit) {
                     if (this._lastTileTime && (now - this._lastTileTime < 30)) {
@@ -432,7 +436,7 @@ export const ResizeHandler = GObject.registerClass({
         }
         
         if (!canFit) {
-            Logger.log(`[MOSAIC WM] handleUnmaximizeUndo: Window ${windowId} cannot fit even with Smart Resize - staying in current workspace`);
+            Logger.log(`[MOSAIC WM] handleUnmaximizeUndo: Window ${windowId} unable to fit even with Smart Resize - staying in current workspace`);
             this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor);
             return;
         }

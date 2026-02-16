@@ -358,7 +358,7 @@ export const WindowingManager = GObject.registerClass({
             return true;
         }
         
-        // Always on top ("sempre na frente de outras janelas")
+        // Always on top (window is above other windows)
         if (meta_window.is_above()) {
             return true;
         }

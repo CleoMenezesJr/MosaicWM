@@ -81,7 +81,7 @@ export const EdgeTilingManager = GObject.registerClass({
     _hasEdgeTiledWindowsOnSide(workspace, side, cachedEdgeTiledIds = null) {
         if (!workspace) return false;
         
-        // Iterating WeakMap is not possible, so we must query workspace windows
+        // Iterating WeakMap is not possible in GJS, so query workspace windows instead
         // This is robust but slightly more expensive than a Map lookup
         
         const windows = workspace.list_windows();
@@ -624,7 +624,7 @@ export const EdgeTilingManager = GObject.registerClass({
     // Check if window can be resized to target dimensions
     _canResize(window, targetWidth, targetHeight) {
         if (window.window_type !== 0) { // Meta.WindowType.NORMAL
-            Logger.log(`[MOSAIC WM] Window type ${window.window_type} cannot be edge-tiled`);
+            Logger.log(`[MOSAIC WM] Window type ${window.window_type} is not suitable for edge tiling`);
             return false;
         }
         
