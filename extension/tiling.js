@@ -371,9 +371,7 @@ class SmartResizeIterator {
         return Math.max(0, freePercent); // Nunca retornar negativo
     }
 
-    /**
-     * Helper: Aguardar por N milissegundos
-     */
+    // Wait N milliseconds
     _waitMs(ms) {
         return new Promise(resolve => {
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
@@ -383,22 +381,11 @@ class SmartResizeIterator {
         });
     }
 
-    /**
-     * EVENT-DRIVEN: Wait for resizing of multiple windows
-     * 
-     * Instead of polling with fixed wait, connect to 'size-changed' signal of each window
-     * and execute when the FIRST signal arrives (Promise.race).
-     * 
-     * PROFESSIONAL:
-     * - Reduces time from fixed 200ms to ~50-100ms real (depends on Mutter)
-     * - Event-driven win Promise.race (faster than busyloop)
-     * - Safety timeout as fallback
-     * - Auto-cleanup of listeners
-     * 
-     * @param {MetaWindow[]} windows - Windows to monitor
-     * @param {number} timeoutMs - Maximum time before giving up (default 500ms)
-     * @returns {Promise<void>}
-     */
+    // EVENT-DRIVEN: Wait for resizing via 'size-changed' signals
+    // Resolves on first signal (Promise.race) instead of polling
+    // Reduces time: ~50-100ms real vs fixed 200ms
+    // @param {MetaWindow[]} windows - Windows to monitor
+    // @param {number} timeoutMs - Max time before timeout (default 1500ms)
     async _waitForSizeChanges(windows, timeoutMs = 1500) {
         if (windows.length === 0) {
             Logger.log(`[SMART RESIZE EVENT-DRIVEN] No windows to monitor, returning immediately`);
@@ -460,9 +447,7 @@ class SmartResizeIterator {
         return timeoutOccurred;
     }
 
-    /**
-     * Aplicar os tamanhos reduzidos finais e marcar flags apropriados
-     */
+    // Apply final reduced sizes and mark appropriate flags
     commitResizes() {
         Logger.log(`[SMART RESIZE] Committing ${this.originalSizes.size} resized windows`);
         
@@ -502,9 +487,7 @@ class SmartResizeIterator {
         }
     }
 
-    /**
-     * Reverter tudo ao original (reverse smart resize em caso de overflow final)
-     */
+    // Revert all windows to original sizes (reverse smart resize on final overflow)
     async revertAll() {
         Logger.log(`[SMART RESIZE] Reverting ${this.windows.length} windows to original sizes`);
         
@@ -1806,7 +1789,6 @@ export const TilingManager = GObject.registerClass({
             let draggedWindow = reference_meta_window;
             
             // Allow animation for windows returning from excluded state
-            // Allow animation for windows returning from excluded state
             if (reference_meta_window && WindowState.get(reference_meta_window, 'justReturnedFromExclusion')) {
                 Logger.log(`[MOSAIC WM] Allowing animation for returning excluded window ${reference_meta_window.get_id()}`);
                 WindowState.remove(reference_meta_window, 'justReturnedFromExclusion');
@@ -2010,9 +1992,6 @@ export const TilingManager = GObject.registerClass({
             }
         }
         
-        // Temporarily add new descriptor if it wasn't there (for simulation)
-        // ... (existing logic handles this via windows array)
-        
         // Try to tile with these windows
         const layout = this._tile(windows, availableSpace, relaxed);
         return !layout.overflow;
@@ -2053,44 +2032,32 @@ export const TilingManager = GObject.registerClass({
     // This is the TARGET size the window wants to be
      
     savePreferredSize(window) {
-        // CRITICAL: If window is in smart resize, do NOT override preferredSize
-        // Smart resize will set preferredSize correctly in commitResizes()
+        // CRITICAL: Skip - smart resize sets preferredSize in commitResizes()
         if (WindowState.get(window, 'isSmartResizing')) {
             Logger.log(`[MOSAIC WM] savePreferredSize: Skipping for ${window.get_id()} - during smart resize`);
             return;
         }
 
-        // CRITICAL: If window was resized by smart resize, do NOT override preferredSize
-        // O preferredSize foi setado em commitResizes() com o tamanho ORIGINAL
-        // Overriding here would destroy the restoration capability later
+        // CRITICAL: Skip - smart resize already set preferredSize (don't override)
         if (WindowState.get(window, 'isConstrainedByMosaic')) {
             Logger.log(`[MOSAIC WM] savePreferredSize: Skipping for ${window.get_id()} - already constrained by smart resize`);
             return;
         }
 
+        // CRITICAL: Skip sacred windows - managed by maximizedUndoInfo
+        if (this._windowingManager.isMaximizedOrFullscreen(window)) {
+            Logger.log(`[MOSAIC WM] savePreferredSize: Skipping for ${window.get_id()} - sacred window (managed by maximizedUndoInfo)`);
+            return;
+        }
+
         let size = null;
         
-        // Use frame rect if window is NOT maximized/fullscreen
-        if (!this._windowingManager.isMaximizedOrFullscreen(window)) {
-            const frame = window.get_frame_rect();
-            size = { width: frame.width, height: frame.height };
-        } else {
-            // If currently maximized/fullscreen, we attempt to get the underlying "saved" size
-            // provided by Mutter. This is the size the window will return to.
-            try {
-                const saved = window.get_saved_rect();
-                if (saved && saved.width > 0 && saved.height > 0) {
-                    size = { width: saved.width, height: saved.height };
-                    Logger.log(`[MOSAIC WM] savePreferredSize: Captured saved_rect ${size.width}x${size.height} for sacred window ${window.get_id()}`);
-                }
-            } catch (e) {
-                Logger.warn(`[MOSAIC WM] savePreferredSize: Failed to get_saved_rect: ${e.message}`);
-            }
-        }
+        // Get frame size (window is not sacred here)
+        const frame = window.get_frame_rect();
+        size = { width: frame.width, height: frame.height };
                                
         if (size && size.width > 0 && size.height > 0) {
-            // Signal-Based Lock: If onSizeChange just flagged this window as entering a sacred state,
-            // we do NOT save the size, as it's almost certainly the giant transition frame.
+            // Block save during maximize/fullscreen transitions
             if (WindowState.get(window, 'isEnteringSacred')) {
                 Logger.log(`[MOSAIC WM] savePreferredSize: Save blocked by sacred transition flag for ${window.get_id()}`);
                 return;
