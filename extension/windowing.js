@@ -409,8 +409,19 @@ export const WindowingManager = GObject.registerClass({
                window.is_fullscreen();
     }
 
+    // Checks if a workspace on a specific monitor contains any sacred windows.
+    hasSacredWindow(workspace, monitor, excludeWindowId = null) {
+        if (!workspace || monitor === null || monitor === undefined)
+            return false;
+
+        const windows = this.getMonitorWorkspaceWindows(workspace, monitor);
+        return windows.some(w =>
+            (!excludeWindowId || w.get_id() !== excludeWindowId) &&
+            this.isMaximizedOrFullscreen(w)
+        );
+    }
+
     // Navigates to an appropriate workspace when current becomes empty.
-    // Priority: last visited workspace, unless it's the final (always-empty) workspace
     renavigate(workspace, condition, lastVisitedIndex = null, monitorIndex = -1) {
         if (!condition) {
             Logger.log('renavigate: Skipping - workspace is not active');

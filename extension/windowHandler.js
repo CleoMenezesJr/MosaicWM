@@ -49,16 +49,6 @@ export const WindowHandler = GObject.registerClass({
         return this._workspaceLocks.get(workspace) === true;
     }
 
-    // Check if a workspace has any sacred (fullscreen/maximized) windows
-    hasSacredWindowInWorkspace(workspace, monitor, excludeWindowId = null) {
-        if (!workspace || monitor === null || monitor === undefined) return false;
-        const windows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
-        return windows.some(w =>
-            (!excludeWindowId || w.get_id() !== excludeWindowId) &&
-            this.windowingManager.isMaximizedOrFullscreen(w)
-        );
-    }
-
     // Accessor shortcuts
     get windowingManager() { return this._ext.windowingManager; }
     get tilingManager() { return this._ext.tilingManager; }
@@ -454,7 +444,16 @@ export const WindowHandler = GObject.registerClass({
 
         this.tilingManager.savePreferredSize(window);
 
-        // Path 1: DnD Arrival Handling (Expansion)
+        // Path 1: Sacred Isolation - Don't share workspaces with sacred windows.
+        const hasSacredWindow = this.windowingManager.hasSacredWindow(workspace, monitor, window.get_id());
+
+        if (hasSacredWindow) {
+            Logger.log('Sacred window detected - immediate overflow');
+            this.windowingManager.moveOversizedWindow(window);
+            return;
+        }
+
+        // Path 2: DnD Arrival Handling (Expansion)
         if (WindowState.get(window, 'arrivedFromDnD')) {
             WindowState.set(window, 'arrivedFromDnD', false);
             const monitorWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
@@ -480,7 +479,7 @@ export const WindowHandler = GObject.registerClass({
             }
         }
 
-        // Path 2: Fitting & Smart Resize
+        // Path 3: Fitting & Smart Resize
         // Use TARGET size for restoration flows to avoid transient overflow ejection.
         const targetSize = WindowState.get(window, 'targetRestoredSize');
         const canFit = this.tilingManager.canFitWindow(window, workspace, monitor, targetSize);
@@ -494,7 +493,7 @@ export const WindowHandler = GObject.registerClass({
             return;
         }
 
-        // Path 3: Smart Resize attempt
+        // Path 4: Smart Resize attempt
         let workArea = workspace.get_work_area_for_monitor(monitor);
         if (this.edgeTilingManager) {
             const edgeTiledWindows = this.edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
@@ -505,14 +504,6 @@ export const WindowHandler = GObject.registerClass({
 
         const allExistingWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
             .filter(w => w.get_id() !== window.get_id() && !this.edgeTilingManager.isEdgeTiled(w));
-
-        const hasSacredWindow = allExistingWindows.some(w => this.windowingManager.isMaximizedOrFullscreen(w));
-
-        if (hasSacredWindow) {
-            Logger.log('Sacred window detected - immediate overflow');
-            this.windowingManager.moveOversizedWindow(window);
-            return;
-        }
 
         const existingWindows = allExistingWindows.filter(w => !this.windowingManager.isMaximizedOrFullscreen(w));
 
@@ -527,7 +518,7 @@ export const WindowHandler = GObject.registerClass({
             }
         }
 
-        // Path 4: Overflow (Final fallback)
+        // Path 5: Overflow (Final fallback)
         Logger.log('[TRACE] OVERFLOW: No fit, no smart resize possible');
 
         // Only move if smart resize is not blocking overflow decisions
@@ -1103,7 +1094,7 @@ export const WindowHandler = GObject.registerClass({
             const canFit = this.tilingManager.canFitWindow(window, currentWorkspace, monitor);
 
             // Sacred Protection: Expel if destination has sacred windows.
-            const hasSacredInDest = this.hasSacredWindowInWorkspace(currentWorkspace, monitor, windowId);
+            const hasSacredInDest = this.windowingManager.hasSacredWindow(currentWorkspace, monitor, windowId);
             if (hasSacredInDest) {
                 Logger.log(`Manual move BLOCKED: Destination workspace has sacred window - moving to overflow`);
                 WindowState.set(window, 'overflowMoveTimestamp', Date.now());

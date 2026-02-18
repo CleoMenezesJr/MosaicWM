@@ -1834,19 +1834,22 @@ export const TilingManager = GObject.registerClass({
     canFitWindow(window, workspace, monitor, relaxed = false, overrideSize = null) {
         Logger.log(`canFitWindow: Checking if window can fit in workspace ${workspace.index()} (relaxed=${relaxed})`);
         
-        // Excluded windows (Always on Top, Sticky) always "fit" - they don't participate in tiling
-        // This allows them to coexist with fullscreen/maximized windows
+        // Excluded windows (Always on Top, Sticky) coexist with sacred windows and don't participating in tiling.
         if (this._windowingManager.isExcluded(window)) {
             Logger.log('canFitWindow: Window is excluded - always fits (not tiled)');
             return true;
         }
         
-        if (window.is_fullscreen()) {
-            Logger.log('canFitWindow: Window is fullscreen - always fits (no overflow)');
+        if (this._windowingManager.isMaximizedOrFullscreen(window)) {
+            Logger.log('canFitWindow: Window is sacred - always fits (no overflow)');
             return true;
         }
 
-        
+        if (this._windowingManager.hasSacredWindow(workspace, monitor, window.get_id())) {
+            Logger.log('canFitWindow: Workspace has sacred window - blocked');
+            return false;
+        }
+
         const working_info = this._getWorkingInfo(workspace, window, monitor);
         if (!working_info) {
             Logger.log('canFitWindow: No working info - cannot fit');
