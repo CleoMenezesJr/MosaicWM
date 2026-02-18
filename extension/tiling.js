@@ -47,33 +47,11 @@ class SmartResizeIterator {
         this.tilingManager = tilingManager;
         this.iteration = 0;
         
-        // Pre-populate windowsAtMinimum: windows already at their learned minimum size
-        // This avoids wasting iterations on windows that can't shrink further
         this.windowsAtMinimum = new Set();
-        const minWidth = constants.SMART_RESIZE_MIN_WINDOW_WIDTH || 250;
-        const minHeight = constants.SMART_RESIZE_MIN_WINDOW_HEIGHT || 250;
-        const MINIMUM_TOLERANCE = 10; // Allow small margin for borders/decoration
-        
         for (const window of this.windows) {
-            const currentSize = this._getEffectiveSize(window);
-            const learnedMin = WindowState.get(window, 'learnedMinSize');
-            const hitMinimumBefore = WindowState.get(window, 'hitMinimumSize');
-            
-            // Check 1: If window has a learned minimum and current size matches it, mark as at minimum
-            if (learnedMin && currentSize.width <= learnedMin.width + MINIMUM_TOLERANCE && 
-                currentSize.height <= learnedMin.height + MINIMUM_TOLERANCE) {
+            if (tilingManager.isWindowAtMinimum(window)) {
                 this.windowsAtMinimum.add(window.get_id());
-                Logger.log(`[SMART RESIZE] Window ${window.get_id()} matches learned minimum (${learnedMin.width}x${learnedMin.height})`);
-            }
-            // Check 2: If window already hit minimum in a previous smart resize, don't resize it again
-            else if (hitMinimumBefore) {
-                this.windowsAtMinimum.add(window.get_id());
-                Logger.log(`[SMART RESIZE] Window ${window.get_id()} previously hit minimum, skipping resize`);
-            }
-            // Check 3: If window is already at/near absolute safety minimum size
-            else if (currentSize.width <= minWidth + MINIMUM_TOLERANCE && currentSize.height <= minHeight + MINIMUM_TOLERANCE) {
-                this.windowsAtMinimum.add(window.get_id());
-                Logger.log(`[SMART RESIZE] Window ${window.get_id()} already at absolute minimum (${currentSize.width}x${currentSize.height})`);
+                Logger.log(`[SMART RESIZE] Window ${window.get_id()} already at minimum (shared check)`);
             }
         }
         this.originalSizes = new Map();      // {windowId -> {w, h}} before smart resize
@@ -96,27 +74,8 @@ class SmartResizeIterator {
         this._aborted = false;
     }
 
-    // Get the effective size of a window, handling 0x0 corners cases for new windows
     _getEffectiveSize(window) {
-        const frame = window.get_frame_rect();
-        if (frame.width > 0 && frame.height > 0) {
-            return { width: frame.width, height: frame.height };
-        }
-        
-        // Fallback: Check if we have a learned minimum first (high reliability)
-        const learnedMin = WindowState.get(window, 'learnedMinSize');
-        if (learnedMin) {
-            return { width: learnedMin.width, height: learnedMin.height };
-        }
-
-        const preferred = WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize');
-        if (preferred) {
-            return { width: preferred.width, height: preferred.height };
-        }
-        
-        // Final fallback (should rarely happen for managed windows)
-        return { width: constants.SMART_RESIZE_MIN_WINDOW_WIDTH || 250, 
-                 height: constants.SMART_RESIZE_MIN_WINDOW_HEIGHT || 250 };
+        return this.tilingManager.getEffectiveWindowSize(window);
     }
 
     // Immediate cancellation of the iterator
@@ -489,6 +448,7 @@ class SmartResizeIterator {
             WindowState.set(window, 'isConstrainedByMosaic', true);
             // Disable isSmartResizing flag AFTER successful commit
             WindowState.set(window, 'isSmartResizing', false);
+            WindowState.set(window, 'hitMinimumSize', false);
             
             Logger.log(`[SMART RESIZE] Committed: ${id}, current=${current.width}x${current.height}`);
             
@@ -585,6 +545,93 @@ export const TilingManager = GObject.registerClass({
 
     setWindowingManager(manager) {
         this._windowingManager = manager;
+    }
+
+    // Get the effective size of a window, handling 0×0 for newly-created windows
+    getEffectiveWindowSize(window) {
+        const frame = window.get_frame_rect();
+        if (frame.width > 0 && frame.height > 0) {
+            return { width: frame.width, height: frame.height };
+        }
+
+        // Fallback: learned minimum (high reliability)
+        const learnedMin = WindowState.get(window, 'learnedMinSize');
+        if (learnedMin) {
+            return { width: learnedMin.width, height: learnedMin.height };
+        }
+
+        const preferred = WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize');
+        if (preferred) {
+            return { width: preferred.width, height: preferred.height };
+        }
+
+        // Final fallback (should rarely happen for managed windows)
+        return {
+            width: constants.SMART_RESIZE_MIN_WINDOW_WIDTH || 250,
+            height: constants.SMART_RESIZE_MIN_WINDOW_HEIGHT || 250,
+        };
+    }
+
+    // Get the minimum allowed size for a window during smart resize
+    getWindowMinimumSize(window) {
+        const learnedMin = WindowState.get(window, 'learnedMinSize');
+        return {
+            width: learnedMin?.width ?? (constants.SMART_RESIZE_MIN_WINDOW_WIDTH || 250),
+            height: learnedMin?.height ?? (constants.SMART_RESIZE_MIN_WINDOW_HEIGHT || 250),
+        };
+    }
+
+    // Check if a window is already at (or below) its minimum size
+    isWindowAtMinimum(window, tolerance = 10) {
+        const currentSize = this.getEffectiveWindowSize(window);
+        const learnedMin = WindowState.get(window, 'learnedMinSize');
+        const hitMinimumBefore = WindowState.get(window, 'hitMinimumSize');
+        const minSize = this.getWindowMinimumSize(window);
+
+        // 1. Learned minimum match
+        if (learnedMin &&
+            currentSize.width <= learnedMin.width + tolerance &&
+            currentSize.height <= learnedMin.height + tolerance) {
+            return true;
+        }
+        // 2. Previously hit minimum flag
+        if (hitMinimumBefore) return true;
+        // 3. Absolute safety minimum
+        if (currentSize.width <= minSize.width + tolerance &&
+            currentSize.height <= minSize.height + tolerance) {
+            return true;
+        }
+        return false;
+    }
+
+    // Try gain factors from 1.0→0.1 and return the best one that fits without overflow
+    findBestRestorationGain(windows, shrunkWindows, workArea) {
+        for (let gainFactor = 1.0; gainFactor >= 0.1; gainFactor -= 0.1) {
+            const simulatedWindows = windows.map(w => {
+                const shrunk = shrunkWindows.find(sw => sw.id === w.get_id());
+                if (!shrunk) {
+                    const f = w.get_frame_rect();
+                    return { id: w.get_id(), width: f.width, height: f.height };
+                }
+
+                const f = w.get_frame_rect();
+                const nw = Math.floor(f.width + (shrunk.widthDeficit * gainFactor));
+                const nh = Math.floor(f.height + (shrunk.heightDeficit * gainFactor));
+
+                return {
+                    id: w.get_id(),
+                    width: Math.min(nw, shrunk.openingWidth),
+                    height: Math.min(nh, shrunk.openingHeight),
+                };
+            });
+
+            const tile_result = this._tile(simulatedWindows, workArea, true);
+            if (!tile_result.overflow) {
+                Logger.log(`findBestRestorationGain: Found workable factor ${gainFactor.toFixed(1)}`);
+                return { gain: gainFactor, layout: simulatedWindows };
+            }
+        }
+        return null;
     }
 
     createMask(window) {
@@ -1887,6 +1934,7 @@ export const TilingManager = GObject.registerClass({
         if (edgeTiledWindows.length > 0) {
             const otherEdgeTiles = edgeTiledWindows.filter(w => w.window.get_id() !== window.get_id());
             const zones = otherEdgeTiles.map(w => w.zone);
+            const hasLeftFull = zones.includes(TileZone.LEFT_FULL);
             const hasRightFull = zones.includes(TileZone.RIGHT_FULL);
             const hasLeftQuarters = zones.some(z => z === TileZone.TOP_LEFT || z === TileZone.BOTTOM_LEFT);
             const hasRightQuarters = zones.some(z => z === TileZone.TOP_RIGHT || z === TileZone.BOTTOM_RIGHT);
@@ -2157,39 +2205,10 @@ export const TilingManager = GObject.registerClass({
             return false;
         }
         
-        // Iterative simulation-based recovery
-        let bestGain = 0;
-        let bestLayout = null;
-        
-        for (let gainFactor = 1.0; gainFactor >= 0.1; gainFactor -= 0.1) {
-            const simulatedWindows = windows.map(w => {
-                const shrunk = shrunkWindows.find(sw => sw.id === w.get_id());
-                if (!shrunk) {
-                    const f = w.get_frame_rect();
-                    return { id: w.get_id(), width: f.width, height: f.height };
-                }
-                
-                const f = w.get_frame_rect();
-                const nw = Math.floor(f.width + (shrunk.widthDeficit * gainFactor));
-                const nh = Math.floor(f.height + (shrunk.heightDeficit * gainFactor));
-                
-                return {
-                    id: w.get_id(),
-                    width: Math.min(nw, shrunk.openingWidth),
-                    height: Math.min(nh, shrunk.openingHeight)
-                };
-            });
+        const result = this.findBestRestorationGain(windows, shrunkWindows, workArea);
 
-            const tile_result = this._tile(simulatedWindows, workArea, true);
-            if (!tile_result.overflow) {
-                bestGain = gainFactor;
-                bestLayout = simulatedWindows;
-                Logger.log(`tryRestoreWindowSizes: Found workable restoration factor: ${gainFactor.toFixed(1)}`);
-                break;
-            }
-        }
-
-        if (bestGain > 0) {
+        if (result) {
+            const { gain: bestGain, layout: bestLayout } = result;
             // Success! Apply the restoration.
             Logger.log(`tryRestoreWindowSizes: Applying ${Math.round(bestGain * 100)}% restoration`);
             

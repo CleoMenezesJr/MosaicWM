@@ -335,7 +335,7 @@ export const ResizeHandler = GObject.registerClass({
                     return;
                 }
                 
-                if (workspace._smartResizingInProgress || WindowState.get(window, 'isSmartResizing')) {
+                if (workspace._smartResizingInProgress || WindowState.get(window, 'isSmartResizing') || this.tilingManager._isSmartResizingBlocked) {
                     this._sizeChanged = false;
                     return;
                 }
