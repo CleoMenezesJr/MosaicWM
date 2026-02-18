@@ -423,60 +423,75 @@ export const WindowingManager = GObject.registerClass({
 
     // Navigates to an appropriate workspace when current becomes empty.
     renavigate(workspace, condition, lastVisitedIndex = null, monitorIndex = -1) {
-        if (!condition) {
-            Logger.log('renavigate: Skipping - workspace is not active');
-            return;
-        }
+        if (!condition) return;
 
-        const workspaceManager = global.workspace_manager;
-        const nWorkspaces = workspaceManager.get_n_workspaces();
-        const currentIndex = workspace.index();
-        const lastWorkspaceIndex = nWorkspaces - 1; // Final workspace is always empty (GNOME dynamic)
-        
-        // Skip if workspace is already the final one (nothing to navigate from)
-        if (currentIndex === lastWorkspaceIndex) {
-            Logger.log('renavigate: Already on final workspace, going left');
-            const leftNeighbor = workspace.get_neighbor(Meta.MotionDirection.LEFT);
-            if (leftNeighbor && leftNeighbor.index() !== currentIndex) {
-                leftNeighbor.activate(this.getTimestamp());
-                this.showWorkspaceSwitcher(leftNeighbor, monitorIndex);
+        // Queue in idle with low priority to let GNOME settle its dynamic workspace states
+        GLib.idle_add(GLib.PRIORITY_LOW, () => {
+            const workspaceManager = global.workspace_manager;
+            const currentIndex = workspace.index();
+
+            if (currentIndex < 0) return GLib.SOURCE_REMOVE;
+
+            const nWorkspaces = workspaceManager.get_n_workspaces();
+            const lastWorkspaceIndex = nWorkspaces - 1;
+            let target = null;
+
+            // 1. If on the final (placeholder) workspace, the only valid move is left
+            if (currentIndex === lastWorkspaceIndex) {
+                target = workspace.get_neighbor(Meta.MotionDirection.LEFT);
+                if (target) {
+                    Logger.log(`[RENAVIGATE] On final workspace, moving to left neighbor (WS-${target.index()})`);
+                }
             }
-            return;
-        }
-        
-        // Try last visited workspace first (if provided and valid)
-        if (lastVisitedIndex !== null && lastVisitedIndex !== currentIndex && lastVisitedIndex !== lastWorkspaceIndex) {
-            const lastVisited = workspaceManager.get_workspace_by_index(lastVisitedIndex);
-            if (lastVisited && lastVisited.index() >= 0 && lastVisited.index() < nWorkspaces) {
-                Logger.log(`renavigate: Going to last visited workspace ${lastVisitedIndex}`);
-                lastVisited.activate(this.getTimestamp());
-                this.showWorkspaceSwitcher(lastVisited, monitorIndex);
-                return;
+            // 2. Try to move in the direction of the last visited workspace
+            else if (lastVisitedIndex !== null && lastVisitedIndex !== currentIndex) {
+                const direction = lastVisitedIndex < currentIndex 
+                    ? Meta.MotionDirection.LEFT 
+                    : Meta.MotionDirection.RIGHT;
+                
+                target = workspace.get_neighbor(direction);
+                
+                // Guard: Don't jump to the final empty workspace if we were going right
+                if (target && target.index() === lastWorkspaceIndex) {
+                    target = null;
+                } else if (target) {
+                    Logger.log(`[RENAVIGATE] Moving ${direction === Meta.MotionDirection.LEFT ? 'left' : 'right'} toward last visited WS-${lastVisitedIndex}`);
+                }
             }
-        }
-        
-        // Fallback: left neighbor, then right neighbor
-        let targetWorkspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
-        
-        if (!targetWorkspace || targetWorkspace.index() === currentIndex || targetWorkspace.index() === lastWorkspaceIndex) {
-            targetWorkspace = workspace.get_neighbor(Meta.MotionDirection.RIGHT);
-            // Avoid final empty workspace
-            if (targetWorkspace && targetWorkspace.index() === lastWorkspaceIndex) {
-                targetWorkspace = null;
+
+            // 3. Fallback: Systematic neighbor search (Left, then Right)
+            if (!target || target.index() === currentIndex) {
+                target = workspace.get_neighbor(Meta.MotionDirection.LEFT);
+                
+                if (!target || target.index() === currentIndex || target.index() < 0) {
+                    target = workspace.get_neighbor(Meta.MotionDirection.RIGHT);
+                }
+                
+                // Final safety: never fallback to the placeholder workspace
+                if (target && target.index() === lastWorkspaceIndex) {
+                    target = null;
+                } else if (target) {
+                    Logger.log(`[RENAVIGATE] Falling back to available neighbor (WS-${target.index()})`);
+                }
             }
-        }
-        
-        if (targetWorkspace && targetWorkspace.index() !== currentIndex && condition) {
-            Logger.log(`renavigate: Falling back to neighbor workspace ${targetWorkspace.index()}`);
-            targetWorkspace.activate(this.getTimestamp());
-            this.showWorkspaceSwitcher(targetWorkspace, monitorIndex);
-        }
+
+            // Execute navigation if a valid target was resolved
+            if (target && target.index() >= 0 && target.index() !== currentIndex) {
+                target.activate(this.getTimestamp());
+                this.showWorkspaceSwitcher(target, monitorIndex);
+            } else {
+                Logger.log(`[RENAVIGATE] No suitable target found to navigate away from WS-${currentIndex}`);
+            }
+
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     showWorkspaceSwitcher(workspace, monitorIndex = -1) {
         if (!workspace) return;
         
         const index = workspace.index();
+        Logger.log(`[SWITCHER] Activating OSD for WS-${index}`);
         
         // Default to primary monitor if none specified
         if (monitorIndex === -1) {

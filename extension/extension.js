@@ -123,7 +123,7 @@ export default class WindowMosaicExtension extends Extension {
 
         if (this._currentWorkspaceIndex !== null && this._currentWorkspaceIndex !== newIndex) {
             this._lastVisitedWorkspace = this._currentWorkspaceIndex;
-            Logger.log(`Workspace switched from ${this._currentWorkspaceIndex} to ${newIndex}, saved ${this._currentWorkspaceIndex} as last visited`);
+            Logger.log(`[WORKSPACE SWITCH] WS-${this._currentWorkspaceIndex} -> WS-${newIndex} (Stored ${this._currentWorkspaceIndex} as last visited)`);
         }
 
         this._currentWorkspaceIndex = newIndex;
