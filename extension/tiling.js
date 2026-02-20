@@ -1879,6 +1879,11 @@ export const TilingManager = GObject.registerClass({
     }
 
     canFitWindow(window, workspace, monitor, relaxed = false, overrideSize = null) {
+        if (this._extension && !this._extension.isMosaicEnabledForWorkspace(workspace)) {
+            Logger.log('canFitWindow: Workspace has mosaic disabled - always fits');
+            return true;
+        }
+
         Logger.log(`canFitWindow: Checking if window can fit in workspace ${workspace.index()} (relaxed=${relaxed})`);
         
         // Excluded windows (Always on Top, Sticky) coexist with sacred windows and don't participating in tiling.

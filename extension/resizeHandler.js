@@ -113,7 +113,9 @@ export const ResizeHandler = GObject.registerClass({
                 // LOCK: Set flag to block onSizeChanged from saving giant dimensions
                 WindowState.set(window, 'isEnteringSacred', true);
                 
-                if (this.windowingManager.isMaximizedOrFullscreen(window) && 
+                if (this._ext && !this._ext.isMosaicEnabledForWorkspace(workspace)) {
+                    Logger.log('User entering sacred state, but mosaic is disabled - skipping isolation');
+                } else if (this.windowingManager.isMaximizedOrFullscreen(window) && 
                     this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor).length > 1) {
                     
                     Logger.log('User entering sacred state - moving to new workspace');

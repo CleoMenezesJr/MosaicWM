@@ -76,13 +76,18 @@ export const WindowHandler = GObject.registerClass({
                 if (this.windowingManager.isMaximizedOrFullscreen(win)) {
                     Logger.log(`Window ${win.get_id()} entered a sacred state (Maximized) - checking for isolation`);
                     const workspace = win.get_workspace();
-                    const monitor = win.get_monitor();
-                    const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+                    
+                    if (this._ext && !this._ext.isMosaicEnabledForWorkspace(workspace)) {
+                        Logger.log(`Workspace has mosaic disabled - skipping isolation for maximized window ${win.get_id()}`);
+                    } else {
+                        const monitor = win.get_monitor();
+                        const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
 
-                    if (workspaceWindows.length > 1) {
-                        Logger.log(`Window ${win.get_id()} maximized in occupied workspace - isolating (SACRED)`);
-                        WindowState.set(win, 'sacredOriginWorkspace', workspace.index());
-                        this.windowingManager.moveOversizedWindow(win);
+                        if (workspaceWindows.length > 1) {
+                            Logger.log(`Window ${win.get_id()} maximized in occupied workspace - isolating (SACRED)`);
+                            WindowState.set(win, 'sacredOriginWorkspace', workspace.index());
+                            this.windowingManager.moveOversizedWindow(win);
+                        }
                     }
                 } else {
                     Logger.log(`Window ${win.get_id()} exited a sacred state (Unmaximized) - starting state machine`);
@@ -96,14 +101,18 @@ export const WindowHandler = GObject.registerClass({
             if (this.windowingManager.isMaximizedOrFullscreen(win)) {
                  // Entered Fullscreen: Move to new workspace if current is occupied.
                  const workspace = win.get_workspace();
-                 const monitor = win.get_monitor();
-                 const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+                 if (this._ext && !this._ext.isMosaicEnabledForWorkspace(workspace)) {
+                     Logger.log(`Workspace has mosaic disabled - skipping isolation for fullscreen window ${win.get_id()}`);
+                 } else {
+                     const monitor = win.get_monitor();
+                     const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
 
-                 if (workspaceWindows.length > 1) {
-                     Logger.log(`Window ${win.get_id()} entered FULLSCREEN in occupied workspace - isolating (SACRED)`);
-                     // Save origin for restoration later
-                     WindowState.set(win, 'sacredOriginWorkspace', workspace.index());
-                     this.windowingManager.moveOversizedWindow(win);
+                     if (workspaceWindows.length > 1) {
+                         Logger.log(`Window ${win.get_id()} entered FULLSCREEN in occupied workspace - isolating (SACRED)`);
+                         // Save origin for restoration later
+                         WindowState.set(win, 'sacredOriginWorkspace', workspace.index());
+                         this.windowingManager.moveOversizedWindow(win);
+                     }
                  }
             } else {
                 Logger.log(`Window ${win.get_id()} exited fullscreen - starting state machine`);
@@ -432,6 +441,11 @@ export const WindowHandler = GObject.registerClass({
 
     // Unified logic to ensure a new window fits, using smart resize if needed.
     async _ensureWindowFits(window, workspace, monitor) {
+        if (this._ext && !this._ext.isMosaicEnabledForWorkspace(workspace)) {
+            Logger.log('ensureWindowFits: Skipping - mosaic disabled for workspace');
+            return;
+        }
+
         if (WindowState.get(window, 'isSmartResizing')) {
             Logger.log('ensureWindowFits: Skipping - smart resize in progress');
             return;
@@ -571,6 +585,11 @@ export const WindowHandler = GObject.registerClass({
                 }
 
                 if(this.windowingManager.isMaximizedOrFullscreen(window)) {
+                    if (this._ext && !this._ext.isMosaicEnabledForWorkspace(workspace)) {
+                        Logger.log('Sacred window in disabled mosaic workspace - skipping isolation');
+                        return GLib.SOURCE_REMOVE;
+                    }
+
                     this.windowingManager.invalidateWindowsCache();
                     const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
                     const otherWindows = workspaceWindows.filter(w => w.get_id() !== window.get_id());
@@ -1069,6 +1088,12 @@ export const WindowHandler = GObject.registerClass({
             }
 
             WindowState.set(window, 'previousWorkspace', currentWorkspaceIndex);
+
+            if (this._ext && !this._ext.isMosaicEnabledForWorkspace(currentWorkspace)) {
+                Logger.log(`Manual move to disabled mosaic workspace - skipping fit/overflow checks`);
+                this.tilingManager.tileWorkspaceWindows(currentWorkspace, null, monitor, true);
+                return GLib.SOURCE_REMOVE;
+            }
 
             const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(currentWorkspace, monitor);
 
