@@ -390,7 +390,7 @@ export const ResizeHandler = GObject.registerClass({
         }
     };
 
-    handleUnmaximizeUndo(window, maxInfo) {
+    async handleUnmaximizeUndo(window, maxInfo) {
         const { originalWorkspace: origIndex, monitor, preMaxSize } = maxInfo;
         const currentWorkspace = window.get_workspace();
         const workspaceManager = global.workspace_manager;
@@ -435,7 +435,7 @@ export const ResizeHandler = GObject.registerClass({
         if (!canFit) {
             Logger.log(`handleUnmaximizeUndo: Window ${windowId} doesn't fit normally - attempting Smart Resize fit`);
             // Pass preMaxSize as overrideSize to tryFitWithResize
-            canFit = this.tilingManager.tryFitWithResize(window, existingWindows, targetWorkspace.get_work_area_for_monitor(monitor), preMaxSize);
+            canFit = await this.tilingManager.tryFitWithResize(window, existingWindows, targetWorkspace.get_work_area_for_monitor(monitor), preMaxSize);
             resizeNeeded = canFit;
         }
         

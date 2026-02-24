@@ -70,29 +70,38 @@ export const WindowHandler = GObject.registerClass({
             this.disconnectWindowSignals(win);
         }));
 
-        // Detect Maximized changes (both horiz and vert)
+        // Detect Maximized changes. Have two signals that fires when (un)maximize, so we coalesce it via idle.
+        let pendingMaximizeCheck = false;
         ['notify::maximized-horizontally', 'notify::maximized-vertically'].forEach(signal => {
             ids.push(window.connect(signal, (win) => {
-                if (this.windowingManager.isMaximizedOrFullscreen(win)) {
-                    Logger.log(`Window ${win.get_id()} entered a sacred state (Maximized) - checking for isolation`);
-                    const workspace = win.get_workspace();
-                    
-                    if (this._ext && !this._ext.isMosaicEnabledForWorkspace(workspace)) {
-                        Logger.log(`Workspace has mosaic disabled - skipping isolation for maximized window ${win.get_id()}`);
-                    } else {
-                        const monitor = win.get_monitor();
-                        const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+                if (pendingMaximizeCheck) return;
+                pendingMaximizeCheck = true;
+                GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                    pendingMaximizeCheck = false;
+                    if (!win.get_compositor_private()) return GLib.SOURCE_REMOVE;
 
-                        if (workspaceWindows.length > 1) {
-                            Logger.log(`Window ${win.get_id()} maximized in occupied workspace - isolating (SACRED)`);
-                            WindowState.set(win, 'sacredOriginWorkspace', workspace.index());
-                            this.windowingManager.moveOversizedWindow(win);
+                    if (this.windowingManager.isMaximizedOrFullscreen(win)) {
+                        Logger.log(`Window ${win.get_id()} entered a sacred state (Maximized) - checking for isolation`);
+                        const workspace = win.get_workspace();
+
+                        if (this._ext && !this._ext.isMosaicEnabledForWorkspace(workspace)) {
+                            Logger.log(`Workspace has mosaic disabled - skipping isolation for maximized window ${win.get_id()}`);
+                        } else {
+                            const monitor = win.get_monitor();
+                            const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+
+                            if (workspaceWindows.length > 1) {
+                                Logger.log(`Window ${win.get_id()} maximized in occupied workspace - isolating (SACRED)`);
+                                WindowState.set(win, 'sacredOriginWorkspace', workspace.index());
+                                this.windowingManager.moveOversizedWindow(win);
+                            }
                         }
+                    } else {
+                        Logger.log(`Window ${win.get_id()} exited a sacred state (Unmaximized) - starting state machine`);
+                        this.handleSacredExit(win);
                     }
-                } else {
-                    Logger.log(`Window ${win.get_id()} exited a sacred state (Unmaximized) - starting state machine`);
-                    this.handleSacredExit(win);
-                }
+                    return GLib.SOURCE_REMOVE;
+                });
             }));
         });
 
@@ -190,6 +199,12 @@ export const WindowHandler = GObject.registerClass({
 
     // State Machine: Defer move until window has finished resizing in place.
     handleSacredExit(window) {
+        // Idempotency: skip if already processing this sacred exit
+        if (WindowState.get(window, 'isRestoringSacred') !== undefined) {
+            Logger.log(`handleSacredExit: Already restoring ${window.get_id()} - skipping duplicate`);
+            return;
+        }
+
         this.windowingManager.invalidateWindowsCache();
         const originIndex = WindowState.get(window, 'sacredOriginWorkspace');
 
@@ -670,6 +685,12 @@ export const WindowHandler = GObject.registerClass({
 
             // Safety timeout
             timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+                // Pre-flight check: If the actor was disposed while waiting, abort safely.
+                if (!window.get_compositor_private()) {
+                    Logger.log('window map timeout - window already disposed, aborting process');
+                    return GLib.SOURCE_REMOVE;
+                }
+                
                 Logger.log('window map timeout - falling back to immediate processing');
                 processOnce();
                 return GLib.SOURCE_REMOVE;

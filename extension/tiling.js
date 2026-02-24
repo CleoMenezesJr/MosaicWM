@@ -2359,9 +2359,18 @@ export const TilingManager = GObject.registerClass({
                 Logger.error(`[SMART RESIZE] Critical error in iterator: ${e.message}`);
                 return false;
             } finally {
+                // Ensure all flags are cleared, especially if aborted
+                const allInvolvedWindows = [...windows, newWindow];
+                for (const window of allInvolvedWindows) {
+                    if (WindowState.get(window, 'isSmartResizing')) {
+                        WindowState.set(window, 'isSmartResizing', false);
+                    }
+                    WindowState.set(window, 'targetSmartResizeSize', null);
+                }
+
                 this._isSmartResizingBlocked = false;
                 this._activeSmartResize = null;
-                Logger.log(`[SMART RESIZE] tryFitWithResize finished - unblocked overflow`);
+                Logger.log(`[SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared`);
             }
         });
     }
