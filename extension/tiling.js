@@ -2021,7 +2021,7 @@ export const TilingManager = GObject.registerClass({
                  } else {
                      // Ensure we use the best available size info
                      const preferred = WindowState.get(window, 'preferredSize');
-                     const isMaximized = window.maximized_horizontally && window.maximized_vertically;
+                     const isMaximized = window.is_maximized();
                      if (preferred && !window.is_fullscreen() && !isMaximized) {
                          existingDescriptor.width = preferred.width;
                          existingDescriptor.height = preferred.height;

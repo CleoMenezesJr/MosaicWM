@@ -647,7 +647,7 @@ export const EdgeTilingManager = GObject.registerClass({
         }
 
         if (zone === TileZone.FULLSCREEN) {
-            window.maximize(Meta.MaximizeFlags.BOTH);
+            window.maximize();
             const state = WindowState.get(window, 'edgeTilingState');
             if (state) state.zone = zone;
             Logger.log(`Maximized window ${window.get_id()}`);
@@ -904,7 +904,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
         savedState.zone = TileZone.NONE;
 
-        if (window.maximized_horizontally || window.maximized_vertically) {
+        if (window.is_maximized()) {
             window.unmaximize();
         }
 

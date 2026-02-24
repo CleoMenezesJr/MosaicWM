@@ -178,7 +178,7 @@ export const WindowingManager = GObject.registerClass({
         try {
             this._edgeTilingManager.saveWindowState(window);
             
-            window.unmaximize(Meta.MaximizeFlags.BOTH);
+            window.unmaximize();
             window.move_resize_frame(false, targetX, targetY, targetWidth, targetHeight);
             
             const zone = direction === 'left' ? TileZone.LEFT_FULL : TileZone.RIGHT_FULL;
@@ -358,9 +358,7 @@ export const WindowingManager = GObject.registerClass({
     }
 
     isMaximizedOrFullscreen(window) {
-        return (window.maximized_horizontally === true && 
-                window.maximized_vertically === true) || 
-               window.is_fullscreen();
+        return window.is_maximized() || window.is_fullscreen();
     }
 
     // Checks if a workspace on a specific monitor contains any sacred windows.
