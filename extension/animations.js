@@ -187,33 +187,17 @@ export const AnimationsManager = GObject.registerClass({
         // Option 2: Use only translation, no scale (avoids grow-from-bottom effect)
         windowActor.set_translation(translateX, translateY, 0);
         
-        const safetyTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, duration + constants.SAFETY_TIMEOUT_BUFFER_MS, () => {
-            if (this._animatingWindows.has(window.get_id())) {
-                this._animatingWindows.delete(window.get_id());
-                this._checkAllAnimationsComplete();
-                if (windowActor && !windowActor.is_destroyed()) {
-                    try {
-                        windowActor.set_translation(0, 0, 0);
-                    } catch (e) {
-                        Logger.log(`Safety timeout set_translation failed: ${e.message}`);
-                    }
-                }
-            }
-            return GLib.SOURCE_REMOVE;
-        });
-        
         windowActor.ease({
             translation_x: 0,
             translation_y: 0,
             duration: duration,
             mode: animationMode,
-            onComplete: () => {
-                GLib.source_remove(safetyTimeout);
+            onStopped: (isFinished) => {
                 if (windowActor && !windowActor.is_destroyed())
                     windowActor.set_translation(0, 0, 0);
                 this._animatingWindows.delete(window.get_id());
                 this._checkAllAnimationsComplete();
-                if (onComplete) onComplete();
+                if (onComplete && isFinished) onComplete();
             }
         });
     }

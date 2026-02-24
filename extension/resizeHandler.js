@@ -3,10 +3,12 @@
 // ResizeHandler - Manages window resize operations and maximize undo.
 
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 import * as Logger from './logger.js';
 import { afterWorkspaceSwitch, afterAnimations } from './timing.js';
 import * as WindowState from './windowState.js';
 import * as constants from './constants.js';
+import { TileZone, isResizeGrabOp } from './constants.js';
 
 import GObject from 'gi://GObject';
 
@@ -42,11 +44,11 @@ export const ResizeHandler = GObject.registerClass({
         this._resizeInOverflow = false;
         this.animationsManager.setResizingWindow(window.get_id());
         
-        // Clear smart-resize mode so manual resize can trigger overflow check
+        // Always clear smart-resize target so manual resize takes precedence
+        WindowState.set(window, 'targetSmartResizeSize', null);
         if (WindowState.get(window, 'isSmartResizing')) {
             Logger.log(`Manual resize started for ${window.get_id()} - clearing smart-resize state`);
             WindowState.set(window, 'isSmartResizing', false);
-            WindowState.set(window, 'targetSmartResizeSize', null);
         }
         
         Logger.log(`Tracking resize for window ${window.get_id()}, grabpo=${grabpo}`);
@@ -77,7 +79,7 @@ export const ResizeHandler = GObject.registerClass({
             this._resizeDebounceTimeout = null;
         }
         
-        this._resizeGracePeriod = Date.now();
+        this._resizeGracePeriod = GLib.get_monotonic_time() / 1000;
         
         if (this._resizeInOverflow || this._resizeOverflowWindow === window) {
             Logger.log('Resize ended with overflow - moving window to new workspace');
@@ -98,6 +100,7 @@ export const ResizeHandler = GObject.registerClass({
             this._resizeOverflowWindow = null;
         } else if (!isEdgeTiled && !skipTiling) {
             this.tilingManager.savePreferredSize(window);
+            this.tilingManager.invalidateLayoutCache();
             this.tilingManager.tileWorkspaceWindows(window.get_workspace(), null, window.get_monitor(), true);
         }
     }
@@ -108,8 +111,7 @@ export const ResizeHandler = GObject.registerClass({
             let workspace = window.get_workspace();
             let monitor = window.get_monitor();
 
-            // Modes: 0=MAXIMIZE, 1=UNMAXIMIZE, 2=FULLSCREEN (Mutter/Wayland uses this mode value)
-            if (mode === 2 || mode === 0) {
+            if (mode === Meta.SizeChange.FULLSCREEN || mode === Meta.SizeChange.MAXIMIZE) {
                 // LOCK: Set flag to block onSizeChanged from saving giant dimensions
                 WindowState.set(window, 'isEnteringSacred', true);
                 
@@ -133,7 +135,7 @@ export const ResizeHandler = GObject.registerClass({
                         this.tilingManager.tileWorkspaceWindows(workspace, false, monitor, false);
                     }
                 }
-            } else if (mode === 1) { // Unmaximized
+            } else if (mode === Meta.SizeChange.UNMAXIMIZE) {
                 WindowState.set(window, 'unmaximizing', true);
                 const maxInfo = WindowState.get(window, 'maximizedUndoInfo');
                 if (maxInfo) {
@@ -217,7 +219,7 @@ export const ResizeHandler = GObject.registerClass({
             }
             
             const isConstrained = WindowState.get(window, 'isConstrainedByMosaic');
-            const isManualResizeAction = this._currentGrabOp && constants.RESIZE_GRAB_OPS.includes(this._currentGrabOp);
+            const isManualResizeAction = this._currentGrabOp && isResizeGrabOp(this._currentGrabOp);
             
             if (isManualResizeAction) {
                 // Manual resize always updates preferredSize and clears constraints
@@ -270,9 +272,9 @@ export const ResizeHandler = GObject.registerClass({
             }
             
             if (!this.windowingManager.isMaximizedOrFullscreen(window)) {
-                const isManualResize = this._currentGrabOp && constants.RESIZE_GRAB_OPS.includes(this._currentGrabOp);
+                const isManualResize = this._currentGrabOp && isResizeGrabOp(this._currentGrabOp);
                 const windowId = window.get_id();
-                const resizeNow = Date.now();
+                const resizeNow = GLib.get_monotonic_time() / 1000;
                 const isActiveResize = isManualResize || 
                     (this._lastResizeWindow === windowId && (resizeNow - this._lastResizeTime) < constants.RESIZE_SETTLE_DELAY_MS * 2);
                 this._lastResizeWindow = windowId;
@@ -331,7 +333,7 @@ export const ResizeHandler = GObject.registerClass({
                 }
                 
                 let canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
-                const now = Date.now();
+                const now = GLib.get_monotonic_time() / 1000;
                 if (this._resizeGracePeriod && (now - this._resizeGracePeriod) < constants.REVERSE_RESIZE_PROTECTION_MS) {
                     this._sizeChanged = false;
                     return;

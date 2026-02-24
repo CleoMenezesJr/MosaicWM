@@ -6,7 +6,7 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Clutter from 'gi://Clutter';
 import * as Logger from './logger.js';
-import { TileZone } from './constants.js';
+import { TileZone, isResizeGrabOp } from './constants.js';
 import * as constants from './constants.js';
 import { afterAnimations } from './timing.js';
 
@@ -73,13 +73,13 @@ export const DragHandler = GObject.registerClass({
 
     _grabOpBeginHandler = (display, window, grabpo) => {
         this._currentGrabOp = grabpo;
-        const isResizeOp = constants.RESIZE_GRAB_OPS.includes(grabpo);
+        const isResizeOp = isResizeGrabOp(grabpo);
         if (isResizeOp) {
             // Resize logic delegation (will be handled by ResizeHandler)
             this._ext.resizeHandler.onResizeBegin(window, grabpo);
         }
         
-        if (grabpo === 1 && !this.windowingManager.isExcluded(window)) {
+        if (grabpo === Meta.GrabOp.MOVING && !this.windowingManager.isExcluded(window)) {
             Logger.log(`Edge tiling: grab begin`);
             this._draggedWindow = window;
             
@@ -284,7 +284,7 @@ export const DragHandler = GObject.registerClass({
             
             this.reorderingManager.stopDrag(window, false, skipTiling);
             
-            const isResizeEnd = constants.RESIZE_GRAB_OPS.includes(grabpo);
+            const isResizeEnd = isResizeGrabOp(grabpo);
             if (isResizeEnd) {
                 this._ext.resizeHandler.onResizeEnd(window, grabpo, skipTiling);
             }

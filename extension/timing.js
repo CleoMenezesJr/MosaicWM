@@ -3,7 +3,6 @@
 // Async utilities for timeout management
 
 import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Logger from './logger.js';
@@ -11,27 +10,12 @@ import * as constants from './constants.js';
 
 const FALLBACK_ANIMATION_MS = 250;
 
-let _animationsEnabled = null;
-
 function getAnimationsEnabled() {
-    if (_animationsEnabled === null) {
-        try {
-            const settings = new Gio.Settings({ schema: 'org.gnome.desktop.interface' });
-            _animationsEnabled = settings.get_boolean('enable-animations');
-        } catch (e) {
-            Logger.log(`Failed to read animation settings: ${e.message}, defaulting to true`);
-            _animationsEnabled = true;
-        }
-    }
-    return _animationsEnabled;
+    return St.Settings.get().enable_animations;
 }
 
 function getSlowDownFactor() {
-    try {
-        return St.Settings.get().slow_down_factor;
-    } catch (e) {
-        return 1.0;
-    }
+    return St.Settings.get().slow_down_factor ?? 1.0;
 }
 
 function getWorkspaceSwitchDuration() {
@@ -40,10 +24,6 @@ function getWorkspaceSwitchDuration() {
     // Adjust for slow down factor if present
     const baseDuration = FALLBACK_ANIMATION_MS;
     return Math.ceil(baseDuration * getSlowDownFactor());
-}
-
-export function refreshAnimationsSetting() {
-    _animationsEnabled = null;
 }
 
 export class TimeoutRegistry {

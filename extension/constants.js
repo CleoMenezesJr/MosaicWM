@@ -1,6 +1,5 @@
 // Copyright 2025 Cleo Menezes Jr.
 // SPDX-License-Identifier: GPL-3.0-or-later
-/// Mosaic WM Constants
 // Shared constants for the extension
 
 import Clutter from 'gi://Clutter';
@@ -12,7 +11,7 @@ export const TILE_INTERVAL_MS = 60000 * 5; // 5 minutes
 
 export const WINDOW_VALIDITY_CHECK_INTERVAL_MS = 10;
 
-export const TileZone = {
+export const TileZone = Object.freeze({
     NONE: 0,
     LEFT_FULL: 1,
     RIGHT_FULL: 2,
@@ -21,7 +20,7 @@ export const TileZone = {
     BOTTOM_LEFT: 5,
     BOTTOM_RIGHT: 6,
     FULLSCREEN: 7
-};
+});
 
 export const STARTUP_TILE_DELAY_MS = 300;
 
@@ -78,17 +77,17 @@ export const SMART_RESIZE_MIN_WINDOW_HEIGHT = 250;   // Minimum window size duri
 export const SLIDE_IN_OFFSET_PX = 100;        // Offset in pixels for new window slide-in animation
 export const QUEUE_PROCESS_DELAY_MS = 100;    // Delay between processing window opening queue items
 
-// Alternative resize operations:
-const GRAB_OP_SUPER_SECONDARY_CLICK = 37889; // No Enum found yet
-const GRAB_OP_SUPER_RESIZE_S = 25601; // No Enum found yet
-const GRAB_OP_SUPER_RESIZE_SE = 24833; // No Enum found yet
-
 export const RESIZE_GRAB_OPS = [
     Meta.GrabOp.RESIZING_NW, Meta.GrabOp.RESIZING_N, Meta.GrabOp.RESIZING_NE,
     Meta.GrabOp.RESIZING_E, Meta.GrabOp.RESIZING_SE, Meta.GrabOp.RESIZING_S,
     Meta.GrabOp.RESIZING_SW, Meta.GrabOp.RESIZING_W,
     Meta.GrabOp.KEYBOARD_RESIZING_UNKNOWN,
-    GRAB_OP_SUPER_SECONDARY_CLICK,
-    GRAB_OP_SUPER_RESIZE_S, GRAB_OP_SUPER_RESIZE_SE,
-    Meta.GrabOp.COMPOSITOR_RESIZE || 769
+    Meta.GrabOp.KEYBOARD_RESIZING_SE,
 ];
+
+// Robust resize detection (handles Super+click composite grab ops via bitmask)
+export function isResizeGrabOp(grabOp) {
+    if (RESIZE_GRAB_OPS.includes(grabOp)) return true;
+    // Composite resize bitmask: WINDOW_BASE (bit 0) + any directional bit
+    return (grabOp & 0x1) !== 0 && (grabOp & 0x3000) !== 0;
+}

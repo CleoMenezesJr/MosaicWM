@@ -8,7 +8,7 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as WorkspaceSwitcherPopup from 'resource:///org/gnome/shell/ui/workspaceSwitcherPopup.js';
-import { afterWorkspaceSwitch } from './timing.js';
+import { afterWorkspaceSwitch, waitForGeometry } from './timing.js';
 
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
@@ -74,18 +74,18 @@ export const WindowingManager = GObject.registerClass({
         return this.getMonitorWorkspaceWindows(this.getWorkspace(), monitor, allow_unrelated);
     }
 
-    
     // Call this at start of tiling operations to invalidate cache
     invalidateWindowsCache() {
-        this._windowsCache = new WeakMap();
+        this._cacheVersion = (this._cacheVersion || 0) + 1;
     }
 
     getMonitorWorkspaceWindows(workspace, monitor, allow_unrelated) {
         if (!workspace) return [];
         
         let workspaceCache = this._windowsCache.get(workspace);
-        if (!workspaceCache) {
+        if (!workspaceCache || workspaceCache._version !== this._cacheVersion) {
             workspaceCache = new Map();
+            workspaceCache._version = this._cacheVersion;
             this._windowsCache.set(workspace, workspaceCache);
         }
 
@@ -275,34 +275,18 @@ export const WindowingManager = GObject.registerClass({
             
             // Re-tile after window has settled
             if (this._tilingManager) {
-                let attempts = 0;
-                const maxAttempts = constants.GEOMETRY_WAIT_MAX_ATTEMPTS;
-                
-                const waitForWindowGeometry = () => {
-                    attempts++;
-                    const frame = window.get_frame_rect();
-                    
-                    // Check if window has real dimensions (not 0x0) AND is in the workspace list
-                    const workspaceWindows = target_workspace.list_windows();
-                    const windowInWorkspace = workspaceWindows.some(w => w.get_id() === window.get_id());
-                    
-                    if (frame.width > 0 && frame.height > 0 && windowInWorkspace) {
-                        Logger.log(`moveOversizedWindow: window geometry ready (${frame.width}x${frame.height}), waiting for animation then retiling`);
-                        // Wait for workspace switch animation to complete before tiling
-                        afterWorkspaceSwitch(() => {
-                            this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
-                        }, this._timeoutRegistry);
+            // Signal-based geometry wait instead of polling
+                waitForGeometry(window, () => {
+                    Logger.log(`moveOversizedWindow: window geometry ready, waiting for animation then retiling`);
+                    afterWorkspaceSwitch(() => {
+                        this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
                         
-                        // Check position immediately after retile (no delay)
-                        const checkPosition = () => {
+                        // Check position after tiling
+                        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                             const finalFrame = window.get_frame_rect();
                             const workArea = target_workspace.get_work_area_for_monitor(monitor);
-                            
-                            // Calculate expected center position
                             const expectedX = Math.floor((workArea.width - finalFrame.width) / 2) + workArea.x;
                             const expectedY = Math.floor((workArea.height - finalFrame.height) / 2) + workArea.y;
-                            
-                            // Check if window is far from expected position (threshold of 10px)
                             const positionError = Math.abs(finalFrame.x - expectedX) + Math.abs(finalFrame.y - expectedY);
                             
                             if (positionError > 10) {
@@ -310,37 +294,13 @@ export const WindowingManager = GObject.registerClass({
                                 this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
                             }
                             
-                            // Notify that overflow is complete
                             if (this._overflowEndCallback) {
                                 this._overflowEndCallback();
                             }
-                        };
-                        
-                        // Use idle callback for immediate check (no artificial delay)
-                        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                            checkPosition();
                             return GLib.SOURCE_REMOVE;
                         });
-                        
-                        return GLib.SOURCE_REMOVE;
-                    }
-                    
-                    // Prevent infinite loop - give up after max attempts
-                    if (attempts >= maxAttempts) {
-                        Logger.log(`moveOversizedWindow: timeout waiting for geometry, forcing retile`);
-                        afterWorkspaceSwitch(() => {
-                            this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
-                        }, this._timeoutRegistry);
-                        if (this._overflowEndCallback) {
-                            this._overflowEndCallback();
-                        }
-                        return GLib.SOURCE_REMOVE;
-                    }
-                    
-                    Logger.log(`moveOversizedWindow: waiting for geometry (${frame.width}x${frame.height})`);
-                    return GLib.SOURCE_CONTINUE;
-                };
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, waitForWindowGeometry);
+                    }, this._timeoutRegistry);
+                }, this._timeoutRegistry);
             }
             
             return GLib.SOURCE_REMOVE;
