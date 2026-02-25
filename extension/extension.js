@@ -204,6 +204,9 @@ export default class WindowMosaicExtension extends Extension {
         this.dragHandler = new DragHandler(this);
         this.resizeHandler = new ResizeHandler(this);
 
+        // Apply slide-in animation patch
+        this.windowHandler.patchMapWindow();
+
         // Initialize Quick Settings indicator
         this._mosaicIndicator = new MosaicIndicator(this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._mosaicIndicator);
@@ -320,9 +323,7 @@ export default class WindowMosaicExtension extends Extension {
             }
         }
 
-        Logger.log('About to call _setupKeybindings()');
         this._setupKeybindings();
-        Logger.log('_setupKeybindings() completed');
 
         // Use GLib.timeout_add for better GJS integration
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.STARTUP_TILE_DELAY_MS, () => {
@@ -332,8 +333,6 @@ export default class WindowMosaicExtension extends Extension {
     }
 
     _setupKeybindings() {
-        Logger.log('*** _setupKeybindings called ***');
-
         const settings = this.getSettings('org.gnome.shell.extensions.mosaic-wm');
 
         Main.wm.addKeybinding('tile-left', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
@@ -438,9 +437,8 @@ export default class WindowMosaicExtension extends Extension {
         }
 
         // Restore original map animation
-        if (this._originalMapWindow) {
-            Main.wm._mapWindow = this._originalMapWindow;
-            this._originalMapWindow = null;
+        if (this.windowHandler) {
+            this.windowHandler.unpatchMapWindow();
         }
 
         Main.wm.removeKeybinding('tile-left');

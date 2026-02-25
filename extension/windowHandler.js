@@ -27,6 +27,159 @@ export const WindowHandler = GObject.registerClass({
 
         this._overflowInProgress = false; // Moved from extension.js
         this._windowSignals = new WeakMap(); // Store signal IDs for cleanup using WeakMap for memory safety
+        this._origShouldAnimateActor = null; 
+    }
+
+    patchMapWindow() {
+        if (this._origShouldAnimateActor) return; // Already patched
+
+        Logger.log('Patching Main.wm._shouldAnimateActor for slide-in animations');
+        this._origShouldAnimateActor = Main.wm._shouldAnimateActor;
+        
+        const self = this;
+        Main.wm._shouldAnimateActor = function(actor, types) {
+            // First, call the original to see if GNOME thinks we should animate
+            const shouldAnimate = self._origShouldAnimateActor.call(this, actor, types);
+            
+            if (!shouldAnimate) return false;
+            
+            const win = actor.meta_window;
+            if (!win) return true;
+
+            const frame = win.get_frame_rect();
+            Logger.log(`[PATCH SIZE CHECK] _shouldAnimateActor intercepted window ${win.get_id()} with size ${frame.width}x${frame.height}`);
+
+            const stack = (new Error()).stack;
+            if (!stack.includes('_mapWindow@') && !stack.includes('mapWindow') && !stack.includes('size_change')) return true;
+
+            // Check if window is managed by mosaic mode
+            const isRelated = self._ext && self._ext.windowingManager.isRelated(win);
+            if (!isRelated) return true;
+
+            // Evaluate if we should slide in, natively calculating JIT neighbors
+            const { offsetX, offsetY, animationMode } = self._evaluateSlideIn(win);
+
+            if (offsetX !== 0 || offsetY !== 0) {
+                Logger.log(`MAPPED SLIDE-IN (ease intercepted): Applying offset (${offsetX}, ${offsetY}) to window ${win.get_id()} Mode: ${animationMode}`);
+                self._applySlideInAnimation(actor, offsetX, offsetY, animationMode);
+            }
+
+            return true;
+        };
+    }
+
+    unpatchMapWindow() {
+        if (this._origShouldAnimateActor) {
+            Logger.log('Unpatching Main.wm._shouldAnimateActor');
+            Main.wm._shouldAnimateActor = this._origShouldAnimateActor;
+            this._origShouldAnimateActor = null;
+        }
+    }
+
+    _evaluateSlideIn(window) {
+        let offsetX = 0, offsetY = 0;
+        let animationMode = Clutter.AnimationMode.EASE_OUT_QUART;
+
+        const ws = window.get_workspace();
+        const mon = window.get_monitor();
+        const frame = window.get_frame_rect();
+
+        if (!ws || mon < 0 || frame.width <= 0) {
+            return { offsetX, offsetY, animationMode };
+        }
+
+        const existingWindows = ws.list_windows().filter(w =>
+            w.get_monitor() === mon &&
+            w.get_id() !== window.get_id() &&
+            !w.is_hidden() &&
+            w.get_window_type() === Meta.WindowType.NORMAL &&
+            !this.windowingManager.isExcluded(w) &&
+            w.showing_on_its_workspace()
+        );
+
+        let offsetDirection = 0;
+        const currentWSIndex = ws.index();
+        const prevWSIndex = WindowState.get(window, 'previousWorkspace');
+
+        if (prevWSIndex !== undefined && prevWSIndex !== currentWSIndex) {
+            offsetDirection = prevWSIndex < currentWSIndex ? -1 : 1;
+        }
+
+        const OFFSET = constants.SLIDE_IN_OFFSET_PX;
+
+        if (existingWindows.length > 0) {
+            let centerX = 0, centerY = 0, count = 0;
+            for (const n of existingWindows) {
+                try {
+                    const r = n.get_frame_rect();
+                    if (r && r.width > 0) {
+                        centerX += r.x + r.width / 2;
+                        centerY += r.y + r.height / 2;
+                        count++;
+                    }
+                } catch (e) {}
+            }
+            if (count > 0) {
+                centerX /= count;
+                centerY /= count;
+                const winCenterX = frame.x + frame.width / 2;
+                const winCenterY = frame.y + frame.height / 2;
+                const deltaX = winCenterX - centerX;
+                const deltaY = winCenterY - centerY;
+                
+                if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+                    offsetX = deltaX > constants.ANIMATION_DIFF_THRESHOLD ? OFFSET : (deltaX < -constants.ANIMATION_DIFF_THRESHOLD ? -OFFSET : 0);
+                } else {
+                    offsetY = deltaY > constants.ANIMATION_DIFF_THRESHOLD ? OFFSET : (deltaY < -constants.ANIMATION_DIFF_THRESHOLD ? -OFFSET : 0);
+                }
+            }
+        } else if (offsetDirection !== 0) {
+            offsetX = offsetDirection * OFFSET * 3;
+            animationMode = Clutter.AnimationMode.EASE_OUT_BACK;
+        }
+
+        return { offsetX, offsetY, animationMode };
+    }
+
+    _applySlideInAnimation(actor, offsetX, offsetY, animationMode) {
+        const win = actor.meta_window;
+        const origEase = actor.ease;
+        
+        actor.ease = function(props) {
+            const callStack = (new Error()).stack;
+            if (callStack.includes('_mapWindow@')) {
+                // Restore ease immediately
+                actor.ease = origEase;
+
+                // Revert GNOME's initial scaling setup (from _mapWindow)
+                actor.set_scale(1.0, 1.0);
+                actor.set_pivot_point(0.5, 0.5);
+
+                // Apply our slide offset
+                actor.set_translation(offsetX, offsetY, 0);
+                
+                // Force opacity to 0
+                actor.opacity = 0;
+
+                // Let GNOME handle the wait
+                WindowState.set(win, 'slideInAnimating', true);
+
+                origEase.call(this, {
+                    translation_x: 0,
+                    translation_y: 0,
+                    opacity: 255,
+                    duration: 300,
+                    mode: animationMode,
+                    onStopped: () => {
+                        actor.opacity = 255;
+                        WindowState.remove(win, 'slideInAnimating');
+                        if (props.onStopped) props.onStopped();
+                    }
+                });
+            } else {
+                origEase.apply(this, arguments);
+            }
+        };
     }
 
     // Lock a workspace to prevent recursive or conflicting tiling triggers.
@@ -371,12 +524,6 @@ export const WindowHandler = GObject.registerClass({
         this.disconnectWindowSignals(window);
         this.edgeTilingManager.clearWindowState(window);
 
-        const configureSignalId = WindowState.get(window, 'configureSignalId');
-        if (configureSignalId) {
-             window.disconnect(configureSignalId);
-             WindowState.remove(window, 'configureSignalId');
-        }
-
         const debounceId = WindowState.get(window, 'workspaceChangeDebounceId');
         if (debounceId) {
              GLib.source_remove(debounceId);
@@ -516,7 +663,6 @@ export const WindowHandler = GObject.registerClass({
         // Use TARGET size for restoration flows to avoid transient overflow ejection.
         const targetSize = WindowState.get(window, 'targetRestoredSize');
         const canFit = this.tilingManager.canFitWindow(window, workspace, monitor, targetSize);
-        Logger.log(`[TRACE] ensureWindowFits: canFit=${canFit}, id=${window.get_id()} (usingTargetSize: ${!!targetSize})`);
 
         if (canFit) {
             this.tilingManager.enqueueWindowOpen(window.get_id(), () => {
@@ -544,6 +690,7 @@ export const WindowHandler = GObject.registerClass({
             const resizeSuccess = await this.tilingManager.tryFitWithResize(window, existingWindows, workArea);
             if (resizeSuccess) {
                 Logger.log('Smart resize applied - tiling with reference');
+                WindowState.set(window, 'smartResizeApplied', true);
                 this.tilingManager.enqueueWindowOpen(window.get_id(), () => {
                     this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
                 });
@@ -552,7 +699,6 @@ export const WindowHandler = GObject.registerClass({
         }
 
         // Path 5: Overflow (Final fallback)
-        Logger.log('[TRACE] OVERFLOW: No fit, no smart resize possible');
 
         // Only move if smart resize is not blocking overflow decisions
         if (!this.tilingManager._isSmartResizingBlocked) {
@@ -724,176 +870,6 @@ export const WindowHandler = GObject.registerClass({
         // Abort any ongoing smart resize immediately to prevent 'zombie' logic
         this._ext.tilingManager.abortActiveSmartResize();
 
-        // Mark windows created during overview to skip slide-in animation
-        if (Main.overview.visible) {
-            WindowState.set(window, 'createdDuringOverview', true);
-        }
-
-        // Connect to configure signal for slide-in animation setup
-        // Clean up any existing configure handler to prevent accumulation on workspace moves
-        const existingConfigureId = WindowState.get(window, 'configureSignalId');
-        if (existingConfigureId) {
-            window.disconnect(existingConfigureId);
-            WindowState.remove(window, 'configureSignalId');
-        }
-
-        try {
-            const configureId = window.connect('configure', (win, config) => {
-                // Only handle initial configuration (first time window is placed)
-                if (config.get_is_initial()) {
-                    const ws = win.get_workspace();
-                    const mon = win.get_monitor();
-                    if (ws && mon >= 0) {
-                        // Get existing windows to check if this is the first window
-                        const existingWindows = ws.list_windows().filter(w =>
-                            w.get_monitor() === mon &&
-                            w.get_id() !== win.get_id() &&
-                            !w.is_hidden() &&
-                            w.get_window_type() === Meta.WindowType.NORMAL &&
-                            !this._ext.windowingManager.isExcluded(w) &&
-                            w.showing_on_its_workspace()
-                        );
-
-                        // Determine directional offset logic - using HISTORY from window-removed
-                        let offsetDirection = 0;
-                        const currentWSIndex = ws.index();
-
-                        // Use accurate previous workspace from _windowRemoved handler
-                        const prevWSIndex = WindowState.get(win, 'previousWorkspace');
-
-                        // Check if we have a valid previous workspace index and it's different from current
-                        if (prevWSIndex !== undefined && prevWSIndex !== currentWSIndex) {
-                            if (prevWSIndex < currentWSIndex) {
-                                offsetDirection = -1; // From Left (slide in from left)
-                            } else {
-                                offsetDirection = 1; // From Right (slide in from right)
-                            }
-                        }
-
-                        // Animate if there are other windows OR if it's a directional move
-                        if ((existingWindows.length > 0 || offsetDirection !== 0) && !WindowState.get(win, 'createdDuringOverview')) {
-                            WindowState.set(win, 'needsSlideIn', true);
-                            WindowState.set(win, 'slideInExistingWindows', existingWindows);
-                            WindowState.set(win, 'slideInDirection', offsetDirection);
-
-                            Logger.log(`SLIDE-IN: Window ${win.get_id()} (Existing: ${existingWindows.length}, Dir: ${offsetDirection}, PrevWS: ${prevWSIndex})`);
-
-                            // Connect to first-frame for visual animation
-                            const actor = win.get_compositor_private();
-                            if (actor) {
-                                const applySlideIn = () => {
-                                    if (!actor.mapped) return;
-
-                                    // Apply offset translation NOW that actor is rendered
-                                    if (WindowState.get(win, 'needsSlideIn')) {
-                                        const neighbors = WindowState.get(win, 'slideInExistingWindows') || [];
-                                        const direction = WindowState.get(win, 'slideInDirection') || 0;
-                                        const OFFSET = constants.SLIDE_IN_OFFSET_PX;
-
-                                        let offsetX = 0, offsetY = 0;
-                                        let animationMode = Clutter.AnimationMode.EASE_OUT_QUAD; // Default subtle
-
-                                        // 1. Center of Mass Logic (if neighbors exist) - Prioritize fitting in
-                                        if (neighbors.length > 0) {
-                                            let centerX = 0, centerY = 0, count = 0;
-                                            for (const n of neighbors) {
-                                                try {
-                                                    const r = n.get_frame_rect();
-                                                    if (r && r.width > 0) {
-                                                        centerX += r.x + r.width / 2;
-                                                        centerY += r.y + r.height / 2;
-                                                        count++;
-                                                    }
-                                                } catch (e) {
-                                                    Logger.log(`Failed to get neighbor rect: ${e.message}`);
-                                                }
-                                            }
-
-                                            if (count > 0) {
-                                                centerX /= count;
-                                                centerY /= count;
-                                                const winRect = win.get_frame_rect();
-                                                const winCenterX = winRect.x + winRect.width / 2;
-                                                const winCenterY = winRect.y + winRect.height / 2;
-
-                                                const deltaX = winCenterX - centerX;
-                                                const deltaY = winCenterY - centerY;
-
-                                                if (Math.abs(deltaX) >= Math.abs(deltaY)) {
-                                                    offsetX = deltaX > constants.ANIMATION_DIFF_THRESHOLD ? OFFSET : (deltaX < -constants.ANIMATION_DIFF_THRESHOLD ? -OFFSET : 0);
-                                                } else {
-                                                    offsetY = deltaY > constants.ANIMATION_DIFF_THRESHOLD ? OFFSET : (deltaY < -constants.ANIMATION_DIFF_THRESHOLD ? -OFFSET : 0);
-                                                }
-                                            }
-                                        }
-                                        // 2. Directional Logic (Single window or strict override)
-                                        else if (direction !== 0) {
-                                            offsetX = direction * OFFSET * 3; // Increase offset for "coming from outside" feel
-                                            animationMode = Clutter.AnimationMode.EASE_OUT_BACK; // Momentum for directional
-                                        }
-
-                                        if (offsetX !== 0 || offsetY !== 0) {
-                                            Logger.log(`MAPPED SLIDE-IN: Applying offset (${offsetX}, ${offsetY}) to window ${win.get_id()} Mode: ${animationMode}`);
-
-                                            // Mark as animating to prevent other animations from overwriting
-                                            WindowState.set(win, 'slideInAnimating', true);
-
-                                            // FORCE KILL GNOME ANIMATION & PREPARE OURS
-                                            actor.remove_all_transitions();
-                                            actor.set_scale(1.0, 1.0);
-                                            actor.set_opacity(0); // Start invisible
-                                            actor.set_pivot_point(0.5, 0.5);
-                                            actor.set_translation(offsetX, offsetY, 0);
-
-                                            // Wait one tick for the initial state to be applied, then animate
-                                            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                                                if (!actor.get_parent()) return GLib.SOURCE_REMOVE;
-
-                                                actor.ease({
-                                                    translation_x: 0,
-                                                    translation_y: 0,
-                                                    opacity: 255, // Fade in
-                                                    duration: 250,
-                                                    mode: animationMode,
-                                                    onComplete: () => {
-                                                        WindowState.remove(win, 'slideInAnimating');
-                                                    }
-                                                });
-                                                return GLib.SOURCE_REMOVE;
-                                            });
-                                        }
-
-                                        // Clear flags
-                                        WindowState.remove(win, 'needsSlideIn');
-                                        WindowState.remove(win, 'slideInExistingWindows');
-                                        WindowState.remove(win, 'slideInDirection');
-                                    }
-                                };
-
-                                if (actor.mapped) {
-                                    applySlideIn();
-                                } else {
-                                    const mappedId = actor.connect('notify::mapped', () => {
-                                        if (actor.mapped) {
-                                            actor.disconnect(mappedId);
-                                            applySlideIn();
-                                        }
-                                    });
-                                }
-                            }
-                        } else {
-                            Logger.log(`SLIDE-IN: First window ${win.get_id()} - no animation needed`);
-                        }
-                    }
-                }
-            });
-
-            // Track signal for cleanup
-            WindowState.set(window, 'configureSignalId', configureId);
-        } catch (e) {
-            Logger.log(`SLIDE-IN: Failed to connect configure signal: ${e.message}`);
-        }
-
         // Mark window as newly added for overflow protection logic
         WindowState.set(window, 'addedTime', Date.now());
 
@@ -914,53 +890,46 @@ export const WindowHandler = GObject.registerClass({
                 const hasValidDimensions = frame.width > 0 && frame.height > 0;
 
                 if (hasValidDimensions) {
-                    Logger.log(`[TRACE] WINDOW OPENED: "${WINDOW.get_wm_class()}" size=${frame.width}x${frame.height}`);
-                }
+                    // we use this lock for prevent the window to get stuck in the middle
+                    const previousWorkspaceIndex = WindowState.get(WINDOW, 'previousWorkspace');
+                    const removedTimestamp = WindowState.get(WINDOW, 'removedTimestamp');
+                    const timeSinceRemoved = removedTimestamp ? Date.now() - removedTimestamp : Infinity;
 
-                const previousWorkspaceIndex = WindowState.get(WINDOW, 'previousWorkspace');
-                const removedTimestamp = WindowState.get(WINDOW, 'removedTimestamp');
-                const timeSinceRemoved = removedTimestamp ? Date.now() - removedTimestamp : Infinity;
+                    const workArea = WORKSPACE.get_work_area_for_monitor(MONITOR);
 
-                const workArea = WORKSPACE.get_work_area_for_monitor(MONITOR);
-                Logger.log(`window-added: window=${WINDOW.get_id()}, size=${frame.width}x${frame.height}, workArea=${workArea.width}x${workArea.height}, timeSince=${timeSinceRemoved}ms, prevWS=${previousWorkspaceIndex}, currentWS=${WORKSPACE.index()}`);
+                    if (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index() && timeSinceRemoved < constants.SAFETY_TIMEOUT_BUFFER_MS) {
+                        // Skip if this is an overflow move, not a real drag-drop
+                        if (!WindowState.get(WINDOW, 'movedByOverflow')) {
+                            // ACTIVATE destination workspace and EXIT Overview
+                            WORKSPACE.activate(global.get_current_time());
+                            this._ext.windowingManager.showWorkspaceSwitcher(WORKSPACE, MONITOR);
 
-                if (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index() && timeSinceRemoved < constants.SAFETY_TIMEOUT_BUFFER_MS) {
-                    // Skip if this is an overflow move, not a real drag-drop
-                    if (WindowState.get(WINDOW, 'movedByOverflow')) {
-                        Logger.log(`window-added: Skipping drag-drop handling - window was moved by overflow`);
-                    } else {
-                        Logger.log(`window-added: Overview drag-drop - window ${WINDOW.get_id()} from workspace ${previousWorkspaceIndex} to ${WORKSPACE.index()}`);
+                            // Mark as DnD arrival - will trigger expansion after tiling
+                            WindowState.set(WINDOW, 'arrivedFromDnD', true);
 
-                        // ACTIVATE destination workspace and EXIT Overview
-                        Logger.log(`DnD: Activating workspace ${WORKSPACE.index()} and exiting Overview`);
-                        WORKSPACE.activate(global.get_current_time());
-                        this._ext.windowingManager.showWorkspaceSwitcher(WORKSPACE, MONITOR);
+                            // Wait for overview to fully close before tiling
+                            if (Main.overview.visible) {
+                                WindowState.set(WINDOW, 'deferTilingUntilOverviewHidden', true);
+                                Main.overview.hide();
+                            }
 
-                        // Mark as DnD arrival - will trigger expansion after tiling
-                        WindowState.set(WINDOW, 'arrivedFromDnD', true);
-
-                        // Wait for overview to fully close before tiling
-                        if (Main.overview.visible) {
-                            WindowState.set(WINDOW, 'deferTilingUntilOverviewHidden', true);
-                            Main.overview.hide();
+                            // Clear DnD tracking - normal flow will handle window
+                            WindowState.remove(WINDOW, 'previousWorkspace');
+                            WindowState.remove(WINDOW, 'removedTimestamp');
+                            WindowState.remove(WINDOW, 'manualWorkspaceMove');
                         }
-
-                        // Clear DnD tracking - normal flow will handle window
-                        WindowState.remove(WINDOW, 'previousWorkspace');
-                        WindowState.remove(WINDOW, 'removedTimestamp');
-                        WindowState.remove(WINDOW, 'manualWorkspaceMove');
                     }
-                }
 
-                // Mark window as waiting for geometry - prevents premature overflow
-                WindowState.set(WINDOW, 'waitingForGeometry', true);
+                    // Mark window as waiting for geometry - prevents premature overflow
+                    WindowState.set(WINDOW, 'waitingForGeometry', true);
 
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.GEOMETRY_CHECK_DELAY_MS, () => {
-                    this.waitForGeometry(WINDOW, WORKSPACE, MONITOR);
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.GEOMETRY_CHECK_DELAY_MS, () => {
+                        this.waitForGeometry(WINDOW, WORKSPACE, MONITOR);
+                        return GLib.SOURCE_REMOVE;
+                    });
+
                     return GLib.SOURCE_REMOVE;
-                });
-
-                return GLib.SOURCE_REMOVE;
+                }
             }
             return GLib.SOURCE_CONTINUE;
         });
@@ -1305,6 +1274,13 @@ export const WindowHandler = GObject.registerClass({
 
                 if (WindowState.get(WINDOW, 'isSmartResizing') || WindowState.get(WINDOW, 'isReverseSmartResizing')) {
                     Logger.log('Skipping final overflow check - smart resize in progress');
+                    return GLib.SOURCE_REMOVE;
+                }
+
+                if (WindowState.get(WINDOW, 'smartResizeApplied')) {
+                    Logger.log('Skipping final overflow check - window successfully smart resized');
+                    // We can clear the transient flag now
+                    WindowState.remove(WINDOW, 'smartResizeApplied');
                     return GLib.SOURCE_REMOVE;
                 }
 
