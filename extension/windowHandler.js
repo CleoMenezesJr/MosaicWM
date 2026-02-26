@@ -25,6 +25,9 @@ export const WindowHandler = GObject.registerClass({
         this._workspaceLocks = new WeakMap();
         this._smartResizeProcessedWindows = new WeakMap();
 
+        this._evaluationQueue = [];
+        this._isEvaluatingQueue = false;
+
         this._overflowInProgress = false; // Moved from extension.js
         this._windowSignals = new WeakMap(); // Store signal IDs for cleanup using WeakMap for memory safety
         this._origShouldAnimateActor = null; 
@@ -52,9 +55,14 @@ export const WindowHandler = GObject.registerClass({
             const stack = (new Error()).stack;
             if (!stack.includes('_mapWindow@') && !stack.includes('mapWindow') && !stack.includes('size_change')) return true;
 
-            // Check if window is managed by mosaic mode
             const isRelated = self._ext && self._ext.windowingManager.isRelated(win);
             if (!isRelated) return true;
+
+            // Skip slide-in for windows moved by overflow or during active switch (protects clones).
+            if (WindowState.get(win, 'movedByOverflow') || (self._ext && self._ext._overflowInProgress)) {
+                Logger.log(`[PATCH SIZE CHECK] Skipping slide-in for window ${win.get_id()} - overflow active or window moved`);
+                return true;
+            }
 
             // Evaluate if we should slide in, natively calculating JIT neighbors
             const { offsetX, offsetY, animationMode } = self._evaluateSlideIn(win);
@@ -594,15 +602,55 @@ export const WindowHandler = GObject.registerClass({
             if (WindowState.get(win, 'deferTilingUntilOverviewHidden')) {
                 Logger.log(`Overview hidden: Tiling deferred window ${win.get_id()}`);
                 WindowState.remove(win, 'deferTilingUntilOverviewHidden');
-                // Use async IIFE to avoid blocking
-                (async () => {
-                    await this._ensureWindowFits(win, workspace, monitor);
-                })();
+                this.enqueueWindowForEvaluation(win, workspace, monitor);
             }
         }
     }
 
     // Unified logic to ensure a new window fits, using smart resize if needed.
+    // Handles rapid-fire spawning through the Producer-Consumer evaluationQueue pattern.
+    enqueueWindowForEvaluation(window, workspace, monitor) {
+        Logger.log(`Enqueueing window ${window.get_id()} for evaluation`);
+        this._evaluationQueue.push({ window, workspace, monitor });
+        if (!this._isEvaluatingQueue) {
+            this._processEvaluationQueue();
+        }
+    }
+
+    async _processEvaluationQueue() {
+        if (this._isEvaluatingQueue || this._evaluationQueue.length === 0) {
+            return;
+        }
+
+        this._isEvaluatingQueue = true;
+
+        while (this._evaluationQueue.length > 0) {
+            const { window, workspace, monitor } = this._evaluationQueue.shift();
+
+            if (!window || !window.get_compositor_private()) {
+                Logger.log('Evaluation queue: window destroyed before evaluation, skipping');
+                continue;
+            }
+
+            Logger.log(`Evaluating queued window ${window.get_id()} (remaining: ${this._evaluationQueue.length})`);
+            try {
+                await this._ensureWindowFits(window, workspace, monitor);
+            } catch (e) {
+                Logger.error(`Error in evaluation queue for window ${window.get_id()}: ${e}`);
+            }
+
+            // Small delay to let animations/mutter settle before evaluating the next window
+            await new Promise(resolve => {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.QUEUE_PROCESS_DELAY_MS || 50, () => {
+                     resolve();
+                     return GLib.SOURCE_REMOVE;
+                });
+            });
+        }
+
+        this._isEvaluatingQueue = false;
+    }
+
     async _ensureWindowFits(window, workspace, monitor) {
         if (this._ext && !this._ext.isMosaicEnabledForWorkspace(workspace)) {
             Logger.log('ensureWindowFits: Skipping - mosaic disabled for workspace');
@@ -629,7 +677,7 @@ export const WindowHandler = GObject.registerClass({
 
         if (hasExistingSacred || (isIncomingSacred && otherWindows.length > 0)) {
             Logger.log(`Sacred Isolation triggered (IncomingSacred: ${isIncomingSacred}, HasExistingSacred: ${hasExistingSacred}) - isolating`);
-            this.windowingManager.moveOversizedWindow(window);
+            await this.windowingManager.moveOversizedWindow(window);
             return;
         }
 
@@ -702,7 +750,7 @@ export const WindowHandler = GObject.registerClass({
 
         // Only move if smart resize is not blocking overflow decisions
         if (!this.tilingManager._isSmartResizingBlocked) {
-            this.windowingManager.moveOversizedWindow(window);
+            await this.windowingManager.moveOversizedWindow(window);
         } else {
             Logger.log('Deferring overflow - smart resize still in progress');
         }
@@ -787,10 +835,8 @@ export const WindowHandler = GObject.registerClass({
                     Logger.log('New window: Tiling failed, continuing with normal flow');
                 }
 
-                // Use async IIFE to avoid blocking callback
-                (async () => {
-                    await this._ensureWindowFits(window, workspace, monitor);
-                })();
+                // Enqueue window for async sequential fit evaluation
+                this.enqueueWindowForEvaluation(window, workspace, monitor);
 
                 return GLib.SOURCE_REMOVE;
             }
@@ -1253,7 +1299,7 @@ export const WindowHandler = GObject.registerClass({
             }
 
             const performTiling = async () => {
-                await this._ensureWindowFits(WINDOW, WORKSPACE, MONITOR);
+                this.enqueueWindowForEvaluation(WINDOW, WORKSPACE, MONITOR);
             };
 
             const isDnDArrival = WindowState.get(WINDOW, 'arrivedFromDnD');

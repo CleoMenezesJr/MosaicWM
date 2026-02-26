@@ -117,7 +117,7 @@ export function afterWorkspaceSwitch(callback, registry) {
     });
 }
 
-export function afterAnimations(animationsManager, callback, registry, maxWait = 1000) {
+export function afterAnimations(animationsManager, callback, registry, maxWait = 5000) {
     if (!getAnimationsEnabled() || !animationsManager?.hasActiveAnimations?.()) {
         callback();
         return;
@@ -184,8 +184,9 @@ export function waitForGeometry(window, callback, registry, maxAttempts = consta
         }
     });
 
-    // Safety timeout
-    timeoutId = registry.add(1000, () => {
+    // Safety timeout (derived from max attempts * 50ms)
+    const timeoutDuration = maxAttempts * 50;
+    timeoutId = registry.add(timeoutDuration, () => {
         Logger.log('waitForGeometry: Safety timeout triggered');
         trigger();
         return GLib.SOURCE_REMOVE;

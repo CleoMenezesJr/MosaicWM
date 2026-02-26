@@ -50,8 +50,9 @@ export const RETILE_DELAY_MS = 100;
 export const GEOMETRY_CHECK_DELAY_MS = 10;
 export const SAFETY_TIMEOUT_BUFFER_MS = 100;
 export const EDGE_TILE_RESTORE_DELAY_MS = 300;  // Delay to prevent false overflow during edge tile restoration
-export const GEOMETRY_WAIT_MAX_ATTEMPTS = 40;   // Max attempts to wait for window geometry (40 * 50ms = 2s)
-export const REVERSE_RESIZE_PROTECTION_MS = 500; // Protection window for reverse smart resize/unmaximize
+// Increased from 40 to 100 to allow up to 5 seconds for geometry check during mass spawning
+export const GEOMETRY_WAIT_MAX_ATTEMPTS = 100;   // Max attempts to wait for window geometry (100 * 50ms = 5s)
+export const REVERSE_RESIZE_PROTECTION_MS = 1000; // Protection window for reverse smart resize/unmaximize/overflow
 export const RESIZE_VERIFICATION_DELAY_MS = 1500; // Delay for resize verification checks
 export const RESIZE_SETTLE_DELAY_MS = 150;       // Delay to let Mutter apply resize before retiling
 export const ISRESIZING_FLAG_RESET_MS = 2;       // Delay to reset isResizing flag
@@ -75,7 +76,7 @@ export const SMART_RESIZE_MIN_WINDOW_HEIGHT = 250;   // Minimum window size duri
 
 // Slide-in animation for new windows
 export const SLIDE_IN_OFFSET_PX = 100;        // Offset in pixels for new window slide-in animation
-export const QUEUE_PROCESS_DELAY_MS = 100;    // Delay between processing window opening queue items
+export const QUEUE_PROCESS_DELAY_MS = 10;    // Delay between processing window opening queue items
 
 export const RESIZE_GRAB_OPS = [
     Meta.GrabOp.RESIZING_NW, Meta.GrabOp.RESIZING_N, Meta.GrabOp.RESIZING_NE,

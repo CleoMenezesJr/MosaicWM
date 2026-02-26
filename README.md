@@ -148,6 +148,8 @@ For more information on GNOME Shell extension development:
 - 🧪 **Testing**: Try the extension and explore edge cases
 - 🐛 **Bug Reports**: Open issues with detailed reproduction steps
 - 💡 **Feature Ideas**: Share suggestions in GitHub Issues
+- ✍️ **Documentation**: Always add comments explaining what the code is doing (it helps the maintainer follow the logic!)
+- 🏛️ **Compliance**: All contributions must follow the [GNOME Shell Extensions Review Guidelines](https://gjs.guide/extensions/review-guidelines.html).
 
 > [!IMPORTANT]
 > **For development**: Ensure `DEBUG = true` in `extension/logger.js` to see verbose logs.

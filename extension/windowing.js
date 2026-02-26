@@ -204,48 +204,49 @@ export const WindowingManager = GObject.registerClass({
     }
 
     // Moves a window that doesn't fit into another workspace.
+    // Returns a Promise that resolves with the target_workspace when the move and retiling are complete.
     moveOversizedWindow(window) {
-        const workspaceManager = global.workspace_manager;
-        const monitor = this.getPrimaryMonitor();
-        
-        // Notify that overflow is starting
-        if (this._overflowStartCallback) {
-            this._overflowStartCallback();
-        }
-        
-        // Flag window as overflow-moved to prevent tiling errors
-        WindowState.set(window, 'movedByOverflow', true);
+        return new Promise(resolve => {
+            const workspaceManager = global.workspace_manager;
+            const monitor = this.getPrimaryMonitor();
+            
+            // Notify that overflow is starting
+            if (this._overflowStartCallback) {
+                this._overflowStartCallback();
+            }
+            
+            // Flag window as overflow-moved to prevent tiling errors
+            WindowState.set(window, 'movedByOverflow', true);
         
         // Track origin workspace across multiple calls
         const currentIndex = WindowState.get(window, 'overflowOriginWorkspace') ?? window.get_workspace().index();
         WindowState.set(window, 'overflowOriginWorkspace', currentIndex);
         
-        const nextIndex = currentIndex + 1;
-        
-        Logger.log(`moveOversizedWindow: origin=${currentIndex}, next=${nextIndex}`);
+        Logger.log(`moveOversizedWindow: origin=${currentIndex}`);
         
         let target_workspace = null;
+        let checkIndex = currentIndex + 1;
+        const totalWorkspaces = workspaceManager.get_n_workspaces();
         
-        if (nextIndex < workspaceManager.get_n_workspaces()) {
-            const nextWorkspace = workspaceManager.get_workspace_by_index(nextIndex);
+        // Find the first available workspace that can fit the window downstream
+        while (checkIndex < totalWorkspaces) {
+            const checkWorkspace = workspaceManager.get_workspace_by_index(checkIndex);
+            Logger.log(`Checking if window ${window.get_id()} fits in existing workspace ${checkIndex}`);
             
-            Logger.log(`Checking if window ${window.get_id()} fits in workspace ${nextIndex}`);
-            
-            if (this._tilingManager && this._tilingManager.canFitWindow(window, nextWorkspace, monitor)) {
-                target_workspace = nextWorkspace;
-                Logger.log(`Window fits in existing workspace ${nextIndex}`);
+            if (this._tilingManager && this._tilingManager.canFitWindow(window, checkWorkspace, monitor)) {
+                target_workspace = checkWorkspace;
+                Logger.log(`Window fits in existing workspace ${checkIndex}`);
+                break;
             } else {
-                Logger.log(`Window does NOT fit in workspace ${nextIndex} - creating new`);
+                Logger.log(`Window does NOT fit in workspace ${checkIndex}, checking next...`);
+                checkIndex++;
             }
-        } else {
-            Logger.log(`No workspace at index ${nextIndex} - creating new`);
         }
         
-        // Create new workspace if next doesn't exist or can't fit
+        // If no existing workspace can fit it, append a brand new one at the end
         if (!target_workspace) {
+            Logger.log(`No existing workspace downstream can fit the window - creating new at end`);
             target_workspace = workspaceManager.append_new_workspace(false, this.getTimestamp());
-            workspaceManager.reorder_workspace(target_workspace, nextIndex);
-            Logger.log(`Created workspace at position ${nextIndex}`);
         }
         
         const previous_workspace = window.get_workspace();
@@ -259,54 +260,63 @@ export const WindowingManager = GObject.registerClass({
             WindowState.remove(window, 'overflowOriginWorkspace');
             return GLib.SOURCE_REMOVE;
         });
-        
-        // Defer activation to next idle (no artificial delay)
-        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            const workspaceIndex = target_workspace.index();
-            if (workspaceIndex < 0 || workspaceIndex >= workspaceManager.get_n_workspaces()) {
-                Logger.warn(`Workspace no longer valid: ${workspaceIndex}`);
-                return GLib.SOURCE_REMOVE;
-            }
-            
-            if (switchFocusToMovedWindow) {
-                target_workspace.activate(global.get_current_time());
-                this.showWorkspaceSwitcher(target_workspace, monitor);
-            }
-            
-            // Re-tile after window has settled
-            if (this._tilingManager) {
-            // Signal-based geometry wait instead of polling
-                waitForGeometry(window, () => {
-                    Logger.log(`moveOversizedWindow: window geometry ready, waiting for animation then retiling`);
+                // Defer activation to next idle (no artificial delay)
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                const workspaceIndex = target_workspace.index();
+                if (workspaceIndex < 0 || workspaceIndex >= workspaceManager.get_n_workspaces()) {
+                    Logger.warn(`Workspace no longer valid: ${workspaceIndex}`);
+                    resolve(target_workspace);
+                    return GLib.SOURCE_REMOVE;
+                }
+                
+                if (switchFocusToMovedWindow) {
+                    target_workspace.activate(global.get_current_time());
+                    this.showWorkspaceSwitcher(target_workspace, monitor);
+                }
+                
+                // Re-tile after window has settled
+                if (this._tilingManager) {
+                    Logger.log(`moveOversizedWindow: workspace switch done, waiting for animation then retiling`);
                     afterWorkspaceSwitch(() => {
-                        this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
-                        
-                        // Check position after tiling
-                        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                            const finalFrame = window.get_frame_rect();
-                            const workArea = target_workspace.get_work_area_for_monitor(monitor);
-                            const expectedX = Math.floor((workArea.width - finalFrame.width) / 2) + workArea.x;
-                            const expectedY = Math.floor((workArea.height - finalFrame.height) / 2) + workArea.y;
-                            const positionError = Math.abs(finalFrame.x - expectedX) + Math.abs(finalFrame.y - expectedY);
+                        try {
+                            this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
                             
-                            if (positionError > 10) {
-                                Logger.log(`moveOversizedWindow: window mispositioned by ${positionError}px, retiling`);
-                                this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
-                            }
-                            
+                            // Check position after tiling
+                            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                                try {
+                                    const finalFrame = window.get_frame_rect();
+                                    const workArea = target_workspace.get_work_area_for_monitor(monitor);
+                                    const expectedX = Math.floor((workArea.width - finalFrame.width) / 2) + workArea.x;
+                                    const expectedY = Math.floor((workArea.height - finalFrame.height) / 2) + workArea.y;
+                                    const positionError = Math.abs(finalFrame.x - expectedX) + Math.abs(finalFrame.y - expectedY);
+                                    
+                                    if (positionError > 10) {
+                                        Logger.log(`moveOversizedWindow: window mispositioned by ${positionError}px, retiling`);
+                                        this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
+                                    }
+                                } finally {
+                                    if (this._overflowEndCallback) {
+                                        this._overflowEndCallback();
+                                    }
+                                    resolve(target_workspace);
+                                }
+                                return GLib.SOURCE_REMOVE;
+                            });
+                        } catch (e) {
+                            Logger.error(`Error during moveOversizedWindow retiling: ${e}`);
                             if (this._overflowEndCallback) {
                                 this._overflowEndCallback();
                             }
-                            return GLib.SOURCE_REMOVE;
-                        });
+                            resolve(target_workspace);
+                        }
                     }, this._timeoutRegistry);
-                }, this._timeoutRegistry);
-            }
-            
-            return GLib.SOURCE_REMOVE;
+                } else {
+                    resolve(target_workspace);
+                }
+                
+                return GLib.SOURCE_REMOVE;
+            });
         });
-
-        return target_workspace;
     }
 
     isPrimary(window) {

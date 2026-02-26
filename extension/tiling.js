@@ -82,6 +82,12 @@ class SmartResizeIterator {
     abort() {
         if (this._aborted) return;
         this._aborted = true;
+        
+        // If we are currently awaiting size changes, resolve immediately
+        if (this._abortResolver) {
+            this._abortResolver();
+        }
+
         Logger.log(`[SMART RESIZE] Iterator aborted - cancelling all operations`);
     }
 
@@ -186,9 +192,16 @@ class SmartResizeIterator {
         // Check if anything changed while we were triggering resizes
         if (!this._validateWindows()) return { success: false, allAtMinimum: false, shouldRetry: false, aborted: true };
 
-        // EVENT-DRIVEN - Wait for resizes to be applied by Mutter
+        // EVENT-DRIVEN - Wait for resizes to be applied by TMutter
         Logger.log(`[SMART RESIZE] Iter ${this.iteration}: Waiting for size-changed signals...`);
         const hadTimeout = await this._waitForSizeChanges(toShrink, 500);
+
+        // Pre-flight check: Was the iterator aborted while we were waiting?
+        if (this._aborted) {
+            Logger.log(`[SMART RESIZE] Iteration ${this.iteration} aborted during await - escaping`);
+            return { success: false, allAtMinimum: false, shouldRetry: false, aborted: true };
+        }
+
         if (hadTimeout) {
             this.consecutiveTimeouts++;
         } else {
@@ -272,13 +285,27 @@ class SmartResizeIterator {
             const lastShrank = this.lastIterationWindowShrank.get(w.get_id());
             return lastShrank === this.iteration; // Did this window shrink in THIS iteration?
         });
+
+        // Safety check for rapid creation: skip if window actually grew (Mutter still settling resize).
+        const mutterIsLagging = this.windows.some(w => {
+            const id = w.get_id();
+            if (!this.currentSizes.has(id)) return false;
+            
+            const current = this.currentSizes.get(id);
+            const frame = w.get_frame_rect();
+            const widthShrinkage = current.width - frame.width;
+            const heightShrinkage = current.height - frame.height;
+            
+            // If it grew, Mutter is out of sync with our current size expectations
+            return widthShrinkage < 0 || heightShrinkage < 0;
+        });
         
-        if (!anyWindowMadeProgressThisIteration && layoutResult.overflow && this.iteration === 1) {
+        if (!anyWindowMadeProgressThisIteration && layoutResult.overflow && this.iteration === 1 && !mutterIsLagging) {
             Logger.log(`[SMART RESIZE] Iteration 1 EARLY EXIT: No window could even start shrinking - preferred sizes too tight. IMPOSSIBLE to fit. Aborting.`);
             return { success: false, allAtMinimum: false, shouldRetry: false, earlyEscape: true };
         }
         
-        if (!anyWindowMadeProgressThisIteration && layoutResult.overflow && this.iteration >= 3) {
+        if (!anyWindowMadeProgressThisIteration && layoutResult.overflow && this.iteration >= 3 && !mutterIsLagging) {
             Logger.log(`[SMART RESIZE] Iteration ${this.iteration}: Permanent cycle detected - no window made progress and overflow=true. IMPOSSIBLE to fit. Aborting.`);
             return { success: false, allAtMinimum: false, shouldRetry: false, earlyEscape: true };
         }
@@ -393,11 +420,19 @@ class SmartResizeIterator {
             });
         });
         
+        // Instant Abort Promise
+        const abortPromise = new Promise((resolve) => {
+            this._abortResolver = resolve;
+        });
+
         try {
             await Promise.race([
                 Promise.race(promises),
-                timeoutPromise
+                timeoutPromise,
+                abortPromise
             ]);
+            this._abortResolver = null; // Clean up
+            
             const totalElapsed = Date.now() - startTime;
             if (timeoutOccurred) {
                 Logger.log(`[SMART RESIZE EVENT-DRIVEN] ⏱ Timeout after ${totalElapsed}ms (window manager slow to respond)`);
@@ -696,47 +731,48 @@ export const TilingManager = GObject.registerClass({
     }
     
     // Queue a window opening operation to prevent race conditions
-    // The callback will be called when it's this window's turn
+    // The callback will be called when it's this window's turn. Supports async callbacks.
     enqueueWindowOpen(windowId, callback) {
         Logger.log(`Enqueuing window ${windowId} for opening (queue size: ${this._openingQueue.length})`);
         this._openingQueue.push({ windowId, callback });
-        this._processOpeningQueue();
+        if (!this._processingQueue) {
+            this._processOpeningQueue();
+        }
     }
     
-    // Process the opening queue one window at a time
-    _processOpeningQueue() {
+    // Process the opening queue one window at a time sequentially
+    async _processOpeningQueue() {
         if (this._processingQueue || this._openingQueue.length === 0) {
             return;
         }
         
         this._processingQueue = true;
-        const { windowId, callback } = this._openingQueue.shift();
         
-        Logger.log(`Processing queue: window ${windowId} (remaining: ${this._openingQueue.length})`);
-        
-        // Monitor this processing step
-        const watchdogId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
-             Logger.log(`Queue watchdog: Window ${windowId} callback took too long or stalled - forcing next`);
-             this._processingQueue = false;
-             this._processOpeningQueue();
-             return GLib.SOURCE_REMOVE;
-        });
-
-        // Execute the callback
-        try {
-            callback();
-        } catch (e) {
-            Logger.log(`Error processing window ${windowId}: ${e}`);
-        } finally {
-            if (watchdogId) GLib.source_remove(watchdogId);
+        while (this._openingQueue.length > 0) {
+            const { windowId, callback } = this._openingQueue.shift();
+            
+            Logger.log(`Processing queue: window ${windowId} (remaining: ${this._openingQueue.length})`);
+            
+            try {
+                // If callback is async, this naturally awaits it
+                const result = callback();
+                if (result instanceof Promise) {
+                    await result;
+                }
+            } catch (e) {
+                Logger.error(`Error processing window queue for ${windowId}: ${e}\n${e.stack}`);
+            }
+            
+            // Small delay to let animations/mutter settle before next evaluation
+            await new Promise(resolve => {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.QUEUE_PROCESS_DELAY_MS, () => {
+                     resolve();
+                     return GLib.SOURCE_REMOVE;
+                });
+            });
         }
         
-        // Small delay before processing next window to let animations settle
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.QUEUE_PROCESS_DELAY_MS, () => {
-             this._processingQueue = false;
-             this._processOpeningQueue();
-             return GLib.SOURCE_REMOVE;
-        });
+        this._processingQueue = false;
     }
     
     // Clear queue (e.g., on disable)
