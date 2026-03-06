@@ -928,7 +928,7 @@ export const WindowHandler = GObject.registerClass({
             };
 
             // USE MAPPED SIGNAL: Triggers when the window is added to the scene but before paint.
-            // This allows us to position it "before" it appears, as the user requested.
+            // This allows us to position it "before" it appears, effectively skipping the spawn animation.
             if (actor.mapped) {
                 processOnce();
             } else {

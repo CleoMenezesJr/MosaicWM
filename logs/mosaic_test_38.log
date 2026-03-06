@@ -1,0 +1,751 @@
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+libmutter-Message: 14:38:03.591: Running GNOME Shell (using mutter 49.1) as a Wayland display server
+libmutter-Message: 14:38:03.591: Enabling experimental feature 'autoclose-xwayland'
+libmutter-Message: 14:38:03.591: Enabling experimental feature 'xwayland-native-scaling'
+libmutter-Message: 14:38:03.591: Enabling experimental feature 'variable-refresh-rate'
+libmutter-Message: 14:38:03.653: Added device '/dev/dri/renderD128' (amdgpu) using no mode setting.
+libmutter-Message: 14:38:03.656: Created gbm renderer for '/dev/dri/renderD128'
+libmutter-Message: 14:38:03.656: Boot VGA GPU /dev/dri/renderD128 selected as primary
+** Message: 14:38:03.658: Obtained a high priority EGL context
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.2' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+
+(gnome-shell:29401): dbind-WARNING **: 14:38:03.680: Couldn't register with accessibility bus: Did not receive a reply. Possible causes include: the remote application did not send a reply, the message bus security policy blocked the reply, the reply timeout expired, or the network connection was broken.
+Failed to launch bus: Bus exited with code 1libmutter-Message: 14:38:03.681: Using public X11 display :2, (using :3 for managed services)
+
+(gnome-shell:29401): libmutter-WARNING **: 14:38:03.682: WL: unable to lock lockfile /run/user/1000/wayland-0.lock, maybe another compositor is running
+
+libmutter-Message: 14:38:03.682: Using Wayland display name 'wayland-1'
+GNOME Shell-Message: 14:38:04.111: Unset XDG_SESSION_ID, getCurrentSessionProxy() called outside a user session. Asking logind directly.
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.Shell.Screencast' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.Shell.CalendarServer' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.7' (uid=1000 pid=29484 comm="/usr/libexec/gnome-shell-calendar-server" label="unconfined_u:unconfined_r:spc_t:s0")
+GNOME Shell-Message: 14:38:04.246: Ignoring search provider /var/home/cleomenezesjr/.local/share/flatpak/exports/share/gnome-shell/search-providers/org.gnome.Epiphany.SearchProvider.ini: missing DesktopId
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.5' (uid=1000 pid=29463 comm="/usr/bin/gjs -m /usr/share/gnome-shell/org.gnome.S" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=29503 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+
+(/usr/libexec/xdg-desktop-portal:29503): xdg-desktop-portal-WARNING **: 14:38:04.268: Document portal fuse mount point unknown: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name :1.10 was not provided by any .service files
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.9' (uid=1000 pid=29503 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+GNOME Shell-Message: 14:38:04.274: Registering session with GDM
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.Shell.Notifications' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+
+(process:29449): mdk-WARNING **: 14:38:04.289: Invalid application ID 'org.gnome.Ptyxis'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.OnlineAccounts' requested by ':1.8' (uid=1000 pid=29492 comm="/usr/libexec/evolution-source-registry" label="unconfined_u:unconfined_r:spc_t:s0")
+GNOME Shell-Message: 14:38:04.309: Failed to launch ibus-daemon: Failed to execute child process “ibus-daemon” (No such file or directory)
+GNOME Shell-Message: 14:38:04.315: Will monitor session 2
+GNOME Shell-Message: 14:38:04.317: Error looking up permission: GDBus.Error:org.freedesktop.portal.Error.NotFound: No entry for geolocation
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.8' (uid=1000 pid=29492 comm="/usr/libexec/evolution-source-registry" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.evolution.dataserver.Sources5'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.evolution.dataserver.Calendar8' requested by ':1.7' (uid=1000 pid=29484 comm="/usr/libexec/gnome-shell-calendar-server" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.Shell.CalendarServer'
+goa-daemon-Message: 14:38:04.355: goa-daemon version 3.56.0 starting
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.Identity' requested by ':1.15' (uid=1000 pid=29544 comm="/usr/libexec/goa-daemon" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.Shell.Notifications'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.OnlineAccounts'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.Identity'
+
+(process:29585): libgoaidentity-WARNING **: 14:38:04.368: GoaKerberosIdentityManager: Using polling for change notification for credential cache type 'KCM'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gtk.vfs.GoaVolumeMonitor' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gtk.vfs.GoaVolumeMonitor'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.evolution.dataserver.Calendar8'
+GNOME Shell-Message: 14:38:04.409: Failed to register AuthenticationAgent
+GNOME Shell-Message: 14:38:04.550: Ignoring search provider /var/home/cleomenezesjr/.local/share/flatpak/exports/share/gnome-shell/search-providers/org.gnome.Epiphany.SearchProvider.ini: missing DesktopId
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='ca.desrt.dconf' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'ca.desrt.dconf'
+
+(gnome-shell:29401): Clutter-CRITICAL **: 14:38:04.880: clutter_actor_remove_child: assertion 'child->priv->parent != NULL' failed
+
+(gnome-shell:29401): Clutter-CRITICAL **: 14:38:04.880: clutter_actor_remove_child: assertion 'child->priv->parent != NULL' failed
+GNOME Shell-Message: 14:38:04.905: [static-workspace-background] enabled
+GNOME Shell-Message: 14:38:04.910: Error looking up permission: GDBus.Error:org.freedesktop.portal.Error.NotFound: No entry for geolocation
+GNOME Shell-Message: 14:38:04.972: [MOSAIC INFO] Starting Mosaic layout manager.
+GNOME Shell-Message: 14:38:04.973: [MOSAIC WM] Failsafe: Restored attach-modal-dialogs setting
+GNOME Shell-Message: 14:38:04.973: [MOSAIC WM] Patching Main.wm._shouldAnimateActor for slide-in animations
+GNOME Shell-Message: 14:38:04.977: [MOSAIC WM] Overriding org.gnome.mutter.edge-tiling
+GNOME Shell-Message: 14:38:04.978: [MOSAIC WM] Overriding org.gnome.mutter.attach-modal-dialogs
+GNOME Shell-Message: 14:38:04.978: [MOSAIC WM] Registering swap-left keybinding
+GNOME Shell-Message: 14:38:04.979: [MOSAIC WM] Registering swap-right keybinding
+GNOME Shell-Message: 14:38:04.979: [MOSAIC WM] Registering swap-up keybinding
+GNOME Shell-Message: 14:38:04.979: [MOSAIC WM] Registering swap-down keybinding
+GNOME Shell-Message: 14:38:04.979: [MOSAIC WM] All swap keybindings registered successfully
+GNOME Shell-Message: 14:38:04.979: [MOSAIC WM] Keyboard shortcuts registered
+
+(gnome-shell:29401): libmutter-WARNING **: 14:38:04.999: Overwriting existing binding of keysym ff54 with keysym ff54 (keycode 74).
+
+(gnome-shell:29401): libmutter-WARNING **: 14:38:05.000: Overwriting existing binding of keysym ff52 with keysym ff52 (keycode 6f).
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.Settings.GlobalShortcutsProvider' requested by ':1.12' (uid=1000 pid=29518 comm="/usr/libexec/xdg-desktop-portal-gnome" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.Settings.GlobalShortcutsProvider'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=29503 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.22' (uid=1000 pid=29715 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+
+(xdg-desktop-portal-gtk:29715): dbind-WARNING **: 14:38:05.257: Couldn't register with accessibility bus: Did not receive a reply. Possible causes include: the remote application did not send a reply, the message bus security policy blocked the reply, the reply timeout expired, or the network connection was broken.
+Failed to launch bus: Bus exited with code 1dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.Shell.Screencast'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.4' (uid=1000 pid=29449 comm="/usr/libexec/mutter-devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1
+(mutter-devkit:29449): Gtk-CRITICAL **: 14:38:05.477: Unable to connect to the accessibility bus at 'unix:path=/run/user/1000/at-spi/bus_2': Could not connect: Connection refused
+libmutter-Message: 14:38:05.526: Added virtual monitor Meta-0
+GNOME Shell-Message: 14:38:06.098: GNOME Shell started at Thu Feb 26 2026 14:38:04 GMT-0300 (Chile Summer Time)
+
+(gnome-shell:29401): GnomeDesktop-WARNING **: 14:38:10.966: Could not create transient scope for PID 29938: GDBus.Error:org.freedesktop.DBus.Error.NameHasNoOwner: Name "org.freedesktop.systemd1" does not exist
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.Flatpak' requested by ':1.26' (uid=1000 pid=29938 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.Flatpak'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.26' (uid=1000 pid=29938 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.26' (uid=1000 pid=29938 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.design.Emblem' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.36' (uid=1000 pid=30040 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+F: Can't get document portal: GDBus.Error:org.freedesktop.portal.Error.Failed: Can't mount path /run/user/1000/doc
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.38' (uid=1000 pid=30040 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.40' (uid=1000 pid=30027 comm="/var/home/cleomenezesjr/.local/share/flatpak/app/i" label="unconfined_u:unconfined_r:spc_t:s0")
+GNOME Shell-Message: 14:38:11.368: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1045320502
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+GNOME Shell-Message: 14:38:11.379: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+GNOME Shell-Message: 14:38:11.398: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:11.399: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:11.399: [MOSAIC WM] _tile: 1 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:38:11.399: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:11.399: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:11.399: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:11.399: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:11.399: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:11.399: [MOSAIC WM] animateReTiling: single window, current=(379,216), target=(378.5,216), needsMove=false
+GNOME Shell-Message: 14:38:11.400: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:11.404: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+GNOME Shell-Message: 14:38:11.406: [MOSAIC WM] savePreferredSize: [INITIAL] Window 1045320502 set to 523x400
+GNOME Shell-Message: 14:38:11.406: [MOSAIC WM] Enqueueing window 1045320502 for evaluation
+GNOME Shell-Message: 14:38:11.406: [MOSAIC WM] Evaluating queued window 1045320502 (remaining: 0)
+GNOME Shell-Message: 14:38:11.406: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:11.406: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:11.406: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:11.406: [MOSAIC WM] Enqueuing window 1045320502 for opening (queue size: 0)
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] Processing queue: window 1045320502 (remaining: 0)
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] animateReTiling: single window, current=(378,216), target=(378.5,216), needsMove=false
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:11.407: [MOSAIC WM] Connecting signals for window 1045320502
+GNOME Shell-Message: 14:38:11.421: [MOSAIC WM] Window 1045320502 ready: size=523x400, workArea=1280x768
+GNOME Shell-Message: 14:38:11.421: [MOSAIC WM] Window created while overview visible - tiling now + after hide
+GNOME Shell-Message: 14:38:11.421: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:11.421: [MOSAIC WM] Drawing horizontal level at y=216, width=523, height=400
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.design.Emblem'
+
+** (process:30082): WARNING **: 14:38:11.640: Failed to connect to bus: Could not connect: Connection refused
+
+(emblem:2): Gtk-CRITICAL **: 14:38:11.640: Unable to connect to the accessibility bus at 'unix:path=/run/flatpak/at-spi-bus': Error receiving data: Connection reset by peer
+GNOME Shell-Message: 14:38:11.645: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1045320503
+GNOME Shell-Message: 14:38:11.657: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+GNOME Shell-Message: 14:38:11.671: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:11.672: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:11.672: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:38:11.672: [MOSAIC WM] _tile: 2 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:38:11.673: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:11.673: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:11.677: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:11.677: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:11.677: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:11.678: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:11.698: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 1045320503 with size 497x230
+GNOME Shell-Message: 14:38:11.698: [MOSAIC WM] MAPPED SLIDE-IN (ease intercepted): Applying offset (-100, 0) to window 1045320503 Mode: 9
+GNOME Shell-Message: 14:38:11.703: [MOSAIC WM] savePreferredSize: [INITIAL] Window 1045320503 set to 497x230
+GNOME Shell-Message: 14:38:11.703: [MOSAIC WM] Enqueueing window 1045320503 for evaluation
+GNOME Shell-Message: 14:38:11.703: [MOSAIC WM] Evaluating queued window 1045320503 (remaining: 0)
+GNOME Shell-Message: 14:38:11.703: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:11.703: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:11.704: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:11.704: [MOSAIC WM] Enqueuing window 1045320503 for opening (queue size: 0)
+GNOME Shell-Message: 14:38:11.704: [MOSAIC WM] Processing queue: window 1045320503 (remaining: 0)
+GNOME Shell-Message: 14:38:11.704: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 14:38:11.704: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:11.704: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:11.704: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:11.704: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:11.705: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:11.705: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:11.705: [MOSAIC WM] Connecting signals for window 1045320503
+GNOME Shell-Message: 14:38:11.711: [MOSAIC WM] Window 1045320503 ready: size=497x230, workArea=1280x768
+GNOME Shell-Message: 14:38:11.711: [MOSAIC WM] Window created while overview visible - tiling now + after hide
+GNOME Shell-Message: 14:38:11.711: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:11.711: [MOSAIC WM] Drawing horizontal level at y=216, width=1028, height=400
+
+(gnome-shell:29401): GnomeDesktop-WARNING **: 14:38:11.712: Could not create transient scope for PID 30123: GDBus.Error:org.freedesktop.DBus.Error.NameHasNoOwner: Name "org.freedesktop.systemd1" does not exist
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.43' (uid=1000 pid=30123 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.45' (uid=1000 pid=30123 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1GNOME Shell-Message: 14:38:11.850: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:38:11.859: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:38:12.128: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:38:12.155: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:38:12.192: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1045320504
+GNOME Shell-Message: 14:38:12.231: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:12.232: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:12.233: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 1ms
+GNOME Shell-Message: 14:38:12.233: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:12.233: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:12.233: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:12.233: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:12.234: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:12.234: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:12.234: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:12.243: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 1045320504 with size 360x616
+GNOME Shell-Message: 14:38:12.243: [MOSAIC WM] MAPPED SLIDE-IN (ease intercepted): Applying offset (-100, 0) to window 1045320504 Mode: 9
+GNOME Shell-Message: 14:38:12.244: [MOSAIC WM] savePreferredSize: [INITIAL] Window 1045320504 set to 360x616
+GNOME Shell-Message: 14:38:12.244: [MOSAIC WM] Enqueueing window 1045320504 for evaluation
+GNOME Shell-Message: 14:38:12.244: [MOSAIC WM] Evaluating queued window 1045320504 (remaining: 0)
+GNOME Shell-Message: 14:38:12.244: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:12.245: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:12.245: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:12.245: [MOSAIC WM] Enqueuing window 1045320504 for opening (queue size: 0)
+GNOME Shell-Message: 14:38:12.245: [MOSAIC WM] Processing queue: window 1045320504 (remaining: 0)
+GNOME Shell-Message: 14:38:12.245: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 14:38:12.245: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:12.245: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:12.245: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:12.246: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:12.246: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:12.246: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:12.246: [MOSAIC WM] Connecting signals for window 1045320504
+GNOME Shell-Message: 14:38:12.249: [MOSAIC WM] Window 1045320504 ready: size=360x616, workArea=1280x768
+GNOME Shell-Message: 14:38:12.249: [MOSAIC WM] Enqueueing window 1045320504 for evaluation
+GNOME Shell-Message: 14:38:12.259: [MOSAIC WM] Evaluating queued window 1045320504 (remaining: 0)
+GNOME Shell-Message: 14:38:12.259: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:12.259: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:12.259: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:12.260: [MOSAIC WM] Enqueuing window 1045320504 for opening (queue size: 0)
+GNOME Shell-Message: 14:38:12.260: [MOSAIC WM] Processing queue: window 1045320504 (remaining: 0)
+GNOME Shell-Message: 14:38:12.260: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 14:38:12.260: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:12.260: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:12.261: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:12.261: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:12.261: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:12.261: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:12.349: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=true)
+GNOME Shell-Message: 14:38:12.350: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:12.351: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 1ms
+GNOME Shell-Message: 14:38:12.351: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:12.685: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:38:12.696: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:38:12.711: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:38:14.219: [MOSAIC WM] Workspace animation complete - ready for operations on workspace 1
+GNOME Shell-Message: 14:38:14.593: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.Nautilus' requested by ':1.0' (uid=1000 pid=29401 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+** Message: 14:38:17.034: Connecting to org.freedesktop.Tracker3.Miner.Files
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.Nautilus'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.Tracker3.Miner.Files' requested by ':1.48' (uid=1000 pid=30211 comm="/usr/bin/nautilus --gapplication-service" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.48' (uid=1000 pid=30211 comm="/usr/bin/nautilus --gapplication-service" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.Tracker3.Miner.Files'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.54' (uid=1000 pid=30231 comm="/usr/libexec/localsearch-3" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+
+(org.gnome.Nautilus:30211): Gtk-CRITICAL **: 14:38:17.319: Unable to connect to the accessibility bus at 'unix:path=/run/user/1000/at-spi/bus_2': Could not connect: Connection refused
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.gnome.NautilusPreviewer' requested by ':1.48' (uid=1000 pid=30211 comm="/usr/bin/nautilus --gapplication-service" label="unconfined_u:unconfined_r:spc_t:s0")
+GNOME Shell-Message: 14:38:17.321: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1045320505
+GNOME Shell-Message: 14:38:17.322: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 1045320505 with size 0x0
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='com.nextcloudgmbh.Nextcloud' requested by ':1.48' (uid=1000 pid=30211 comm="/usr/bin/nautilus --gapplication-service" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.62' (uid=1000 pid=30257 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+F: Can't get document portal: GDBus.Error:org.freedesktop.DBus.Error.NoReply: Message recipient disconnected from message bus without replying
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.67' (uid=1000 pid=30267 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.68' (uid=1000 pid=30257 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1GNOME Shell-Message: 14:38:17.419: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 1045320505 with size 1280x768
+GNOME Shell-Message: 14:38:17.420: [MOSAIC WM] Sacred window in empty workspace - keeping here
+GNOME Shell-Message: 14:38:17.420: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:17.420: [MOSAIC WM] Workspace 1 LOCKED for tiling
+F: Can't get document portal: GDBus.Error:org.freedesktop.DBus.Error.NoReply: Message recipient disconnected from message bus without replying
+GNOME Shell-Message: 14:38:17.421: [MOSAIC WM] Connecting signals for window 1045320505
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.71' (uid=1000 pid=30267 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+GNOME Shell-Message: 14:38:17.428: [MOSAIC WM] Window 1045320505 ready: size=1280x768, workArea=1280x768
+GNOME Shell-Message: 14:38:17.428: [MOSAIC WM] Enqueueing window 1045320505 for evaluation
+GNOME Shell-Message: 14:38:17.429: [MOSAIC WM] Evaluating queued window 1045320505 (remaining: 0)
+GNOME Shell-Message: 14:38:17.429: [MOSAIC WM] savePreferredSize: Skipping for 1045320505 - sacred window (managed by maximizedUndoInfo)
+GNOME Shell-Message: 14:38:17.429: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 14:38:17.429: [MOSAIC WM] canFitWindow: Window is sacred and workspace is empty - fits
+GNOME Shell-Message: 14:38:17.429: [MOSAIC WM] Enqueuing window 1045320505 for opening (queue size: 0)
+GNOME Shell-Message: 14:38:17.429: [MOSAIC WM] Processing queue: window 1045320505 (remaining: 0)
+GNOME Shell-Message: 14:38:17.429: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 14:38:17.430: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:17.430: [MOSAIC WM] Workspace 1 LOCKED for tiling
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1GNOME Shell-Message: 14:38:17.530: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=true)
+GNOME Shell-Message: 14:38:17.530: [MOSAIC WM] canFitWindow: Window is sacred and workspace is empty - fits
+
+** (process:30343): WARNING **: 14:38:17.695: Failed to connect to bus: Could not connect: Connection refused
+
+(nextcloud:2): dbind-WARNING **: 14:38:17.696: Couldn't register with accessibility bus: Did not receive a reply. Possible causes include: the remote application did not send a reply, the message bus security policy blocked the reply, the reply timeout expired, or the network connection was broken.
+Failed to initialize instances shared memory:  "QSharedMemory::handle: doesn't exist"
+nextcloud.gui.application: Migrating old config from "/var/home/cleomenezesjr/.var/app/com.nextcloud.desktopclient.nextcloud/data/Nextcloud" to "/var/home/cleomenezesjr/.var/app/com.nextcloud.desktopclient.nextcloud/config/Nextcloud"
+nextcloud.gui.application: Failed to move the old config directory to its new location ( "/var/home/cleomenezesjr/.var/app/com.nextcloud.desktopclient.nextcloud/data/Nextcloud" to "/var/home/cleomenezesjr/.var/app/com.nextcloud.desktopclient.nextcloud/config/Nextcloud" )
+nextcloud.gui.application: Will move the individual files QList("NextCloud_sync.log")
+nextcloud.gui.application: Fallback move of  "NextCloud_sync.log" also failed
+
+** (process:30340): WARNING **: 14:38:17.808: Failed to connect to bus: Could not connect: Connection refused
+
+(org.gnome.NautilusPreviewer:2): dbind-WARNING **: 14:38:17.808: Couldn't register with accessibility bus: Did not receive a reply. Possible causes include: the remote application did not send a reply, the message bus security policy blocked the reply, the reply timeout expired, or the network connection was broken.
+
+** (process:30343): WARNING **: 14:38:17.863: Failed to connect to bus: Could not connect: Connection refused
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.gnome.NautilusPreviewer'
+GNOME Shell-Message: 14:38:18.763: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 1045320505 with size 1280x768
+GNOME Shell-Message: 14:38:18.764: [MOSAIC WM] onWindowDestroyed: 1045320505
+GNOME Shell-Message: 14:38:18.764: [MOSAIC WM] Disconnected signals for window 1045320505
+GNOME Shell-Message: 14:38:18.775: [MOSAIC WM] _windowRemoved: 0 remaining windows, freed 1280x768, wasOverflowMove=undefined
+GNOME Shell-Message: 14:38:18.775: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 14:38:18.775: [MOSAIC WM] _windowRemoved: Workspace truly empty, navigating away
+GNOME Shell-Message: 14:38:18.775: [MOSAIC WM] [RENAVIGATE] On final workspace, moving to left neighbor (WS-0)
+GNOME Shell-Message: 14:38:18.775: [MOSAIC WM] [WORKSPACE SWITCH] WS-1 -> WS-0 (Stored 1 as last visited)
+GNOME Shell-Message: 14:38:18.775: [MOSAIC WM] Workspace animation complete - ready for operations on workspace 0
+GNOME Shell-Message: 14:38:18.779: [MOSAIC WM] [SWITCHER] Activating OSD for WS-0
+GNOME Shell-Message: 14:38:18.779: [MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace 0 on monitor 0
+GNOME Shell-Message: 14:38:19.064: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:19.065: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:38:19.065: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:19.065: [MOSAIC WM] No windows left to tile after filtering sacred windows. Original count: 0
+GNOME Shell-Message: 14:38:19.151: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1045320506
+GNOME Shell-Message: 14:38:19.162: [MOSAIC WM] window-added: window 1045320506 gone - aborting
+GNOME Shell-Message: 14:38:19.163: [MOSAIC WM] _windowRemoved: 3 remaining windows, freed 0x0, wasOverflowMove=undefined
+GNOME Shell-Message: 14:38:19.163: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 14:38:19.163: [MOSAIC WM] tryRestoreWindowSizes: Check 1045320504: frame=360x616, pref=360x616, diff=0x0
+GNOME Shell-Message: 14:38:19.164: [MOSAIC WM] tryRestoreWindowSizes: Check 1045320503: frame=497x230, pref=497x230, diff=0x0
+GNOME Shell-Message: 14:38:19.164: [MOSAIC WM] tryRestoreWindowSizes: Check 1045320502: frame=523x400, pref=523x400, diff=0x0
+GNOME Shell-Message: 14:38:19.164: [MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore (0/3 windows had deficits > 2px)
+GNOME Shell-Message: 14:38:19.164: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:19.164: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:19.164: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:19.164: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:19.164: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'com.nextcloudgmbh.Nextcloud'
+GNOME Shell-Message: 14:38:19.165: [MOSAIC WM] Animations handled positioning, skipping drawTile
+
+(/usr/libexec/xdg-desktop-portal:29503): xdg-desktop-portal-WARNING **: 14:38:19.168: Backend call failed: The name org.freedesktop.secrets was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:29503): xdg-desktop-portal-WARNING **: 14:38:19.171: Backend call failed: The name org.freedesktop.secrets was not provided by any .service files
+GNOME Shell-Message: 14:38:19.552: [MOSAIC WM] window map timeout - window already disposed, aborting process
+GNOME Shell-Message: 14:38:19.615: [MOSAIC WM] Workspace 0 UNLOCKED
+
+(/usr/libexec/xdg-desktop-portal:29503): xdg-desktop-portal-WARNING **: 14:38:29.002: Backend call failed: The name org.freedesktop.secrets was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:29503): xdg-desktop-portal-WARNING **: 14:38:29.006: Backend call failed: The name org.freedesktop.secrets was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:29503): xdg-desktop-portal-WARNING **: 14:38:39.002: Backend call failed: The name org.freedesktop.secrets was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:29503): xdg-desktop-portal-WARNING **: 14:38:39.004: Backend call failed: The name org.freedesktop.secrets was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:29503): xdg-desktop-portal-WARNING **: 14:38:49.002: Backend call failed: The name org.freedesktop.secrets was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:29503): xdg-desktop-portal-WARNING **: 14:38:49.005: Backend call failed: The name org.freedesktop.secrets was not provided by any .service files
+GNOME Shell-Message: 14:38:51.548: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1045320507
+GNOME Shell-Message: 14:38:51.560: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:51.560: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:51.561: [MOSAIC WM] _findOptimalOrder: 4 windows, 24 permutations, 1ms
+GNOME Shell-Message: 14:38:51.562: [MOSAIC WM] _tile: 4 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:51.572: [MOSAIC WM] Window 1045320507 ready: size=818x573, workArea=1280x768
+GNOME Shell-Message: 14:38:51.572: [MOSAIC WM] Enqueueing window 1045320507 for evaluation
+GNOME Shell-Message: 14:38:51.572: [MOSAIC WM] Evaluating queued window 1045320507 (remaining: 0)
+GNOME Shell-Message: 14:38:51.572: [MOSAIC WM] savePreferredSize: [INITIAL] Window 1045320507 set to 818x573
+GNOME Shell-Message: 14:38:51.572: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:51.573: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:51.573: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:51.573: [MOSAIC WM] [SMART RESIZE] SmartResizeIterator created for 3 resizable windows (1 non-resizable, 0 already at minimum) - 3 available for resize
+GNOME Shell-Message: 14:38:51.573: [MOSAIC WM] [SMART RESIZE] tryFitWithResize START: 4 total windows (3 existing + 1 new)
+GNOME Shell-Message: 14:38:51.574: [MOSAIC WM] _findOptimalOrder: 4 windows, 24 permutations, 1ms
+GNOME Shell-Message: 14:38:51.574: [MOSAIC WM] _tile: 4 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:51.574: [MOSAIC WM] [SMART RESIZE] Natural fit failed - starting iterative smart resize
+GNOME Shell-Message: 14:38:51.574: [MOSAIC WM] [SMART RESIZE] ===== Iteration 1 start =====
+GNOME Shell-Message: 14:38:51.574: [MOSAIC WM] [SMART RESIZE] Windows: 3 candidates, 0 at minimum
+GNOME Shell-Message: 14:38:51.574: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:38:51.574: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 1045320504: 360x616
+GNOME Shell-Message: 14:38:51.575: [MOSAIC WM] [SMART RESIZE] Iter 1: 1045320504 shrinking 360x616 -> 288x492
+GNOME Shell-Message: 14:38:51.575: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 1045320502: 523x400
+GNOME Shell-Message: 14:38:51.575: [MOSAIC WM] [SMART RESIZE] Iter 1: 1045320502 shrinking 523x400 -> 418x320
+GNOME Shell-Message: 14:38:51.575: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 1045320507: 818x573
+GNOME Shell-Message: 14:38:51.575: [MOSAIC WM] [SMART RESIZE] Iter 1: 1045320507 shrinking 818x573 -> 654x458
+GNOME Shell-Message: 14:38:51.575: [MOSAIC WM] [SMART RESIZE] Iter 1: Waiting for size-changed signals...
+GNOME Shell-Message: 14:38:51.580: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 1045320507 fired size-changed (5ms after batch resize)
+GNOME Shell-Message: 14:38:51.580: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in 5ms
+GNOME Shell-Message: 14:38:51.580: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 1045320504: shrank_w=0px (req=72), shrank_h=0px (req=123)
+GNOME Shell-Message: 14:38:51.581: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 1045320502: shrank_w=0px (req=104), shrank_h=0px (req=80)
+GNOME Shell-Message: 14:38:51.581: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 1045320507: shrank_w=0px (req=163), shrank_h=115px (req=114)
+GNOME Shell-Message: 14:38:51.581: [MOSAIC WM] [SMART RESIZE] Iter 1: 1045320507 shrank successfully to 818x458
+GNOME Shell-Message: 14:38:51.581: [MOSAIC WM] _findOptimalOrder: 4 windows, 24 permutations, 0ms
+GNOME Shell-Message: 14:38:51.581: [MOSAIC WM] _tile: 4 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:51.581: [MOSAIC WM] [SMART RESIZE] Iter 1: Layout simulation: overflow=true
+GNOME Shell-Message: 14:38:51.581: [MOSAIC WM] [SMART RESIZE] Iter 1: Still overflowing. Resizable remaining: 3
+GNOME Shell-Message: 14:38:51.581: [MOSAIC WM] [SMART RESIZE] Iter 1: Will continue on next iteration (3 can still shrink)
+GNOME Shell-Message: 14:38:51.673: [MOSAIC WM] Skipping final overflow check - smart resize in progress
+GNOME Shell-Message: 14:38:51.682: [MOSAIC WM] [SMART RESIZE] ===== Iteration 2 start =====
+GNOME Shell-Message: 14:38:51.682: [MOSAIC WM] [SMART RESIZE] Windows: 3 candidates, 0 at minimum
+GNOME Shell-Message: 14:38:51.682: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:38:51.682: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320504 shrinking 360x616 -> 288x492
+GNOME Shell-Message: 14:38:51.682: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320502 shrinking 523x400 -> 418x320
+GNOME Shell-Message: 14:38:51.682: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320507 shrinking 818x458 -> 654x366
+GNOME Shell-Message: 14:38:51.682: [MOSAIC WM] [SMART RESIZE] Iter 2: Waiting for size-changed signals...
+GNOME Shell-Message: 14:38:51.683: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 1045320507 fired size-changed (1ms after batch resize)
+GNOME Shell-Message: 14:38:51.683: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in 1ms
+GNOME Shell-Message: 14:38:51.683: [MOSAIC WM] [SMART RESIZE] Iter 2: Verify 1045320504: shrank_w=0px (req=72), shrank_h=0px (req=123)
+GNOME Shell-Message: 14:38:51.683: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320504 HIT MINIMUM (Behavioral detection: stuck)
+GNOME Shell-Message: 14:38:51.683: [MOSAIC WM] [SMART RESIZE] Iter 2: Verify 1045320502: shrank_w=0px (req=104), shrank_h=0px (req=80)
+GNOME Shell-Message: 14:38:51.683: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320502 HIT MINIMUM (Behavioral detection: stuck)
+GNOME Shell-Message: 14:38:51.683: [MOSAIC WM] [SMART RESIZE] Iter 2: Verify 1045320507: shrank_w=0px (req=163), shrank_h=58px (req=91)
+GNOME Shell-Message: 14:38:51.684: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320507 shrank successfully to 818x400
+GNOME Shell-Message: 14:38:51.684: [MOSAIC WM] _findOptimalOrder: 4 windows, 24 permutations, 0ms
+GNOME Shell-Message: 14:38:51.684: [MOSAIC WM] _tile: 4 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:51.684: [MOSAIC WM] [SMART RESIZE] Iter 2: Layout simulation: overflow=true
+GNOME Shell-Message: 14:38:51.684: [MOSAIC WM] [SMART RESIZE] Iter 2: Still overflowing. Resizable remaining: 1
+GNOME Shell-Message: 14:38:51.684: [MOSAIC WM] [SMART RESIZE] Iter 2: Will continue on next iteration (1 can still shrink)
+GNOME Shell-Message: 14:38:51.785: [MOSAIC WM] [SMART RESIZE] ===== Iteration 3 start =====
+GNOME Shell-Message: 14:38:51.785: [MOSAIC WM] [SMART RESIZE] Windows: 3 candidates, 2 at minimum
+GNOME Shell-Message: 14:38:51.785: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:38:51.785: [MOSAIC WM] [SMART RESIZE] Iter 3: 1045320507 shrinking 818x400 -> 654x320
+GNOME Shell-Message: 14:38:51.785: [MOSAIC WM] [SMART RESIZE] Iter 3: Waiting for size-changed signals...
+GNOME Shell-Message: 14:38:51.949: [MOSAIC WM] window map timeout - falling back to immediate processing
+GNOME Shell-Message: 14:38:51.949: [MOSAIC WM] Connecting signals for window 1045320507
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=29503 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='re.sonny.Junction' requested by ':1.9' (uid=1000 pid=29503 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.89' (uid=1000 pid=30530 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+F: Can't get document portal: GDBus.Error:org.freedesktop.portal.Error.Failed: Can't mount path /run/user/1000/doc
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.91' (uid=1000 pid=30530 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1GNOME Shell-Message: 14:38:52.286: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ⏱ Timeout after 501ms (window manager slow to respond)
+GNOME Shell-Message: 14:38:52.286: [MOSAIC WM] [SMART RESIZE] Iter 3: Verify 1045320507: shrank_w=0px (req=163), shrank_h=0px (req=80)
+GNOME Shell-Message: 14:38:52.287: [MOSAIC WM] _findOptimalOrder: 4 windows, 24 permutations, 1ms
+GNOME Shell-Message: 14:38:52.287: [MOSAIC WM] _tile: 4 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:52.287: [MOSAIC WM] [SMART RESIZE] Iter 3: Layout simulation: overflow=true
+GNOME Shell-Message: 14:38:52.287: [MOSAIC WM] [SMART RESIZE] Iter 3: Still overflowing. Resizable remaining: 1
+GNOME Shell-Message: 14:38:52.287: [MOSAIC WM] [SMART RESIZE] Iteration 3: Permanent cycle detected - no window made progress and overflow=true. IMPOSSIBLE to fit. Aborting.
+GNOME Shell-Message: 14:38:52.287: [MOSAIC WM] [SMART RESIZE] OVERFLOW: Cannot fit even at minimum - applying reverse resize
+GNOME Shell-Message: 14:38:52.287: [MOSAIC WM] [SMART RESIZE] Reverting 3 windows to original sizes
+GNOME Shell-Message: 14:38:52.288: [MOSAIC WM] [SMART RESIZE] Reverting 1045320504: 360x616
+GNOME Shell-Message: 14:38:52.288: [MOSAIC WM] [SMART RESIZE] Reverting 1045320502: 523x400
+GNOME Shell-Message: 14:38:52.288: [MOSAIC WM] [SMART RESIZE] Reverting 1045320507: 818x573
+GNOME Shell-Message: 14:38:52.289: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:38:52.289: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:52.289: [MOSAIC WM] _tile: Cache hit, reusing layout
+dbus-daemon[29400]: [session uid=1000 pid=29400 pidfd=5] Successfully activated service 're.sonny.Junction'
+Set re.sonny.Junction.desktop as the default for x-scheme-handler/https
+Set re.sonny.Junction.desktop as the default for x-scheme-handler/http
+GNOME Shell-Message: 14:38:52.388: [MOSAIC WM] [SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared
+GNOME Shell-Message: 14:38:52.389: [MOSAIC WM] Smart resize failed or skipped - applying Overflow logic
+GNOME Shell-Message: 14:38:52.389: [MOSAIC WM] moveOversizedWindow: origin=0
+GNOME Shell-Message: 14:38:52.389: [MOSAIC WM] [PLACEMENT] Overflow window detected - targeting strictly WS-1
+GNOME Shell-Message: 14:38:52.389: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 14:38:52.389: [MOSAIC WM] canFitWindow: Window not in workspace - adding with size 818x573 (preferred=true)
+GNOME Shell-Message: 14:38:52.390: [MOSAIC WM] _tile: 1 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:52.390: [MOSAIC WM] [PLACEMENT] Window fits in existing adjacent WS-1
+GNOME Shell-Message: 14:38:52.390: [MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping preferred size
+GNOME Shell-Message: 14:38:52.390: [MOSAIC WM] savePreferredSize: Skipping for 1045320507 - already constrained by smart resize
+GNOME Shell-Message: 14:38:52.391: [MOSAIC WM] [WORKSPACE SWITCH] WS-0 -> WS-1 (Stored 0 as last visited)
+GNOME Shell-Message: 14:38:52.391: [MOSAIC WM] Workspace animation complete - ready for operations on workspace 1
+GNOME Shell-Message: 14:38:52.400: [MOSAIC WM] [SWITCHER] Activating OSD for WS-1
+GNOME Shell-Message: 14:38:52.400: [MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace 1 on monitor 0
+GNOME Shell-Message: 14:38:52.402: [MOSAIC WM] moveOversizedWindow: workspace switch done, waiting for animation then retiling
+GNOME Shell-Message: 14:38:52.402: [MOSAIC WM] savePreferredSize: Skipping for 1045320507 - already constrained by smart resize
+GNOME Shell-Message: 14:38:52.402: [MOSAIC WM] Enqueueing window 1045320507 for evaluation
+GNOME Shell-Message: 14:38:52.402: [MOSAIC WM] _windowRemoved: 3 remaining windows, freed 818x573, wasOverflowMove=true
+GNOME Shell-Message: 14:38:52.402: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 14:38:52.403: [MOSAIC WM] tryRestoreWindowSizes: Check 1045320504: frame=360x616, pref=360x616, diff=0x0
+GNOME Shell-Message: 14:38:52.403: [MOSAIC WM] tryRestoreWindowSizes: Check 1045320503: frame=497x230, pref=497x230, diff=0x0
+GNOME Shell-Message: 14:38:52.403: [MOSAIC WM] tryRestoreWindowSizes: Check 1045320502: frame=523x400, pref=523x400, diff=0x0
+GNOME Shell-Message: 14:38:52.403: [MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore (0/3 windows had deficits > 2px)
+GNOME Shell-Message: 14:38:52.403: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:52.403: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:52.404: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:52.404: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:38:52.405: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:52.405: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:52.406: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:52.416: [MOSAIC WM] Window 1045320507 ready: size=818x573, workArea=1280x768
+GNOME Shell-Message: 14:38:52.417: [MOSAIC WM] Skipping early tile in waitForGeometry - window was moved by overflow
+
+(re.sonny.Junction:3): Gtk-CRITICAL **: 14:38:52.506: gtk_widget_set_parent: assertion '_gtk_widget_get_parent (widget) == NULL' failed
+
+** (process:30556): WARNING **: 14:38:52.589: Failed to connect to bus: Could not connect: Connection refused
+
+(re.sonny.Junction:3): Gtk-CRITICAL **: 14:38:52.589: Unable to connect to the accessibility bus at 'unix:path=/run/flatpak/at-spi-bus': Error receiving data: Connection reset by peer
+GNOME Shell-Message: 14:38:52.596: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1045320508
+GNOME Shell-Message: 14:38:52.635: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 14:38:52.635: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:52.635: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:38:52.635: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:52.647: [MOSAIC WM] Window 1045320508 ready: size=772x218, workArea=1280x768
+GNOME Shell-Message: 14:38:52.647: [MOSAIC WM] Enqueueing window 1045320508 for evaluation
+GNOME Shell-Message: 14:38:52.652: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:38:52.652: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:38:52.652: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:52.653: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 1ms
+GNOME Shell-Message: 14:38:52.653: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:52.653: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:52.653: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:52.653: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:52.653: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:38:52.654: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:52.654: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:38:52.654: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:52.654: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:52.654: [MOSAIC WM] Initial preferred size saved: 1045320508 = 772x218
+GNOME Shell-Message: 14:38:52.655: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:52.655: [MOSAIC WM] moveOversizedWindow: window mispositioned by 231px, retiling
+GNOME Shell-Message: 14:38:52.655: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:52.655: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:38:52.656: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:52.656: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:52.656: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:52.656: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:52.666: [MOSAIC WM] Evaluating queued window 1045320507 (remaining: 1)
+GNOME Shell-Message: 14:38:52.667: [MOSAIC WM] ensureWindowFits: Skipping - window was moved by overflow
+GNOME Shell-Message: 14:38:52.677: [MOSAIC WM] Evaluating queued window 1045320508 (remaining: 0)
+GNOME Shell-Message: 14:38:52.677: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 14:38:52.677: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:52.678: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:52.678: [MOSAIC WM] [SMART RESIZE] SmartResizeIterator created for 2 resizable windows (0 non-resizable, 0 already at minimum) - 2 available for resize
+GNOME Shell-Message: 14:38:52.678: [MOSAIC WM] [SMART RESIZE] tryFitWithResize START: 2 total windows (1 existing + 1 new)
+GNOME Shell-Message: 14:38:52.678: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:38:52.678: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:52.678: [MOSAIC WM] [SMART RESIZE] Natural fit failed - starting iterative smart resize
+GNOME Shell-Message: 14:38:52.678: [MOSAIC WM] [SMART RESIZE] ===== Iteration 1 start =====
+GNOME Shell-Message: 14:38:52.679: [MOSAIC WM] [SMART RESIZE] Windows: 2 candidates, 0 at minimum
+GNOME Shell-Message: 14:38:52.679: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:38:52.679: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 1045320507: 818x573
+GNOME Shell-Message: 14:38:52.679: [MOSAIC WM] [SMART RESIZE] Iter 1: 1045320507 shrinking 818x573 -> 654x458
+GNOME Shell-Message: 14:38:52.679: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 1045320508: 772x218
+GNOME Shell-Message: 14:38:52.679: [MOSAIC WM] [SMART RESIZE] Iter 1: 1045320508 shrinking 772x218 -> 617x250
+GNOME Shell-Message: 14:38:52.679: [MOSAIC WM] [SMART RESIZE] Iter 1: Waiting for size-changed signals...
+GNOME Shell-Message: 14:38:52.680: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:52.680: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:38:52.680: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:52.681: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:38:52.681: [MOSAIC WM] _tile: 2 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:38:52.681: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:52.681: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:52.681: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 1045320507 fired size-changed (2ms after batch resize)
+GNOME Shell-Message: 14:38:52.682: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in 3ms
+GNOME Shell-Message: 14:38:52.682: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 1045320507: shrank_w=0px (req=163), shrank_h=115px (req=114)
+GNOME Shell-Message: 14:38:52.682: [MOSAIC WM] [SMART RESIZE] Iter 1: 1045320507 shrank successfully to 818x458
+GNOME Shell-Message: 14:38:52.682: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 1045320508: shrank_w=0px (req=154), shrank_h=0px (req=43)
+GNOME Shell-Message: 14:38:52.682: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:38:52.682: [MOSAIC WM] _tile: 2 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:38:52.682: [MOSAIC WM] [SMART RESIZE] Iter 1: Layout simulation: overflow=true
+GNOME Shell-Message: 14:38:52.683: [MOSAIC WM] [SMART RESIZE] Iter 1: Still overflowing. Resizable remaining: 2
+GNOME Shell-Message: 14:38:52.683: [MOSAIC WM] [SMART RESIZE] Iter 1: Will continue on next iteration (2 can still shrink)
+GNOME Shell-Message: 14:38:52.705: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 14:38:52.705: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:52.705: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:52.705: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:52.705: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:38:52.706: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:52.706: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:52.706: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:52.706: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:52.748: [MOSAIC WM] Skipping final overflow check - smart resize in progress
+GNOME Shell-Message: 14:38:52.783: [MOSAIC WM] [SMART RESIZE] ===== Iteration 2 start =====
+GNOME Shell-Message: 14:38:52.783: [MOSAIC WM] [SMART RESIZE] Windows: 2 candidates, 0 at minimum
+GNOME Shell-Message: 14:38:52.783: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:38:52.784: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320507 shrinking 818x458 -> 654x366
+GNOME Shell-Message: 14:38:52.784: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320508 shrinking 772x218 -> 617x250
+GNOME Shell-Message: 14:38:52.784: [MOSAIC WM] [SMART RESIZE] Iter 2: Waiting for size-changed signals...
+GNOME Shell-Message: 14:38:52.784: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:52.784: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:38:52.785: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:52.785: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:38:52.785: [MOSAIC WM] _tile: 2 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:38:52.785: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:52.786: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:52.786: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 1045320507 fired size-changed (2ms after batch resize)
+GNOME Shell-Message: 14:38:52.786: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in 2ms
+GNOME Shell-Message: 14:38:52.786: [MOSAIC WM] [SMART RESIZE] Iter 2: Verify 1045320507: shrank_w=0px (req=163), shrank_h=58px (req=91)
+GNOME Shell-Message: 14:38:52.786: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320507 shrank successfully to 818x400
+GNOME Shell-Message: 14:38:52.786: [MOSAIC WM] [SMART RESIZE] Iter 2: Verify 1045320508: shrank_w=0px (req=154), shrank_h=0px (req=43)
+GNOME Shell-Message: 14:38:52.786: [MOSAIC WM] [SMART RESIZE] Iter 2: 1045320508 HIT MINIMUM (Behavioral detection: stuck)
+GNOME Shell-Message: 14:38:52.786: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:38:52.786: [MOSAIC WM] _tile: 2 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:38:52.787: [MOSAIC WM] [SMART RESIZE] Iter 2: Layout simulation: overflow=true
+GNOME Shell-Message: 14:38:52.787: [MOSAIC WM] [SMART RESIZE] Iter 2: Still overflowing. Resizable remaining: 1
+GNOME Shell-Message: 14:38:52.787: [MOSAIC WM] [SMART RESIZE] Iter 2: Will continue on next iteration (1 can still shrink)
+GNOME Shell-Message: 14:38:52.856: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:38:52.887: [MOSAIC WM] [SMART RESIZE] ===== Iteration 3 start =====
+GNOME Shell-Message: 14:38:52.887: [MOSAIC WM] [SMART RESIZE] Windows: 2 candidates, 1 at minimum
+GNOME Shell-Message: 14:38:52.887: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:38:52.887: [MOSAIC WM] [SMART RESIZE] Iter 3: 1045320507 shrinking 818x400 -> 654x320
+GNOME Shell-Message: 14:38:52.888: [MOSAIC WM] [SMART RESIZE] Iter 3: Waiting for size-changed signals...
+GNOME Shell-Message: 14:38:52.998: [MOSAIC WM] window map timeout - falling back to immediate processing
+GNOME Shell-Message: 14:38:52.998: [MOSAIC WM] Connecting signals for window 1045320508
+GNOME Shell-Message: 14:38:53.103: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:38:53.105: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:38:53.106: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:38:53.131: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:38:53.156: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:38:53.236: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:38:53.388: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ⏱ Timeout after 500ms (window manager slow to respond)
+GNOME Shell-Message: 14:38:53.388: [MOSAIC WM] [SMART RESIZE] Iter 3: Verify 1045320507: shrank_w=0px (req=163), shrank_h=0px (req=80)
+GNOME Shell-Message: 14:38:53.388: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:38:53.388: [MOSAIC WM] _tile: 2 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:38:53.389: [MOSAIC WM] [SMART RESIZE] Iter 3: Layout simulation: overflow=true
+GNOME Shell-Message: 14:38:53.389: [MOSAIC WM] [SMART RESIZE] Iter 3: Still overflowing. Resizable remaining: 1
+GNOME Shell-Message: 14:38:53.389: [MOSAIC WM] [SMART RESIZE] Iteration 3: Permanent cycle detected - no window made progress and overflow=true. IMPOSSIBLE to fit. Aborting.
+GNOME Shell-Message: 14:38:53.389: [MOSAIC WM] [SMART RESIZE] OVERFLOW: Cannot fit even at minimum - applying reverse resize
+GNOME Shell-Message: 14:38:53.389: [MOSAIC WM] [SMART RESIZE] Reverting 2 windows to original sizes
+GNOME Shell-Message: 14:38:53.389: [MOSAIC WM] [SMART RESIZE] Reverting 1045320507: 818x573
+GNOME Shell-Message: 14:38:53.389: [MOSAIC WM] [SMART RESIZE] Reverting 1045320508: 772x218
+GNOME Shell-Message: 14:38:53.490: [MOSAIC WM] [SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared
+GNOME Shell-Message: 14:38:53.490: [MOSAIC WM] Smart resize failed or skipped - applying Overflow logic
+GNOME Shell-Message: 14:38:53.490: [MOSAIC WM] moveOversizedWindow: origin=1
+GNOME Shell-Message: 14:38:53.490: [MOSAIC WM] [PLACEMENT] Overflow window detected - targeting strictly WS-2
+GNOME Shell-Message: 14:38:53.490: [MOSAIC WM] [PLACEMENT] Adjacent WS-2 is full or missing - creating new workspace
+GNOME Shell-Message: 14:38:53.490: [MOSAIC WM] [WORKSPACE] Creating new workspace and inserting at WS-2
+GNOME Shell-Message: 14:38:53.497: [MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping preferred size
+GNOME Shell-Message: 14:38:53.497: [MOSAIC WM] savePreferredSize: Skipping for 1045320508 - already constrained by smart resize
+GNOME Shell-Message: 14:38:53.498: [MOSAIC WM] [WORKSPACE SWITCH] WS-1 -> WS-2 (Stored 1 as last visited)
+GNOME Shell-Message: 14:38:53.503: [MOSAIC WM] [SWITCHER] Activating OSD for WS-2
+GNOME Shell-Message: 14:38:53.503: [MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace 2 on monitor 0
+GNOME Shell-Message: 14:38:53.503: [MOSAIC WM] moveOversizedWindow: workspace switch done, waiting for animation then retiling
+GNOME Shell-Message: 14:38:53.508: [MOSAIC WM] _windowRemoved: 1 remaining windows, freed 772x218, wasOverflowMove=true
+GNOME Shell-Message: 14:38:53.508: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 14:38:53.508: [MOSAIC WM] tryRestoreWindowSizes: Check 1045320507: frame=818x573, pref=818x573, diff=0x0
+GNOME Shell-Message: 14:38:53.508: [MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore (0/3 windows had deficits > 2px)
+GNOME Shell-Message: 14:38:53.508: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:53.508: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:38:53.508: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:53.509: [MOSAIC WM] _tile: 1 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:38:53.509: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:53.509: [MOSAIC WM] animateReTiling: single window, current=(462,216), target=(231,129.5), needsMove=true
+GNOME Shell-Message: 14:38:53.509: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 14:38:53.509: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:38:53.509: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:53.509: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:53.510: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:38:53.510: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:53.510: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:53.510: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:53.510: [MOSAIC WM] animateReTiling: single window, current=(231,129), target=(231,129.5), needsMove=false
+GNOME Shell-Message: 14:38:53.510: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:53.510: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:53.511: [MOSAIC WM] savePreferredSize: Skipping for 1045320508 - already constrained by smart resize
+GNOME Shell-Message: 14:38:53.511: [MOSAIC WM] Enqueueing window 1045320508 for evaluation
+GNOME Shell-Message: 14:38:53.521: [MOSAIC WM] Window 1045320508 ready: size=772x218, workArea=1280x800
+GNOME Shell-Message: 14:38:53.521: [MOSAIC WM] Skipping early tile in waitForGeometry - window was moved by overflow
+GNOME Shell-Message: 14:38:53.754: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:38:53.754: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:38:53.754: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:53.754: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:38:53.754: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:38:53.754: [MOSAIC WM] animateReTiling: single window, current=(231,129), target=(231,129.5), needsMove=false
+GNOME Shell-Message: 14:38:53.754: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:53.754: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 2 (isRecursive=false)
+GNOME Shell-Message: 14:38:53.754: [MOSAIC WM] Workspace 2 LOCKED for tiling
+GNOME Shell-Message: 14:38:53.755: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:38:53.755: [MOSAIC WM] _tile: 1 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:38:53.755: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=0
+GNOME Shell-Message: 14:38:53.755: [MOSAIC WM] animateReTiling: single window, current=(0,307), target=(254,291), needsMove=true
+GNOME Shell-Message: 14:38:53.755: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:38:53.766: [MOSAIC WM] Evaluating queued window 1045320508 (remaining: 0)
+GNOME Shell-Message: 14:38:53.766: [MOSAIC WM] ensureWindowFits: Skipping - window was moved by overflow
+GNOME Shell-Message: 14:38:53.960: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:38:53.961: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:38:54.204: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:38:54.205: [MOSAIC WM] Workspace 2 UNLOCKED
+GNOME Shell-Message: 14:38:58.499: [MOSAIC WM] afterAnimations: Safety timeout triggered
+GNOME Shell-Message: 14:38:58.499: [MOSAIC WM] Workspace animation complete - ready for operations on workspace 2

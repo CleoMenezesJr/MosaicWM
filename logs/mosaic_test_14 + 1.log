@@ -1,0 +1,365 @@
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=34954 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+libmutter-Message: 01:27:14.975: Running GNOME Shell (using mutter 49.1) as a Wayland display server
+libmutter-Message: 01:27:14.975: Enabling experimental feature 'autoclose-xwayland'
+libmutter-Message: 01:27:14.975: Enabling experimental feature 'xwayland-native-scaling'
+libmutter-Message: 01:27:14.975: Enabling experimental feature 'variable-refresh-rate'
+libmutter-Message: 01:27:15.031: Added device '/dev/dri/renderD128' (amdgpu) using no mode setting.
+libmutter-Message: 01:27:15.032: Created gbm renderer for '/dev/dri/renderD128'
+libmutter-Message: 01:27:15.032: Boot VGA GPU /dev/dri/renderD128 selected as primary
+** Message: 01:27:15.034: Obtained a high priority EGL context
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.2' (uid=1000 pid=34954 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+
+(gnome-shell:34954): dbind-WARNING **: 01:27:15.050: Couldn't register with accessibility bus: Did not receive a reply. Possible causes include: the remote application did not send a reply, the message bus security policy blocked the reply, the reply timeout expired, or the network connection was broken.
+Failed to launch bus: Bus exited with code 1libmutter-Message: 01:27:15.051: Using public X11 display :2, (using :3 for managed services)
+
+(gnome-shell:34954): libmutter-WARNING **: 01:27:15.051: WL: unable to lock lockfile /run/user/1000/wayland-0.lock, maybe another compositor is running
+
+libmutter-Message: 01:27:15.051: Using Wayland display name 'wayland-1'
+GNOME Shell-Message: 01:27:15.368: Unset XDG_SESSION_ID, getCurrentSessionProxy() called outside a user session. Asking logind directly.
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gnome.Shell.Screencast' requested by ':1.0' (uid=1000 pid=34954 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.0' (uid=1000 pid=34954 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gnome.Shell.CalendarServer' requested by ':1.0' (uid=1000 pid=34954 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.7' (uid=1000 pid=35029 comm="/usr/libexec/gnome-shell-calendar-server" label="unconfined_u:unconfined_r:spc_t:s0")
+GNOME Shell-Message: 01:27:15.476: Ignoring search provider /var/home/cleomenezesjr/.local/share/flatpak/exports/share/gnome-shell/search-providers/org.gnome.Epiphany.SearchProvider.ini: missing DesktopId
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.5' (uid=1000 pid=35008 comm="/usr/bin/gjs -m /usr/share/gnome-shell/org.gnome.S" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=35049 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+GNOME Shell-Message: 01:27:15.491: Registering session with GDM
+
+(/usr/libexec/xdg-desktop-portal:35049): xdg-desktop-portal-WARNING **: 01:27:15.493: Document portal fuse mount point unknown: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name :1.10 was not provided by any .service files
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.9' (uid=1000 pid=35049 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gnome.Shell.Notifications' requested by ':1.0' (uid=1000 pid=34954 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+
+(process:35003): mdk-WARNING **: 01:27:15.501: Invalid application ID 'org.gnome.Ptyxis'
+GNOME Shell-Message: 01:27:15.517: Failed to launch ibus-daemon: Failed to execute child process “ibus-daemon” (No such file or directory)
+GNOME Shell-Message: 01:27:15.522: Will monitor session 2
+GNOME Shell-Message: 01:27:15.524: Error looking up permission: GDBus.Error:org.freedesktop.portal.Error.NotFound: No entry for geolocation
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.0' (uid=1000 pid=34954 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gnome.OnlineAccounts' requested by ':1.8' (uid=1000 pid=35037 comm="/usr/libexec/evolution-source-registry" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gnome.Shell.Notifications'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.8' (uid=1000 pid=35037 comm="/usr/libexec/evolution-source-registry" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gnome.evolution.dataserver.Sources5'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gnome.evolution.dataserver.Calendar8' requested by ':1.7' (uid=1000 pid=35029 comm="/usr/libexec/gnome-shell-calendar-server" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gnome.Shell.CalendarServer'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gtk.vfs.GoaVolumeMonitor' requested by ':1.0' (uid=1000 pid=34954 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+goa-daemon-Message: 01:27:15.572: goa-daemon version 3.56.0 starting
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gnome.Identity' requested by ':1.16' (uid=1000 pid=35116 comm="/usr/libexec/goa-daemon" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gnome.OnlineAccounts'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gtk.vfs.GoaVolumeMonitor'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gnome.Identity'
+
+(process:35143): libgoaidentity-WARNING **: 01:27:15.583: GoaKerberosIdentityManager: Using polling for change notification for credential cache type 'KCM'
+GNOME Shell-Message: 01:27:15.597: Failed to register AuthenticationAgent
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gnome.evolution.dataserver.Calendar8'
+GNOME Shell-Message: 01:27:15.798: Ignoring search provider /var/home/cleomenezesjr/.local/share/flatpak/exports/share/gnome-shell/search-providers/org.gnome.Epiphany.SearchProvider.ini: missing DesktopId
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='ca.desrt.dconf' requested by ':1.0' (uid=1000 pid=34954 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'ca.desrt.dconf'
+
+(gnome-shell:34954): Clutter-CRITICAL **: 01:27:16.016: clutter_actor_remove_child: assertion 'child->priv->parent != NULL' failed
+
+(gnome-shell:34954): Clutter-CRITICAL **: 01:27:16.016: clutter_actor_remove_child: assertion 'child->priv->parent != NULL' failed
+GNOME Shell-Message: 01:27:16.020: Error looking up permission: GDBus.Error:org.freedesktop.portal.Error.NotFound: No entry for geolocation
+GNOME Shell-Message: 01:27:16.023: [static-workspace-background] enabled
+GNOME Shell-Message: 01:27:16.094: [MOSAIC INFO] Starting Mosaic layout manager.
+GNOME Shell-Message: 01:27:16.095: [MOSAIC WM] Failsafe: Restored attach-modal-dialogs setting
+GNOME Shell-Message: 01:27:16.095: [MOSAIC WM] Patching Main.wm._shouldAnimateActor for slide-in animations
+GNOME Shell-Message: 01:27:16.098: [MOSAIC WM] Overriding org.gnome.mutter.edge-tiling
+GNOME Shell-Message: 01:27:16.099: [MOSAIC WM] Overriding org.gnome.mutter.attach-modal-dialogs
+GNOME Shell-Message: 01:27:16.099: [MOSAIC WM] About to call _setupKeybindings()
+GNOME Shell-Message: 01:27:16.099: [MOSAIC WM] *** _setupKeybindings called ***
+GNOME Shell-Message: 01:27:16.100: [MOSAIC WM] Registering swap-left keybinding
+GNOME Shell-Message: 01:27:16.100: [MOSAIC WM] Registering swap-right keybinding
+GNOME Shell-Message: 01:27:16.100: [MOSAIC WM] Registering swap-up keybinding
+GNOME Shell-Message: 01:27:16.100: [MOSAIC WM] Registering swap-down keybinding
+GNOME Shell-Message: 01:27:16.100: [MOSAIC WM] All swap keybindings registered successfully
+GNOME Shell-Message: 01:27:16.100: [MOSAIC WM] Keyboard shortcuts registered
+GNOME Shell-Message: 01:27:16.100: [MOSAIC WM] _setupKeybindings() completed
+
+(gnome-shell:34954): libmutter-WARNING **: 01:27:16.124: Overwriting existing binding of keysym ff52 with keysym ff52 (keycode 6f).
+
+(gnome-shell:34954): libmutter-WARNING **: 01:27:16.124: Overwriting existing binding of keysym ff54 with keysym ff54 (keycode 74).
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.gnome.Settings.GlobalShortcutsProvider' requested by ':1.12' (uid=1000 pid=35066 comm="/usr/libexec/xdg-desktop-portal-gnome" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gnome.Settings.GlobalShortcutsProvider'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=35049 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.22' (uid=1000 pid=35259 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+
+(xdg-desktop-portal-gtk:35259): dbind-WARNING **: 01:27:16.350: Couldn't register with accessibility bus: Did not receive a reply. Possible causes include: the remote application did not send a reply, the message bus security policy blocked the reply, the reply timeout expired, or the network connection was broken.
+Failed to launch bus: Bus exited with code 1dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.gnome.Shell.Screencast'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.4' (uid=1000 pid=35003 comm="/usr/libexec/mutter-devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1
+(mutter-devkit:35003): Gtk-CRITICAL **: 01:27:16.540: Unable to connect to the accessibility bus at 'unix:path=/run/user/1000/at-spi/bus_2': Could not connect: Connection refused
+libmutter-Message: 01:27:16.591: Added virtual monitor Meta-0
+GNOME Shell-Message: 01:27:17.347: GNOME Shell started at Wed Feb 25 2026 01:27:15 GMT-0300 (Chile Summer Time)
+
+(gnome-shell:34954): GnomeDesktop-WARNING **: 01:27:18.103: Could not create transient scope for PID 35457: GDBus.Error:org.freedesktop.DBus.Error.NameHasNoOwner: Name "org.freedesktop.systemd1" does not exist
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.Flatpak' requested by ':1.26' (uid=1000 pid=35457 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.Flatpak'
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.26' (uid=1000 pid=35457 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.26' (uid=1000 pid=35457 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1GNOME Shell-Message: 01:27:18.493: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3284551789
+GNOME Shell-Message: 01:27:18.493: [MOSAIC WM] SLIDE-IN filter check for new window 3284551789: Workspace has 1 windows total. mon=0
+GNOME Shell-Message: 01:27:18.493: [MOSAIC WM] SLIDE-IN: First window 3284551789 - no animation needed
+GNOME Shell-Message: 01:27:18.504: [MOSAIC WM] window-added: window=3284551789, size=0x0, workArea=1280x768, timeSince=Infinityms, prevWS=undefined, currentWS=0
+GNOME Shell-Message: 01:27:18.505: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 01:27:18.505: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 01:27:18.506: [MOSAIC WM] _tile: 1 windows, vertical=false, optimized order
+GNOME Shell-Message: 01:27:18.506: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:18.506: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:18.506: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:18.506: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:18.506: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 01:27:18.506: [MOSAIC WM] animateReTiling: single window, current=(313,216), target=(313,216), needsMove=false
+GNOME Shell-Message: 01:27:18.506: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 01:27:18.508: [MOSAIC WM] [TRACE] _shouldAnimateActor for 3284551789 stack trace: 
+patchMapWindow/Main.wm._shouldAnimateActor@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/windowHandler.js:47:28
+_mapWindow@resource:///org/gnome/shell/ui/windowManager.js:1467:19
+@resource:///org/gnome/shell/ui/init.js:21:20
+
+GNOME Shell-Message: 01:27:18.508: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3284551789 set to 654x400
+GNOME Shell-Message: 01:27:18.508: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 01:27:18.508: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] [TRACE] ensureWindowFits: canFit=true, id=3284551789 (usingTargetSize: false)
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] Enqueuing window 3284551789 for opening (queue size: 0)
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] Processing queue: window 3284551789 (remaining: 0)
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 01:27:18.509: [MOSAIC WM] animateReTiling: single window, current=(313,216), target=(313,216), needsMove=false
+GNOME Shell-Message: 01:27:18.510: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 01:27:18.510: [MOSAIC WM] Connecting signals for window 3284551789
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.34' (uid=1000 pid=35564 comm="/var/home/cleomenezesjr/.local/share/flatpak/app/i" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+GNOME Shell-Message: 01:27:18.514: [MOSAIC WM] Window 3284551789 ready: size=654x400, workArea=1280x768
+GNOME Shell-Message: 01:27:18.514: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 01:27:18.515: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 01:27:18.515: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:18.515: [MOSAIC WM] [TRACE] ensureWindowFits: canFit=true, id=3284551789 (usingTargetSize: false)
+GNOME Shell-Message: 01:27:18.515: [MOSAIC WM] Enqueuing window 3284551789 for opening (queue size: 0)
+GNOME Shell-Message: 01:27:18.610: [MOSAIC WM] Processing queue: window 3284551789 (remaining: 0)
+GNOME Shell-Message: 01:27:18.610: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 01:27:18.610: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:18.610: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:18.611: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:18.611: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:18.611: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 01:27:18.611: [MOSAIC WM] animateReTiling: single window, current=(313,216), target=(313,216), needsMove=false
+GNOME Shell-Message: 01:27:18.611: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 01:27:18.615: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=true)
+GNOME Shell-Message: 01:27:18.615: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 01:27:18.615: [MOSAIC WM] _tile: 1 windows, vertical=false, optimized order
+GNOME Shell-Message: 01:27:18.956: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 01:27:18.960: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 01:27:19.061: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 01:27:19.165: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+
+(gnome-shell:34954): GnomeDesktop-WARNING **: 01:27:20.166: Could not create transient scope for PID 35635: GDBus.Error:org.freedesktop.DBus.Error.NameHasNoOwner: Name "org.freedesktop.systemd1" does not exist
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.36' (uid=1000 pid=35635 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.38' (uid=1000 pid=35635 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1GNOME Shell-Message: 01:27:20.929: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3284551790
+GNOME Shell-Message: 01:27:20.929: [MOSAIC WM] SLIDE-IN filter check for new window 3284551790: Workspace has 2 windows total. mon=0
+GNOME Shell-Message: 01:27:20.929: [MOSAIC WM] SLIDE-IN (Prepared param): Window 3284551790 (Existing: 1, Dir: 0, PrevWS: undefined)
+GNOME Shell-Message: 01:27:20.939: [MOSAIC WM] window-added: window=3284551790, size=0x0, workArea=1280x768, timeSince=Infinityms, prevWS=undefined, currentWS=0
+GNOME Shell-Message: 01:27:20.958: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 01:27:20.958: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 01:27:20.958: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 01:27:20.958: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 01:27:20.959: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:20.959: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:20.959: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:20.959: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:20.959: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 01:27:20.960: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 01:27:20.960: [MOSAIC WM] [TRACE] _shouldAnimateActor for 3284551790 stack trace: 
+patchMapWindow/Main.wm._shouldAnimateActor@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/windowHandler.js:47:28
+_mapWindow@resource:///org/gnome/shell/ui/windowManager.js:1467:19
+@resource:///org/gnome/shell/ui/init.js:21:20
+
+GNOME Shell-Message: 01:27:20.960: [MOSAIC WM] MAPPED SLIDE-IN (ease intercepted): Applying offset (-100, 0) to window 3284551790 Mode: 9
+GNOME Shell-Message: 01:27:20.960: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3284551790 set to 360x616
+GNOME Shell-Message: 01:27:20.960: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] [TRACE] ensureWindowFits: canFit=true, id=3284551790 (usingTargetSize: false)
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] Enqueuing window 3284551790 for opening (queue size: 0)
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] Processing queue: window 3284551790 (remaining: 0)
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:20.961: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 01:27:20.962: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 01:27:20.962: [MOSAIC WM] Connecting signals for window 3284551790
+GNOME Shell-Message: 01:27:21.410: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 01:27:21.412: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 01:27:22.121: [MOSAIC WM] [TRACE] _shouldAnimateActor for 3284551790 stack trace: 
+patchMapWindow/Main.wm._shouldAnimateActor@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/windowHandler.js:47:28
+_destroyWindow@resource:///org/gnome/shell/ui/windowManager.js:1539:19
+@resource:///org/gnome/shell/ui/init.js:21:20
+
+GNOME Shell-Message: 01:27:22.121: [MOSAIC WM] onWindowDestroyed: 3284551790
+GNOME Shell-Message: 01:27:22.121: [MOSAIC WM] Disconnected signals for window 3284551790
+GNOME Shell-Message: 01:27:22.122: [MOSAIC WM] clearPreferredSize: Removed 3284551790
+GNOME Shell-Message: 01:27:22.132: [MOSAIC WM] _windowRemoved: 1 remaining windows, freed 360x616, wasOverflowMove=undefined
+GNOME Shell-Message: 01:27:22.132: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 01:27:22.132: [MOSAIC WM] tryRestoreWindowSizes: Check 3284551789: frame=654x400, pref=654x400, diff=0x0
+GNOME Shell-Message: 01:27:22.132: [MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore (0/3 windows had deficits > 2px)
+GNOME Shell-Message: 01:27:22.132: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:22.133: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:22.133: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:22.133: [MOSAIC WM] _tile: 1 windows, vertical=false, optimized order
+GNOME Shell-Message: 01:27:22.133: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 01:27:22.133: [MOSAIC WM] animateReTiling: single window, current=(497,216), target=(313,216), needsMove=true
+GNOME Shell-Message: 01:27:22.133: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 01:27:22.495: [MOSAIC WM] [SMART RESIZE] Window closed - attempting reverse smart resize with freed 360x616
+GNOME Shell-Message: 01:27:22.495: [MOSAIC WM] tryRestoreWindowSizes: Check 3284551789: frame=654x400, pref=654x400, diff=0x0
+GNOME Shell-Message: 01:27:22.495: [MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore (0/3 windows had deficits > 2px)
+GNOME Shell-Message: 01:27:22.495: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:22.495: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:22.495: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:22.496: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:22.496: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 01:27:22.496: [MOSAIC WM] animateReTiling: single window, current=(313,216), target=(313,216), needsMove=false
+GNOME Shell-Message: 01:27:22.496: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 01:27:22.583: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 01:27:22.946: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 01:27:23.071: [MOSAIC WM] [TRACE] _shouldAnimateActor for 3284551789 stack trace: 
+patchMapWindow/Main.wm._shouldAnimateActor@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/windowHandler.js:47:28
+_destroyWindow@resource:///org/gnome/shell/ui/windowManager.js:1539:19
+@resource:///org/gnome/shell/ui/init.js:21:20
+
+GNOME Shell-Message: 01:27:23.071: [MOSAIC WM] onWindowDestroyed: 3284551789
+GNOME Shell-Message: 01:27:23.071: [MOSAIC WM] Disconnected signals for window 3284551789
+GNOME Shell-Message: 01:27:23.072: [MOSAIC WM] clearPreferredSize: Removed 3284551789
+GNOME Shell-Message: 01:27:23.083: [MOSAIC WM] _windowRemoved: 0 remaining windows, freed 654x400, wasOverflowMove=undefined
+GNOME Shell-Message: 01:27:23.083: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 01:27:23.083: [MOSAIC WM] _windowRemoved: Workspace truly empty, navigating away
+GNOME Shell-Message: 01:27:23.083: [MOSAIC WM] [RENAVIGATE] No suitable target found to navigate away from WS-0
+GNOME Shell-Message: 01:27:23.372: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:23.372: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:23.372: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:23.372: [MOSAIC WM] No windows left to tile after filtering sacred windows. Original count: 0
+
+(gnome-shell:34954): GnomeDesktop-WARNING **: 01:27:24.565: Could not create transient scope for PID 35709: GDBus.Error:org.freedesktop.DBus.Error.NameHasNoOwner: Name "org.freedesktop.systemd1" does not exist
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.42' (uid=1000 pid=35709 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.44' (uid=1000 pid=35709 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.portal.Flatpak' requested by ':1.48' (uid=1000 pid=35736 comm="/usr/bin/xdg-dbus-proxy --args=41" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Successfully activated service 'org.freedesktop.portal.Flatpak'
+GNOME Shell-Message: 01:27:25.762: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3284551791
+GNOME Shell-Message: 01:27:25.762: [MOSAIC WM] SLIDE-IN filter check for new window 3284551791: Workspace has 1 windows total. mon=0
+GNOME Shell-Message: 01:27:25.763: [MOSAIC WM] SLIDE-IN: First window 3284551791 - no animation needed
+GNOME Shell-Message: 01:27:25.773: [MOSAIC WM] window-added: window=3284551791, size=0x0, workArea=1280x768, timeSince=Infinityms, prevWS=undefined, currentWS=0
+GNOME Shell-Message: 01:27:25.789: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 01:27:25.789: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 01:27:25.789: [MOSAIC WM] _tile: 1 windows, vertical=false, optimized order
+GNOME Shell-Message: 01:27:25.789: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:25.789: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:25.790: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:25.790: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:25.790: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 01:27:25.790: [MOSAIC WM] animateReTiling: single window, current=(351,208), target=(350.5,208), needsMove=false
+GNOME Shell-Message: 01:27:25.790: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 01:27:25.791: [MOSAIC WM] [TRACE] _shouldAnimateActor for 3284551791 stack trace: 
+patchMapWindow/Main.wm._shouldAnimateActor@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/windowHandler.js:47:28
+_mapWindow@resource:///org/gnome/shell/ui/windowManager.js:1467:19
+@resource:///org/gnome/shell/ui/init.js:21:20
+
+GNOME Shell-Message: 01:27:25.791: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3284551791 set to 579x416
+GNOME Shell-Message: 01:27:25.791: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] [TRACE] ensureWindowFits: canFit=true, id=3284551791 (usingTargetSize: false)
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] Enqueuing window 3284551791 for opening (queue size: 0)
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] Processing queue: window 3284551791 (remaining: 0)
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] animateReTiling: single window, current=(350,208), target=(350.5,208), needsMove=false
+GNOME Shell-Message: 01:27:25.792: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 01:27:25.793: [MOSAIC WM] Connecting signals for window 3284551791
+GNOME Shell-Message: 01:27:26.240: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 01:27:26.243: [MOSAIC WM] Workspace 0 UNLOCKED
+libmutter-Message: 01:27:30.602: Removed virtual monitor Meta-0
+** Message: 01:27:30.610: Shutting down GNOME Shell
+Gdk-Message: 01:27:30.723: Lost connection to Wayland compositor.
+Gdk-Message: 01:27:30.723: Lost connection to Wayland compositor.
+Gdk-Message: 01:27:30.724: Error reading events from display: Broken pipe
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=35049 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+
+(xdg-desktop-portal-gtk:35859): Gtk-WARNING **: 01:27:30.784: cannot open display: :2
+dbus-daemon[34953]: [session uid=1000 pid=34953 pidfd=5] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+** (/usr/libexec/xdg-desktop-portal:35049): WARNING **: 01:27:30.786: Failed to close session implementation: GDBus.Error:org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+A connection to the bus can't be made
+gnome-shell-calendar-server[35029]: Lost (or failed to acquire) the name org.gnome.Shell.CalendarServer - exiting
+
+(evolution-calendar-factory:35130): libedbus-private-WARNING **: 01:27:30.792: Error setting property 'ConnectionStatus' on interface org.gnome.evolution.dataserver.Source: The connection is closed (g-io-error-quark, 18)
+
+(evolution-calendar-factory:35130): libedbus-private-WARNING **: 01:27:30.792: Error setting property 'ConnectionStatus' on interface org.gnome.evolution.dataserver.Source: The connection is closed (g-io-error-quark, 18)

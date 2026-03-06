@@ -263,9 +263,11 @@ export default class WindowMosaicExtension extends Extension {
                         if (!mw) continue;
 
                         // Fallback to Native GNOME layout if there are "floating" windows
-                        // according to the user's request (Above, Sticky, Maximized, or Fullscreen)
+                        // (Above, Sticky, Maximized, Fullscreen, or Modals)
                         if (mw.is_above() || mw.is_on_all_workspaces() ||
-                            mw.is_fullscreen()) {
+                            mw.is_fullscreen() ||
+                            mw.get_window_type() === Meta.WindowType.MODAL_DIALOG ||
+                            mw.is_attached_dialog()) {
                             useMosaic = false;
                             break;
                         }

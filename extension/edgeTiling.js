@@ -1317,7 +1317,7 @@ export const EdgeTilingManager = GObject.registerClass({
         // Get mosaic windows that need space
         const mosaicWindows = this.getNonEdgeTiledWindows(workspace, monitor);
         if (mosaicWindows.length === 0) {
-            // No mosaic windows - MUST leave 400px free (User Request 1)
+            // No mosaic windows - MUST leave 400px free
             const minFreeSpace = 400;
             const maxWidth = workArea.width - minFreeSpace;
 
@@ -1336,9 +1336,7 @@ export const EdgeTilingManager = GObject.registerClass({
             }
             return;
         }
-
-        // With mosaic windows: edge tile's max is workArea - actualMosaicWidth
-        // "O tamanho maximo de um tiling pode chegar é o tamanho do mosaico"
+        // The maximum width for an edge tile is the work area minus the space required by the mosaic.
 
         // Calculate actual mosaic bounds
         let mosaicMinX = Infinity;
