@@ -643,6 +643,25 @@ export const WindowHandler = GObject.registerClass({
                 continue;
             }
 
+            // Skip windows that were already successfully placed by smart resize
+            if (WindowState.get(window, 'smartResizeApplied')) {
+                Logger.log(`Evaluation queue: window ${window.get_id()} already placed by smart resize, skipping`);
+                WindowState.set(window, 'smartResizeApplied', false);
+                continue;
+            }
+
+            // Guard against invalid workspace (can occur if workspace was removed during async smart resize)
+            if (workspace.index() < 0) {
+                const currentWorkspace = window.get_workspace();
+                if (currentWorkspace && currentWorkspace.index() >= 0) {
+                    Logger.log(`Evaluation queue: stale workspace (index -1), using window's current WS-${currentWorkspace.index()}`);
+                    workspace = currentWorkspace;
+                } else {
+                    Logger.log(`Evaluation queue: window ${window.get_id()} has invalid workspace, skipping`);
+                    continue;
+                }
+            }
+
             // Use the active workspace as the source of truth to detect manual user switches.
             const activeWorkspace = this.windowingManager.getWorkspace();
             const targetWorkspace = lastOverflowWorkspace || expectedWorkspace || workspace;
@@ -702,10 +721,11 @@ export const WindowHandler = GObject.registerClass({
 
             // Small delay to let animations/mutter settle before evaluating the next window
             await new Promise(resolve => {
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.QUEUE_PROCESS_DELAY_MS || 50, () => {
-                     resolve();
-                     return GLib.SOURCE_REMOVE;
-                });
+                if (this._timeoutRegistry) {
+                    this._timeoutRegistry.add(constants.QUEUE_PROCESS_DELAY_MS || 50, resolve, '_processEvaluationQueue');
+                } else {
+                    resolve();
+                }
             });
         }
 

@@ -327,11 +327,12 @@ export default class WindowMosaicExtension extends Extension {
 
         this._setupKeybindings();
 
-        // Use GLib.timeout_add for better GJS integration
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.STARTUP_TILE_DELAY_MS, () => {
+        // Use TimeoutRegistry for better GJS integration and safe lifecycle
+        this._tileTimeout = this._timeoutRegistry.add(constants.STARTUP_TILE_DELAY_MS, () => {
             this._tileAllWorkspaces();
+            this._tileTimeout = null;
             return GLib.SOURCE_REMOVE;
-        });
+        }, 'startupTile');
     }
 
     _setupKeybindings() {
@@ -467,8 +468,8 @@ export default class WindowMosaicExtension extends Extension {
             this._mosaicIndicator = null;
         }
 
-        if (this._tileTimeout) {
-            GLib.source_remove(this._tileTimeout);
+        if (this._tileTimeout && this._timeoutRegistry) {
+            this._timeoutRegistry.remove(this._tileTimeout);
             this._tileTimeout = null;
         }
         for(let eventId of this._wmEventIds)

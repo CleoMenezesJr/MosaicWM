@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Core mosaic tiling algorithm and layout management
 
-import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter'; // Used for Enums (AnimationMode, etc)
 import GObject from 'gi://GObject';
 
@@ -255,7 +254,7 @@ class SmartResizeIterator {
                 // Update currentSizes even if stuck to prevent compounding errors
                 this.currentSizes.set(id, { width: frame.width, height: frame.height });
             } else {
-                // Suck my balls! It shrank significantly in at least one dimension
+                // Window shrank in at least one dimension
                 this.noMovementCount.set(id, 0);
                 this.lastIterationWindowShrank.set(id, this.iteration);
                 this.currentSizes.set(id, { width: frame.width, height: frame.height });
@@ -374,18 +373,20 @@ class SmartResizeIterator {
         return Math.max(0, freePercent); // Nunca retornar negativo
     }
 
-    // Wait N milliseconds
     _waitMs(ms) {
         return new Promise(resolve => {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+            if (this._ext && this._ext._timeoutRegistry) {
+                this._ext._timeoutRegistry.add(ms, () => {
+                    resolve();
+                }, '_waitMs');
+            } else {
+                // No registry available — resolve immediately to avoid unmanaged timeouts
                 resolve();
-                return GLib.SOURCE_REMOVE;
-            });
+            }
         });
     }
 
-    // EVENT-DRIVEN: Wait for resizing via 'size-changed' signals
-    // Resolves on first signal (Promise.race) instead of polling
+    // Wait for resize completion via 'size-changed' signals
     async _waitForSizeChanges(windows, timeoutMs = 1500) {
         if (windows.length === 0) {
             Logger.log(`[SMART RESIZE EVENT-DRIVEN] No windows to monitor, returning immediately`);
@@ -397,7 +398,7 @@ class SmartResizeIterator {
         const signalHandlers = [];
         let timeoutOccurred = false;
 
-        // Para cada janela, criar uma Promise que resolve no primeiro 'size-changed'
+        // Create a Promise for each window that resolves on its first 'size-changed'
         for (const window of windows) {
             const promise = new Promise((resolve) => {
                 const handler = window.connect('size-changed', () => {
@@ -411,13 +412,19 @@ class SmartResizeIterator {
         }
 
         // Promise.race: resolve when ANY window moves
-        // Timeout: safety net em caso de Mutter lento
+        // Timeout fallback if window manager is slow to respond
+        let registryId = null;
         const timeoutPromise = new Promise((resolve) => {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeoutMs, () => {
+            if (this._ext && this._ext._timeoutRegistry) {
+                registryId = this._ext._timeoutRegistry.add(timeoutMs, () => {
+                    timeoutOccurred = true;
+                    resolve();
+                }, '_waitForSizeChanges');
+            } else {
+                // No registry available — resolve immediately to avoid unmanaged timeouts
                 timeoutOccurred = true;
                 resolve();
-                return GLib.SOURCE_REMOVE;
-            });
+            }
         });
         
         // Instant Abort Promise
@@ -426,12 +433,27 @@ class SmartResizeIterator {
         });
 
         try {
+            // Wait for the first window to resize, then give others 40ms to catch up
+            const firstResizeWithDebounce = Promise.race(promises).then(() => {
+                return new Promise(resolve => {
+                    if (this._ext && this._ext._timeoutRegistry) {
+                        this._ext._timeoutRegistry.add(40, resolve, '_waitForSizeChanges_debounce');
+                    } else {
+                        // No registry available — resolve immediately to avoid unmanaged timeouts
+                        resolve();
+                    }
+                });
+            });
+
             await Promise.race([
-                Promise.race(promises),
+                firstResizeWithDebounce,
                 timeoutPromise,
                 abortPromise
             ]);
             this._abortResolver = null; // Clean up
+            if (registryId !== null && this._ext && this._ext._timeoutRegistry && !timeoutOccurred) {
+                this._ext._timeoutRegistry.remove(registryId);
+            }
             
             const totalElapsed = Date.now() - startTime;
             if (timeoutOccurred) {
@@ -766,12 +788,7 @@ export const TilingManager = GObject.registerClass({
             }
             
             // Small delay to let animations/mutter settle before next evaluation
-            await new Promise(resolve => {
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.QUEUE_PROCESS_DELAY_MS, () => {
-                     resolve();
-                     return GLib.SOURCE_REMOVE;
-                });
-            });
+            await this._waitMs(constants.QUEUE_PROCESS_DELAY_MS);
         }
         
         this._processingQueue = false;
@@ -1638,10 +1655,14 @@ export const TilingManager = GObject.registerClass({
         // Release workspace lock after signals from move_resize have likely fired.
         // We use a safe delay matching the animation duration.
         if (this._extension && this._extension.windowHandler) {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ANIMATION_DURATION_MS + 100, () => {
+            if (this._extension._timeoutRegistry) {
+                this._extension._timeoutRegistry.add(constants.ANIMATION_DURATION_MS + 100, () => {
+                    this._extension.windowHandler.unlockWorkspace(workspace);
+                }, 'unlockWorkspace');
+            } else {
+                // No registry — unlock immediately (extension likely disabling)
                 this._extension.windowHandler.unlockWorkspace(workspace);
-                return GLib.SOURCE_REMOVE;
-            });
+            }
         }
 
         return true;
@@ -1680,10 +1701,14 @@ export const TilingManager = GObject.registerClass({
                 // UNLOCK: The recursive calls will handle their own monitor-specific locks,
                 // but we need to ensure the final state is unlocked after a safe delay.
                 if (this._extension && this._extension.windowHandler) {
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.ANIMATION_DURATION_MS + 50, () => {
+                    if (this._extension._timeoutRegistry) {
+                        this._extension._timeoutRegistry.add(constants.ANIMATION_DURATION_MS + 50, () => {
+                            this._extension.windowHandler.unlockWorkspace(workspace);
+                        }, 'unlockWorkspaceRecursive');
+                    } else {
+                        // No registry — unlock immediately (extension likely disabling)
                         this._extension.windowHandler.unlockWorkspace(workspace);
-                        return GLib.SOURCE_REMOVE;
-                    });
+                    }
                 }
                 return { overflow: false, layout: null };
             } else {
@@ -2026,12 +2051,18 @@ export const TilingManager = GObject.registerClass({
                 realHeight = overrideSize.height;
                 Logger.log(`canFitWindow: Using overrideSize ${realWidth}x${realHeight}`);
             } else {
+                const smartResizeSize = WindowState.get(window, 'targetSmartResizeSize');
                 const preferredSize = WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize');
                 const frame = window.get_frame_rect();
                 
-                // Use actual frame dimensions — no hardcoded fallback
-                realWidth = preferredSize ? preferredSize.width : frame.width;
-                realHeight = preferredSize ? preferredSize.height : frame.height;
+                if (smartResizeSize) {
+                    realWidth = smartResizeSize.width;
+                    realHeight = smartResizeSize.height;
+                } else {
+                    // Use actual frame dimensions — no hardcoded fallback
+                    realWidth = preferredSize ? preferredSize.width : frame.width;
+                    realHeight = preferredSize ? preferredSize.height : frame.height;
+                }
             }
             
             Logger.log(`canFitWindow: Window not in workspace - adding with size ${realWidth}x${realHeight} (preferred=${!!overrideSize || !!WindowState.get(window, 'preferredSize')})`);
