@@ -110,16 +110,16 @@ export const WindowingManager = GObject.registerClass({
         let active = workspace.active;
         let previous_workspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
 
-        
         if (!previous_workspace) {
             Logger.error("There is no workspace to the left.");
             return;
         }
         
         window.change_workspace(previous_workspace);
-        if (active)
+        if (active) {
             previous_workspace.activate(this.getTimestamp());
             this.showWorkspaceSwitcher(previous_workspace, window.get_monitor());
+        }
         return previous_workspace;
     }
 
