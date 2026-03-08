@@ -230,6 +230,17 @@ export const WindowHandler = GObject.registerClass({
         Logger.log(`Connecting signals for window ${window.get_id()}`);
         let ids = [];
 
+        // Handle window minimize/unminimize state changes
+        ids.push(window.connect('notify::minimized', (win) => {
+            const isMin = win.minimized;
+            Logger.log(`[STATE] notify::minimized fired for ${win.get_id()}! State now: ${isMin}`);
+            // Defer execution to ensure Mutter's internal window state is fully synced
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                this.handleExclusionStateChange(win);
+                return GLib.SOURCE_REMOVE;
+            });
+        }));
+
         // Final cleanup signal
         ids.push(window.connect('unmanaged', (win) => {
             Logger.log(`Window ${win.get_id()} (unmanaged) - cleaning up`);
