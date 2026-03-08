@@ -295,6 +295,8 @@ export default class WindowMosaicExtension extends Extension {
         this._wmEventIds.push(global.window_manager.connect('size-change', (wm, win, mode) => this.resizeHandler.onSizeChange(wm, win, mode)));
         this._wmEventIds.push(global.window_manager.connect('size-changed', (wm, win) => this.resizeHandler.onSizeChanged(wm, win)));
         this._displayEventIds.push(global.display.connect('window-created', (_, window) => this.windowHandler.onWindowCreated(window)));
+        this._displayEventIds.push(global.display.connect('window-entered-monitor', (display, monitorIndex, window) => this.windowHandler.onWindowEnteredMonitor(monitorIndex, window)));
+        this._displayEventIds.push(global.display.connect('window-left-monitor', (display, monitorIndex, window) => this.windowHandler.onWindowLeftMonitor(monitorIndex, window)));
         this._wmEventIds.push(global.window_manager.connect('destroy', (wm, win) => this.windowHandler.onWindowDestroyed(win.meta_window)));
         this._displayEventIds.push(global.display.connect("grab-op-begin", (display, window, grabpo) => this.dragHandler._grabOpBeginHandler(display, window, grabpo)));
         this._displayEventIds.push(global.display.connect("grab-op-end", (display, window, grabpo) => this.dragHandler._grabOpEndHandler(display, window, grabpo)));

@@ -610,6 +610,40 @@ export const WindowHandler = GObject.registerClass({
         }
     }
 
+    // TODO: Verify later if we need specific logic when a window enters
+    // or leaves a monitor to see if we can unify this code.
+    onWindowEnteredMonitor(monitorIndex, window) {
+        if (!this._ext.windowingManager.isRelated(window)) return;
+
+        Logger.log(`[MONITOR] Window ${window.get_id()} entered monitor ${monitorIndex}`);
+
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            if (!window || window.is_destroyed()) return GLib.SOURCE_REMOVE;
+
+            const workspace = window.get_workspace();
+            if (workspace) {
+                this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitorIndex, false);
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    onWindowLeftMonitor(monitorIndex, window) {
+        if (!this._ext.windowingManager.isRelated(window)) return;
+
+        Logger.log(`[MONITOR] Window ${window.get_id()} left monitor ${monitorIndex}`);
+
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            if (!window || window.is_destroyed()) return GLib.SOURCE_REMOVE;
+
+            const workspace = window.get_workspace();
+            if (workspace) {
+                this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitorIndex, false);
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     onOverviewHidden() {
         const workspace = this.windowingManager.getWorkspace();
         const monitor = global.display.get_primary_monitor();
