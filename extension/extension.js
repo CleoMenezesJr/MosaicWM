@@ -318,6 +318,7 @@ export default class WindowMosaicExtension extends Extension {
 
         this._workspaceManEventIds.push(global.workspace_manager.connect("active-workspace-changed", this._workspaceSwitchedHandler));
         this._workspaceManEventIds.push(global.workspace_manager.connect("workspace-added", this._workspaceAddSignal));
+        this._workspaceManEventIds.push(global.workspace_manager.connect("workspace-removed", (wm, index) => this.windowHandler.onWorkspaceRemoved(index)));
 
         let nWorkspaces = this._workspaceManager.get_n_workspaces();
         for(let i = 0; i < nWorkspaces; i++) {

@@ -644,6 +644,28 @@ export const WindowHandler = GObject.registerClass({
         });
     }
 
+    onWorkspaceRemoved(workspaceIndex) {
+        Logger.log(`[WORKSPACE] Removed index ${workspaceIndex}, pruning evaluation queues...`);
+        let initialLength = this._evaluationQueue.length;
+        
+        this._evaluationQueue = this._evaluationQueue.filter(item => {
+            if (!item.window || item.window.is_destroyed()) return false;
+            if (!item.workspace || (typeof item.workspace.index === 'function' && item.workspace.index() === workspaceIndex)) {
+                Logger.log(`Queue: Purging evaluation for window ${item.window.get_id()} because workspace was removed`);
+                return false;
+            }
+            return true;
+        });
+        
+        if (initialLength !== this._evaluationQueue.length) {
+            Logger.log(`WindowHandler: Pruned ${initialLength - this._evaluationQueue.length} items for workspace ${workspaceIndex}`);
+        }
+        
+        if (this.tilingManager) {
+            this.tilingManager.cancelWorkspaceOperations(workspaceIndex);
+        }
+    }
+
     onOverviewHidden() {
         const workspace = this.windowingManager.getWorkspace();
         const nMonitors = global.display.get_n_monitors();

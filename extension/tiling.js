@@ -800,6 +800,24 @@ export const TilingManager = GObject.registerClass({
         this._processingQueue = false;
     }
 
+    cancelWorkspaceOperations(workspaceIndex) {
+        let initialLength = this._openingQueue.length;
+        this._openingQueue = this._openingQueue.filter(item => {
+            let win = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null).find(w => w.get_id() === item.windowId);
+            if (!win) return false;
+            let ws = win.get_workspace();
+            if (!ws || (typeof ws.index === 'function' && ws.index() === workspaceIndex)) {
+                Logger.log(`Cancelling queued operation for window ${item.windowId} in removed workspace ${workspaceIndex}`);
+                return false;
+            }
+            return true;
+        });
+        if (initialLength !== this._openingQueue.length) {
+            Logger.log(`TilingManager: Pruned ${initialLength - this._openingQueue.length} items for workspace ${workspaceIndex}`);
+        }
+    }
+
+
     setTmpSwap(id1, id2) {
         if (id1 === id2 || (this.tmp_swap[0] === id2 && this.tmp_swap[1] === id1))
             return;
