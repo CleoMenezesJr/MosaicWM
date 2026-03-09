@@ -375,8 +375,9 @@ class SmartResizeIterator {
 
     _waitMs(ms) {
         return new Promise(resolve => {
-            if (this._ext && this._ext._timeoutRegistry) {
-                this._ext._timeoutRegistry.add(ms, () => {
+            const ext = this.tilingManager._extension;
+            if (ext && ext._timeoutRegistry) {
+                ext._timeoutRegistry.add(ms, () => {
                     resolve();
                 }, '_waitMs');
             } else {
@@ -387,7 +388,7 @@ class SmartResizeIterator {
     }
 
     // Wait for resize completion via 'size-changed' signals
-    async _waitForSizeChanges(windows, timeoutMs = 1500) {
+    async _waitForSizeChanges(windows) {
         if (windows.length === 0) {
             Logger.log(`[SMART RESIZE EVENT-DRIVEN] No windows to monitor, returning immediately`);
             return false;
@@ -396,7 +397,6 @@ class SmartResizeIterator {
         const startTime = Date.now();
         const promises = [];
         const signalHandlers = [];
-        let timeoutOccurred = false;
 
         // Create a Promise for each window that resolves on its first 'size-changed'
         for (const window of windows) {
@@ -411,56 +411,20 @@ class SmartResizeIterator {
             promises.push(promise);
         }
 
-        // Promise.race: resolve when ANY window moves
-        // Timeout fallback if window manager is slow to respond
-        let registryId = null;
-        const timeoutPromise = new Promise((resolve) => {
-            if (this._ext && this._ext._timeoutRegistry) {
-                registryId = this._ext._timeoutRegistry.add(timeoutMs, () => {
-                    timeoutOccurred = true;
-                    resolve();
-                }, '_waitForSizeChanges');
-            } else {
-                // No registry available — resolve immediately to avoid unmanaged timeouts
-                timeoutOccurred = true;
-                resolve();
-            }
-        });
-        
         // Instant Abort Promise
         const abortPromise = new Promise((resolve) => {
             this._abortResolver = resolve;
         });
 
         try {
-            // Wait for the first window to resize, then give others 40ms to catch up
-            const firstResizeWithDebounce = Promise.race(promises).then(() => {
-                return new Promise(resolve => {
-                    if (this._ext && this._ext._timeoutRegistry) {
-                        this._ext._timeoutRegistry.add(40, resolve, '_waitForSizeChanges_debounce');
-                    } else {
-                        // No registry available — resolve immediately to avoid unmanaged timeouts
-                        resolve();
-                    }
-                });
-            });
-
             await Promise.race([
-                firstResizeWithDebounce,
-                timeoutPromise,
+                Promise.race(promises),
                 abortPromise
             ]);
             this._abortResolver = null; // Clean up
-            if (registryId !== null && this._ext && this._ext._timeoutRegistry && !timeoutOccurred) {
-                this._ext._timeoutRegistry.remove(registryId);
-            }
             
             const totalElapsed = Date.now() - startTime;
-            if (timeoutOccurred) {
-                Logger.log(`[SMART RESIZE EVENT-DRIVEN] ⏱ Timeout after ${totalElapsed}ms (window manager slow to respond)`);
-            } else {
-                Logger.log(`[SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in ${totalElapsed}ms`);
-            }
+            Logger.log(`[SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in ${totalElapsed}ms`);
         } catch (e) {
             Logger.log(`[SMART RESIZE EVENT-DRIVEN] Promise.race error (should not happen): ${e}`);
         } finally {
@@ -474,7 +438,7 @@ class SmartResizeIterator {
             }
         }
         
-        return timeoutOccurred;
+        return false;
     }
 
     // Apply final reduced sizes and mark appropriate flags
