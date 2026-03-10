@@ -1,0 +1,374 @@
+GNOME Shell-Message: 21:04:06.278: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690129
+GNOME Shell-Message: 21:04:06.362: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:06.365: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 3972690129 with size 466x367
+GNOME Shell-Message: 21:04:06.366: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3972690129 set to 466x367
+GNOME Shell-Message: 21:04:06.366: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:06.366: [MOSAIC WM] Enqueuing window 3972690129 for opening (queue size: 0)
+GNOME Shell-Message: 21:04:06.366: [MOSAIC WM] Processing queue: window 3972690129 (remaining: 0)
+GNOME Shell-Message: 21:04:06.367: [MOSAIC WM] Connecting signals for window 3972690129
+GNOME Shell-Message: 21:04:06.380: [MOSAIC WM] Window 3972690129 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:06.380: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:06.380: [MOSAIC WM] Enqueuing window 3972690129 for opening (queue size: 0)
+GNOME Shell-Message: 21:04:06.467: [MOSAIC WM] Processing queue: window 3972690129 (remaining: 0)
+GNOME Shell-Message: 21:04:06.480: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=true)
+GNOME Shell-Message: 21:04:18.554: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690130
+GNOME Shell-Message: 21:04:18.599: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:18.602: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 3972690130 with size 466x367
+GNOME Shell-Message: 21:04:18.602: [MOSAIC WM] MAPPED SLIDE-IN (ease intercepted): Applying offset (100, 0) to window 3972690130 Mode: 9
+GNOME Shell-Message: 21:04:18.602: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3972690130 set to 466x367
+GNOME Shell-Message: 21:04:18.602: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:18.603: [MOSAIC WM] Enqueuing window 3972690130 for opening (queue size: 0)
+GNOME Shell-Message: 21:04:18.603: [MOSAIC WM] Processing queue: window 3972690130 (remaining: 0)
+GNOME Shell-Message: 21:04:18.604: [MOSAIC WM] Connecting signals for window 3972690130
+GNOME Shell-Message: 21:04:18.615: [MOSAIC WM] Window 3972690130 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:18.616: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:18.616: [MOSAIC WM] Enqueuing window 3972690130 for opening (queue size: 0)
+GNOME Shell-Message: 21:04:18.704: [MOSAIC WM] Processing queue: window 3972690130 (remaining: 0)
+GNOME Shell-Message: 21:04:18.716: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690131
+GNOME Shell-Message: 21:04:18.717: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=true)
+GNOME Shell-Message: 21:04:18.765: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:18.769: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 3972690131 with size 466x367
+GNOME Shell-Message: 21:04:18.769: [MOSAIC WM] MAPPED SLIDE-IN (ease intercepted): Applying offset (0, -100) to window 3972690131 Mode: 9
+GNOME Shell-Message: 21:04:18.769: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3972690131 set to 466x367
+GNOME Shell-Message: 21:04:18.770: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:18.770: [MOSAIC WM] Enqueuing window 3972690131 for opening (queue size: 0)
+GNOME Shell-Message: 21:04:18.770: [MOSAIC WM] Connecting signals for window 3972690131
+GNOME Shell-Message: 21:04:18.777: [MOSAIC WM] Window 3972690131 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:18.777: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:18.777: [MOSAIC WM] Enqueuing window 3972690131 for opening (queue size: 1)
+GNOME Shell-Message: 21:04:18.805: [MOSAIC WM] Processing queue: window 3972690131 (remaining: 1)
+GNOME Shell-Message: 21:04:18.877: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=true)
+GNOME Shell-Message: 21:04:18.892: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690132
+GNOME Shell-Message: 21:04:18.906: [MOSAIC WM] Processing queue: window 3972690131 (remaining: 0)
+GNOME Shell-Message: 21:04:18.937: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:18.942: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 3972690132 with size 466x367
+GNOME Shell-Message: 21:04:18.943: [MOSAIC WM] MAPPED SLIDE-IN (ease intercepted): Applying offset (-100, 0) to window 3972690132 Mode: 9
+GNOME Shell-Message: 21:04:18.943: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3972690132 set to 466x367
+GNOME Shell-Message: 21:04:18.943: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:18.943: [MOSAIC WM] Enqueuing window 3972690132 for opening (queue size: 0)
+GNOME Shell-Message: 21:04:18.943: [MOSAIC WM] Connecting signals for window 3972690132
+GNOME Shell-Message: 21:04:18.955: [MOSAIC WM] Window 3972690132 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:18.955: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:18.955: [MOSAIC WM] Enqueuing window 3972690132 for opening (queue size: 1)
+GNOME Shell-Message: 21:04:19.008: [MOSAIC WM] Processing queue: window 3972690132 (remaining: 1)
+GNOME Shell-Message: 21:04:19.053: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690133
+GNOME Shell-Message: 21:04:19.056: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=true)
+GNOME Shell-Message: 21:04:19.098: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.103: [MOSAIC WM] [PATCH SIZE CHECK] _shouldAnimateActor intercepted window 3972690133 with size 466x367
+GNOME Shell-Message: 21:04:19.103: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3972690133 set to 466x367
+GNOME Shell-Message: 21:04:19.103: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.104: [MOSAIC WM] Connecting signals for window 3972690133
+GNOME Shell-Message: 21:04:19.105: [MOSAIC WM] [SMART RESIZE] SmartResizeIterator created for 5 resizable windows (0 non-resizable, 0 already at minimum) - 5 available for resize
+GNOME Shell-Message: 21:04:19.105: [MOSAIC WM] [SMART RESIZE] tryFitWithResize START: 5 total windows (4 existing + 1 new)
+GNOME Shell-Message: 21:04:19.108: [MOSAIC WM] [SMART RESIZE] Natural fit failed - starting iterative smart resize
+GNOME Shell-Message: 21:04:19.108: [MOSAIC WM] [SMART RESIZE] ===== Iteration 1 start =====
+GNOME Shell-Message: 21:04:19.108: [MOSAIC WM] [SMART RESIZE] Windows: 5 candidates, 0 at minimum
+GNOME Shell-Message: 21:04:19.108: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690132: 466x367
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690132 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690131: 466x367
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690131 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690129: 466x367
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690129 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690130: 466x367
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690130 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690133: 466x367
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690133 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.109: [MOSAIC WM] [SMART RESIZE] Iter 1: Waiting for size-changed signals...
+GNOME Shell-Message: 21:04:19.110: [MOSAIC WM] Processing queue: window 3972690132 (remaining: 0)
+GNOME Shell-Message: 21:04:19.121: [MOSAIC WM] Window 3972690133 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:19.212: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690134
+GNOME Shell-Message: 21:04:19.213: [MOSAIC WM] [SMART RESIZE] Iterator aborted - cancelling all operations
+GNOME Shell-Message: 21:04:19.213: [MOSAIC WM] [SMART RESIZE] Iteration 1 aborted during await - escaping
+GNOME Shell-Message: 21:04:19.213: [MOSAIC WM] [SMART RESIZE] tryFitWithResize ABORTED
+GNOME Shell-Message: 21:04:19.213: [MOSAIC WM] [SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared
+GNOME Shell-Message: 21:04:19.213: [MOSAIC WM] moveOversizedWindow: origin=0, next=1
+GNOME Shell-Message: 21:04:19.214: [MOSAIC WM] Checking if window 3972690133 fits in workspace 1
+GNOME Shell-Message: 21:04:19.214: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 21:04:19.214: [MOSAIC WM] savePreferredSize: Skipping for 3972690133 - already constrained by smart resize
+GNOME Shell-Message: 21:04:19.221: [MOSAIC WM] moveOversizedWindow: window geometry ready, waiting for animation then retiling
+GNOME Shell-Message: 21:04:19.233: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 21:04:19.233: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690132: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.233: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690131: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.233: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690129: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.233: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690130: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.248: [MOSAIC WM] Window 3972690133 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:19.289: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.295: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3972690134 set to 466x367
+GNOME Shell-Message: 21:04:19.295: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.296: [MOSAIC WM] Connecting signals for window 3972690134
+GNOME Shell-Message: 21:04:19.298: [MOSAIC WM] [SMART RESIZE] SmartResizeIterator created for 5 resizable windows (0 non-resizable, 0 already at minimum) - 5 available for resize
+GNOME Shell-Message: 21:04:19.299: [MOSAIC WM] [SMART RESIZE] tryFitWithResize START: 5 total windows (4 existing + 1 new)
+GNOME Shell-Message: 21:04:19.301: [MOSAIC WM] [SMART RESIZE] Natural fit failed - starting iterative smart resize
+GNOME Shell-Message: 21:04:19.301: [MOSAIC WM] [SMART RESIZE] ===== Iteration 1 start =====
+GNOME Shell-Message: 21:04:19.301: [MOSAIC WM] [SMART RESIZE] Windows: 5 candidates, 0 at minimum
+GNOME Shell-Message: 21:04:19.301: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 21:04:19.301: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690132: 466x367
+GNOME Shell-Message: 21:04:19.301: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690132 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.301: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690131: 466x367
+GNOME Shell-Message: 21:04:19.301: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690131 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.301: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690129: 466x367
+GNOME Shell-Message: 21:04:19.302: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690129 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.302: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690130: 466x367
+GNOME Shell-Message: 21:04:19.302: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690130 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.302: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690134: 466x367
+GNOME Shell-Message: 21:04:19.302: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690134 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.302: [MOSAIC WM] [SMART RESIZE] Iter 1: Waiting for size-changed signals...
+GNOME Shell-Message: 21:04:19.308: [MOSAIC WM] Window 3972690134 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:19.322: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 3972690129 fired size-changed (20ms after batch resize)
+GNOME Shell-Message: 21:04:19.323: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690132: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:19.323: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690131: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:19.323: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690129: shrank_w=94px (req=93), shrank_h=74px (req=73)
+GNOME Shell-Message: 21:04:19.323: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690129 shrank successfully to 372x293
+GNOME Shell-Message: 21:04:19.323: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690130: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:19.323: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690134: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:19.326: [MOSAIC WM] [SMART RESIZE] Iter 1: Layout simulation: overflow=true
+GNOME Shell-Message: 21:04:19.326: [MOSAIC WM] [SMART RESIZE] Iter 1: Still overflowing. Resizable remaining: 5
+GNOME Shell-Message: 21:04:19.326: [MOSAIC WM] [SMART RESIZE] Iter 1: Will continue on next iteration (5 can still shrink)
+GNOME Shell-Message: 21:04:19.382: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690135
+GNOME Shell-Message: 21:04:19.382: [MOSAIC WM] [SMART RESIZE] Iterator aborted - cancelling all operations
+GNOME Shell-Message: 21:04:19.426: [MOSAIC WM] [SMART RESIZE] tryFitWithResize ABORTED
+GNOME Shell-Message: 21:04:19.426: [MOSAIC WM] [SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared
+GNOME Shell-Message: 21:04:19.426: [MOSAIC WM] moveOversizedWindow: origin=0, next=1
+GNOME Shell-Message: 21:04:19.427: [MOSAIC WM] Checking if window 3972690134 fits in workspace 1
+GNOME Shell-Message: 21:04:19.427: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 21:04:19.427: [MOSAIC WM] savePreferredSize: Skipping for 3972690134 - already constrained by smart resize
+GNOME Shell-Message: 21:04:19.431: [MOSAIC WM] moveOversizedWindow: window geometry ready, waiting for animation then retiling
+GNOME Shell-Message: 21:04:19.436: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.443: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3972690135 set to 466x367
+GNOME Shell-Message: 21:04:19.444: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.444: [MOSAIC WM] Enqueuing window 3972690135 for opening (queue size: 0)
+GNOME Shell-Message: 21:04:19.444: [MOSAIC WM] Processing queue: window 3972690135 (remaining: 0)
+GNOME Shell-Message: 21:04:19.445: [MOSAIC WM] Connecting signals for window 3972690135
+GNOME Shell-Message: 21:04:19.448: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 21:04:19.448: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690132: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.448: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690131: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.448: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690129: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:19.449: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690135: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.449: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690130: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:19.472: [MOSAIC WM] moveOversizedWindow: window mispositioned by 237px, retiling
+GNOME Shell-Message: 21:04:19.478: [MOSAIC WM] Window 3972690134 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:19.478: [MOSAIC WM] Window 3972690135 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:19.478: [MOSAIC WM] savePreferredSize: Skipping for 3972690135 - during (reverse) smart resize
+GNOME Shell-Message: 21:04:19.478: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.478: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:19.478: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690130
+GNOME Shell-Message: 21:04:19.481: [MOSAIC WM] Enqueuing window 3972690135 for opening (queue size: 0)
+GNOME Shell-Message: 21:04:19.534: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690136
+GNOME Shell-Message: 21:04:19.546: [MOSAIC WM] Processing queue: window 3972690135 (remaining: 0)
+GNOME Shell-Message: 21:04:19.546: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:19.547: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690130
+GNOME Shell-Message: 21:04:19.586: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.586: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:19.587: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690130
+GNOME Shell-Message: 21:04:19.597: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3972690136 set to 466x367
+GNOME Shell-Message: 21:04:19.597: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.597: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:19.597: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690130
+GNOME Shell-Message: 21:04:19.598: [MOSAIC WM] Connecting signals for window 3972690136
+GNOME Shell-Message: 21:04:19.600: [MOSAIC WM] [SMART RESIZE] SmartResizeIterator created for 6 resizable windows (0 non-resizable, 0 already at minimum) - 6 available for resize
+GNOME Shell-Message: 21:04:19.600: [MOSAIC WM] [SMART RESIZE] tryFitWithResize START: 6 total windows (5 existing + 1 new)
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Natural fit failed - starting iterative smart resize
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] ===== Iteration 1 start =====
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Windows: 6 candidates, 0 at minimum
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690132: 466x367
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690132 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690131: 466x367
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690131 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690129: 372x293
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690129 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:19.601: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690135: 466x367
+GNOME Shell-Message: 21:04:19.602: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690135 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.602: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690130: 372x293
+GNOME Shell-Message: 21:04:19.602: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690130 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:19.602: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690136: 466x367
+GNOME Shell-Message: 21:04:19.602: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690136 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.602: [MOSAIC WM] [SMART RESIZE] Iter 1: Waiting for size-changed signals...
+GNOME Shell-Message: 21:04:19.602: [MOSAIC WM] Window 3972690136 ready: size=466x367, workArea=1280x768
+GNOME Shell-Message: 21:04:19.618: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:19.618: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690130
+GNOME Shell-Message: 21:04:19.620: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:19.620: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690130
+GNOME Shell-Message: 21:04:19.620: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 3972690136 fired size-changed (18ms after batch resize)
+GNOME Shell-Message: 21:04:19.621: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690132: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:19.621: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690131: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:19.621: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690129: shrank_w=0px (req=74), shrank_h=0px (req=58)
+GNOME Shell-Message: 21:04:19.621: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690135: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:19.621: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690130: shrank_w=0px (req=74), shrank_h=0px (req=58)
+GNOME Shell-Message: 21:04:19.621: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690136: shrank_w=94px (req=93), shrank_h=74px (req=73)
+GNOME Shell-Message: 21:04:19.621: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690136 shrank successfully to 372x293
+GNOME Shell-Message: 21:04:19.621: [MOSAIC WM] [SMART RESIZE] Iter 1: Layout simulation: overflow=true
+GNOME Shell-Message: 21:04:19.621: [MOSAIC WM] [SMART RESIZE] Iter 1: Still overflowing. Resizable remaining: 6
+GNOME Shell-Message: 21:04:19.622: [MOSAIC WM] [SMART RESIZE] Iter 1: Will continue on next iteration (6 can still shrink)
+GNOME Shell-Message: 21:04:19.681: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690137
+GNOME Shell-Message: 21:04:19.681: [MOSAIC WM] [SMART RESIZE] Iterator aborted - cancelling all operations
+GNOME Shell-Message: 21:04:19.682: [MOSAIC WM] moveOversizedWindow: window mispositioned by 237px, retiling
+GNOME Shell-Message: 21:04:19.722: [MOSAIC WM] [SMART RESIZE] tryFitWithResize ABORTED
+GNOME Shell-Message: 21:04:19.722: [MOSAIC WM] [SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared
+GNOME Shell-Message: 21:04:19.722: [MOSAIC WM] moveOversizedWindow: origin=0, next=1
+GNOME Shell-Message: 21:04:19.722: [MOSAIC WM] Checking if window 3972690136 fits in workspace 1
+GNOME Shell-Message: 21:04:19.722: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 21:04:19.723: [MOSAIC WM] savePreferredSize: Skipping for 3972690136 - already constrained by smart resize
+GNOME Shell-Message: 21:04:19.727: [MOSAIC WM] moveOversizedWindow: window geometry ready, waiting for animation then retiling
+GNOME Shell-Message: 21:04:19.729: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.733: [MOSAIC WM] savePreferredSize: [INITIAL] Window 3972690137 set to 372x293
+GNOME Shell-Message: 21:04:19.733: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.734: [MOSAIC WM] Connecting signals for window 3972690137
+GNOME Shell-Message: 21:04:19.737: [MOSAIC WM] [SMART RESIZE] SmartResizeIterator created for 6 resizable windows (0 non-resizable, 0 already at minimum) - 6 available for resize
+GNOME Shell-Message: 21:04:19.737: [MOSAIC WM] [SMART RESIZE] tryFitWithResize START: 6 total windows (5 existing + 1 new)
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Natural fit failed - starting iterative smart resize
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] ===== Iteration 1 start =====
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Windows: 6 candidates, 0 at minimum
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690132: 466x367
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690132 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690131: 466x367
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690131 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690129: 372x293
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690129 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690135: 466x367
+GNOME Shell-Message: 21:04:19.738: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690135 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.739: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690130: 372x293
+GNOME Shell-Message: 21:04:19.739: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690130 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:19.739: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690137: 372x293
+GNOME Shell-Message: 21:04:19.739: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690137 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:19.739: [MOSAIC WM] [SMART RESIZE] Iter 1: Waiting for size-changed signals...
+GNOME Shell-Message: 21:04:19.739: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 21:04:19.739: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690132: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.739: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690137: frame=372x293, pref=372x293, diff=0x0
+GNOME Shell-Message: 21:04:19.740: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690131: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.740: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690129: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:19.740: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690135: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.740: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690130: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:19.749: [MOSAIC WM] Window 3972690137 ready: size=372x293, workArea=1280x768
+GNOME Shell-Message: 21:04:19.749: [MOSAIC WM] savePreferredSize: Skipping for 3972690137 - already constrained by smart resize
+GNOME Shell-Message: 21:04:19.750: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.754: [MOSAIC WM] Window 3972690136 ready: size=372x293, workArea=1280x768
+GNOME Shell-Message: 21:04:19.836: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690138
+GNOME Shell-Message: 21:04:19.836: [MOSAIC WM] [SMART RESIZE] Iterator aborted - cancelling all operations
+GNOME Shell-Message: 21:04:19.836: [MOSAIC WM] [SMART RESIZE] Iteration 1 aborted during await - escaping
+GNOME Shell-Message: 21:04:19.837: [MOSAIC WM] [SMART RESIZE] tryFitWithResize ABORTED
+GNOME Shell-Message: 21:04:19.837: [MOSAIC WM] [SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared
+GNOME Shell-Message: 21:04:19.837: [MOSAIC WM] moveOversizedWindow: origin=0, next=1
+GNOME Shell-Message: 21:04:19.837: [MOSAIC WM] Checking if window 3972690137 fits in workspace 1
+GNOME Shell-Message: 21:04:19.837: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 21:04:19.838: [MOSAIC WM] savePreferredSize: Skipping for 3972690137 - already constrained by smart resize
+GNOME Shell-Message: 21:04:19.845: [MOSAIC WM] moveOversizedWindow: window geometry ready, waiting for animation then retiling
+GNOME Shell-Message: 21:04:19.848: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 21:04:19.848: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690132: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.848: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690131: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.848: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690129: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:19.848: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690135: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:19.848: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690130: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:19.865: [MOSAIC WM] Window 3972690137 ready: size=372x293, workArea=1280x768
+GNOME Shell-Message: 21:04:19.894: [MOSAIC WM] savePreferredSize: Skipping for 3972690138 - during (reverse) smart resize
+GNOME Shell-Message: 21:04:19.894: [MOSAIC WM] savePreferredSize: Skipping for 3972690138 - during (reverse) smart resize
+GNOME Shell-Message: 21:04:19.894: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:19.894: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:19.894: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690130
+GNOME Shell-Message: 21:04:19.895: [MOSAIC WM] Connecting signals for window 3972690138
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] SmartResizeIterator created for 6 resizable windows (0 non-resizable, 0 already at minimum) - 6 available for resize
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] tryFitWithResize START: 6 total windows (5 existing + 1 new)
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] Natural fit failed - starting iterative smart resize
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] ===== Iteration 1 start =====
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] Windows: 6 candidates, 0 at minimum
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690132: 466x367
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690132 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690131: 466x367
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690131 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690129: 372x293
+GNOME Shell-Message: 21:04:19.898: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690129 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:19.899: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690135: 466x367
+GNOME Shell-Message: 21:04:19.899: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690135 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:19.899: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690130: 372x293
+GNOME Shell-Message: 21:04:19.899: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690130 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:19.899: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690138: 372x293
+GNOME Shell-Message: 21:04:19.899: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690138 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:19.899: [MOSAIC WM] [SMART RESIZE] Iter 1: Waiting for size-changed signals...
+GNOME Shell-Message: 21:04:19.909: [MOSAIC WM] Window 3972690138 ready: size=372x293, workArea=1280x768
+GNOME Shell-Message: 21:04:19.979: [MOSAIC WM] moveOversizedWindow: window mispositioned by 388px, retiling
+GNOME Shell-Message: 21:04:19.989: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 3972690139
+GNOME Shell-Message: 21:04:19.989: [MOSAIC WM] [SMART RESIZE] Iterator aborted - cancelling all operations
+GNOME Shell-Message: 21:04:19.990: [MOSAIC WM] [SMART RESIZE] Iteration 1 aborted during await - escaping
+GNOME Shell-Message: 21:04:19.990: [MOSAIC WM] [SMART RESIZE] tryFitWithResize ABORTED
+GNOME Shell-Message: 21:04:19.990: [MOSAIC WM] [SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared
+GNOME Shell-Message: 21:04:19.990: [MOSAIC WM] moveOversizedWindow: origin=0, next=1
+GNOME Shell-Message: 21:04:19.990: [MOSAIC WM] Checking if window 3972690138 fits in workspace 1
+GNOME Shell-Message: 21:04:19.990: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 21:04:19.993: [MOSAIC WM] savePreferredSize: Skipping for 3972690138 - during (reverse) smart resize
+GNOME Shell-Message: 21:04:19.997: [MOSAIC WM] moveOversizedWindow: window geometry ready, waiting for animation then retiling
+GNOME Shell-Message: 21:04:20.003: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 21:04:20.003: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690132: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:20.003: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690131: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:20.003: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690129: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:20.003: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690135: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:20.003: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690130: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:20.016: [MOSAIC WM] Window 3972690138 ready: size=372x293, workArea=1280x768
+GNOME Shell-Message: 21:04:20.054: [MOSAIC WM] savePreferredSize: Skipping for 3972690139 - during (reverse) smart resize
+GNOME Shell-Message: 21:04:20.055: [MOSAIC WM] savePreferredSize: Skipping for 3972690139 - during (reverse) smart resize
+GNOME Shell-Message: 21:04:20.055: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:20.055: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:20.055: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690130
+GNOME Shell-Message: 21:04:20.055: [MOSAIC WM] Connecting signals for window 3972690139
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] SmartResizeIterator created for 6 resizable windows (0 non-resizable, 0 already at minimum) - 6 available for resize
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] tryFitWithResize START: 6 total windows (5 existing + 1 new)
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] Natural fit failed - starting iterative smart resize
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] ===== Iteration 1 start =====
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] Windows: 6 candidates, 0 at minimum
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690132: 466x367
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690132 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690131: 466x367
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690131 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690129: 372x293
+GNOME Shell-Message: 21:04:20.059: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690129 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:20.060: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690135: 466x367
+GNOME Shell-Message: 21:04:20.060: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690135 shrinking 466x367 -> 372x293
+GNOME Shell-Message: 21:04:20.060: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690130: 372x293
+GNOME Shell-Message: 21:04:20.060: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690130 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:20.060: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 3972690139: 372x293
+GNOME Shell-Message: 21:04:20.060: [MOSAIC WM] [SMART RESIZE] Iter 1: 3972690139 shrinking 372x293 -> 297x250
+GNOME Shell-Message: 21:04:20.060: [MOSAIC WM] [SMART RESIZE] Iter 1: Waiting for size-changed signals...
+GNOME Shell-Message: 21:04:20.070: [MOSAIC WM] Window 3972690139 ready: size=372x293, workArea=1280x768
+GNOME Shell-Message: 21:04:20.098: [MOSAIC WM] moveOversizedWindow: window mispositioned by 188px, retiling
+GNOME Shell-Message: 21:04:20.158: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:20.159: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690130
+GNOME Shell-Message: 21:04:20.252: [MOSAIC WM] moveOversizedWindow: window mispositioned by 568px, retiling
+GNOME Shell-Message: 21:04:20.354: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:20.354: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 3972690130 fired size-changed (294ms after batch resize)
+GNOME Shell-Message: 21:04:20.355: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690132: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:20.355: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690131: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:20.355: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690129: shrank_w=0px (req=74), shrank_h=0px (req=58)
+GNOME Shell-Message: 21:04:20.355: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690135: shrank_w=0px (req=93), shrank_h=0px (req=73)
+GNOME Shell-Message: 21:04:20.355: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690130: shrank_w=-18px (req=74), shrank_h=-14px (req=58)
+GNOME Shell-Message: 21:04:20.355: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 3972690139: shrank_w=0px (req=74), shrank_h=0px (req=58)
+GNOME Shell-Message: 21:04:20.355: [MOSAIC WM] [SMART RESIZE] Iter 1: Layout simulation: overflow=true
+GNOME Shell-Message: 21:04:20.355: [MOSAIC WM] [SMART RESIZE] Iter 1: Still overflowing. Resizable remaining: 6
+GNOME Shell-Message: 21:04:20.355: [MOSAIC WM] [SMART RESIZE] Iteration 1 EARLY EXIT: No window could even start shrinking - preferred sizes too tight. IMPOSSIBLE to fit. Aborting.
+GNOME Shell-Message: 21:04:20.356: [MOSAIC WM] [SMART RESIZE] OVERFLOW: Cannot fit even at minimum - applying reverse resize
+GNOME Shell-Message: 21:04:20.356: [MOSAIC WM] [SMART RESIZE] Reverting 6 windows to original sizes
+GNOME Shell-Message: 21:04:20.356: [MOSAIC WM] [SMART RESIZE] Reverting 3972690132: 466x367
+GNOME Shell-Message: 21:04:20.356: [MOSAIC WM] [SMART RESIZE] Reverting 3972690131: 466x367
+GNOME Shell-Message: 21:04:20.356: [MOSAIC WM] [SMART RESIZE] Reverting 3972690129: 372x293
+GNOME Shell-Message: 21:04:20.356: [MOSAIC WM] [SMART RESIZE] Reverting 3972690135: 466x367
+GNOME Shell-Message: 21:04:20.356: [MOSAIC WM] [SMART RESIZE] Reverting 3972690130: 372x293
+GNOME Shell-Message: 21:04:20.356: [MOSAIC WM] [SMART RESIZE] Reverting 3972690139: 372x293
+GNOME Shell-Message: 21:04:20.359: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:20.362: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:20.375: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 21:04:20.456: [MOSAIC WM] [SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared
+GNOME Shell-Message: 21:04:20.456: [MOSAIC WM] moveOversizedWindow: origin=0, next=1
+GNOME Shell-Message: 21:04:20.456: [MOSAIC WM] Checking if window 3972690139 fits in workspace 1
+GNOME Shell-Message: 21:04:20.456: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 21:04:20.462: [MOSAIC WM] savePreferredSize: Skipping for 3972690139 - already constrained by smart resize
+GNOME Shell-Message: 21:04:20.466: [MOSAIC WM] moveOversizedWindow: window geometry ready, waiting for animation then retiling
+GNOME Shell-Message: 21:04:20.473: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 21:04:20.473: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690132: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:20.473: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690131: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:20.473: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690129: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:20.473: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690135: frame=466x367, pref=466x367, diff=0x0
+GNOME Shell-Message: 21:04:20.473: [MOSAIC WM] tryRestoreWindowSizes: Check 3972690130: frame=372x293, pref=466x367, diff=94x74
+GNOME Shell-Message: 21:04:20.499: [MOSAIC WM] WindowDescriptor: Using targetSmartResizeSize 390x307 for 3972690129
+GNOME Shell-Message: 21:04:20.506: [MOSAIC WM] Window 3972690139 ready: size=372x293, workArea=1280x768

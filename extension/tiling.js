@@ -375,9 +375,8 @@ class SmartResizeIterator {
 
     _waitMs(ms) {
         return new Promise(resolve => {
-            const ext = this.tilingManager._extension;
-            if (ext && ext._timeoutRegistry) {
-                ext._timeoutRegistry.add(ms, () => {
+            if (this._ext && this._ext._timeoutRegistry) {
+                this._ext._timeoutRegistry.add(ms, () => {
                     resolve();
                 }, '_waitMs');
             } else {
@@ -388,7 +387,7 @@ class SmartResizeIterator {
     }
 
     // Wait for resize completion via 'size-changed' signals
-    async _waitForSizeChanges(windows) {
+    async _waitForSizeChanges(windows, timeoutMs = 1500) {
         if (windows.length === 0) {
             Logger.log(`[SMART RESIZE EVENT-DRIVEN] No windows to monitor, returning immediately`);
             return false;
@@ -397,6 +396,7 @@ class SmartResizeIterator {
         const startTime = Date.now();
         const promises = [];
         const signalHandlers = [];
+        let timeoutOccurred = false;
 
         // Create a Promise for each window that resolves on its first 'size-changed'
         for (const window of windows) {
@@ -411,20 +411,56 @@ class SmartResizeIterator {
             promises.push(promise);
         }
 
+        // Promise.race: resolve when ANY window moves
+        // Timeout fallback if window manager is slow to respond
+        let registryId = null;
+        const timeoutPromise = new Promise((resolve) => {
+            if (this._ext && this._ext._timeoutRegistry) {
+                registryId = this._ext._timeoutRegistry.add(timeoutMs, () => {
+                    timeoutOccurred = true;
+                    resolve();
+                }, '_waitForSizeChanges');
+            } else {
+                // No registry available — resolve immediately to avoid unmanaged timeouts
+                timeoutOccurred = true;
+                resolve();
+            }
+        });
+        
         // Instant Abort Promise
         const abortPromise = new Promise((resolve) => {
             this._abortResolver = resolve;
         });
 
         try {
+            // Wait for the first window to resize, then give others 40ms to catch up
+            const firstResizeWithDebounce = Promise.race(promises).then(() => {
+                return new Promise(resolve => {
+                    if (this._ext && this._ext._timeoutRegistry) {
+                        this._ext._timeoutRegistry.add(40, resolve, '_waitForSizeChanges_debounce');
+                    } else {
+                        // No registry available — resolve immediately to avoid unmanaged timeouts
+                        resolve();
+                    }
+                });
+            });
+
             await Promise.race([
-                Promise.race(promises),
+                firstResizeWithDebounce,
+                timeoutPromise,
                 abortPromise
             ]);
             this._abortResolver = null; // Clean up
+            if (registryId !== null && this._ext && this._ext._timeoutRegistry && !timeoutOccurred) {
+                this._ext._timeoutRegistry.remove(registryId);
+            }
             
             const totalElapsed = Date.now() - startTime;
-            Logger.log(`[SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in ${totalElapsed}ms`);
+            if (timeoutOccurred) {
+                Logger.log(`[SMART RESIZE EVENT-DRIVEN] ⏱ Timeout after ${totalElapsed}ms (window manager slow to respond)`);
+            } else {
+                Logger.log(`[SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in ${totalElapsed}ms`);
+            }
         } catch (e) {
             Logger.log(`[SMART RESIZE EVENT-DRIVEN] Promise.race error (should not happen): ${e}`);
         } finally {
@@ -438,7 +474,7 @@ class SmartResizeIterator {
             }
         }
         
-        return false;
+        return timeoutOccurred;
     }
 
     // Apply final reduced sizes and mark appropriate flags
@@ -763,24 +799,6 @@ export const TilingManager = GObject.registerClass({
         this._openingQueue = [];
         this._processingQueue = false;
     }
-
-    cancelWorkspaceOperations(workspaceIndex) {
-        let initialLength = this._openingQueue.length;
-        this._openingQueue = this._openingQueue.filter(item => {
-            let win = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null).find(w => w.get_id() === item.windowId);
-            if (!win) return false;
-            let ws = win.get_workspace();
-            if (!ws || (typeof ws.index === 'function' && ws.index() === workspaceIndex)) {
-                Logger.log(`Cancelling queued operation for window ${item.windowId} in removed workspace ${workspaceIndex}`);
-                return false;
-            }
-            return true;
-        });
-        if (initialLength !== this._openingQueue.length) {
-            Logger.log(`TilingManager: Pruned ${initialLength - this._openingQueue.length} items for workspace ${workspaceIndex}`);
-        }
-    }
-
 
     setTmpSwap(id1, id2) {
         if (id1 === id2 || (this.tmp_swap[0] === id2 && this.tmp_swap[1] === id1))

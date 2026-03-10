@@ -203,8 +203,6 @@ export default class WindowMosaicExtension extends Extension {
         this.windowHandler = new WindowHandler(this);
         this.dragHandler = new DragHandler(this);
         this.resizeHandler = new ResizeHandler(this);
-        
-        this._monitorChangeDebounceId = null;
 
         // Apply slide-in animation patch
         this.windowHandler.patchMapWindow();
@@ -264,13 +262,12 @@ export default class WindowMosaicExtension extends Extension {
                         const mw = win.metaWindow || win.source?.metaWindow;
                         if (!mw) continue;
 
-                        // Fallback to Native GNOME layout if there are non-mosaic windows
-                        // (Above, Sticky, Maximized, Fullscreen, Modals, or Minimized)
+                        // Fallback to Native GNOME layout if there are "floating" windows
+                        // (Above, Sticky, Maximized, Fullscreen, or Modals)
                         if (mw.is_above() || mw.is_on_all_workspaces() ||
                             mw.is_fullscreen() ||
                             mw.get_window_type() === Meta.WindowType.MODAL_DIALOG ||
-                            mw.is_attached_dialog() ||
-                            mw.minimized) {
+                            mw.is_attached_dialog()) {
                             useMosaic = false;
                             break;
                         }
@@ -297,28 +294,13 @@ export default class WindowMosaicExtension extends Extension {
         this._wmEventIds.push(global.window_manager.connect('size-change', (wm, win, mode) => this.resizeHandler.onSizeChange(wm, win, mode)));
         this._wmEventIds.push(global.window_manager.connect('size-changed', (wm, win) => this.resizeHandler.onSizeChanged(wm, win)));
         this._displayEventIds.push(global.display.connect('window-created', (_, window) => this.windowHandler.onWindowCreated(window)));
-        this._displayEventIds.push(global.display.connect('window-entered-monitor', (display, monitorIndex, window) => this.windowHandler.onWindowEnteredMonitor(monitorIndex, window)));
-        this._displayEventIds.push(global.display.connect('window-left-monitor', (display, monitorIndex, window) => this.windowHandler.onWindowLeftMonitor(monitorIndex, window)));
         this._wmEventIds.push(global.window_manager.connect('destroy', (wm, win) => this.windowHandler.onWindowDestroyed(win.meta_window)));
         this._displayEventIds.push(global.display.connect("grab-op-begin", (display, window, grabpo) => this.dragHandler._grabOpBeginHandler(display, window, grabpo)));
         this._displayEventIds.push(global.display.connect("grab-op-end", (display, window, grabpo) => this.dragHandler._grabOpEndHandler(display, window, grabpo)));
-
-        this._displayEventIds.push(global.display.connect("monitors-changed", () => {
-            if (this._monitorChangeDebounceId) {
-                GLib.source_remove(this._monitorChangeDebounceId);
-            }
-            this._monitorChangeDebounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-                Logger.log("[MONITOR] Topology changed (hot-plug). Restoring global layout...");
-                this._tileAllWorkspaces();
-                this._monitorChangeDebounceId = null;
-                return GLib.SOURCE_REMOVE;
-            });
-        }));
         this._onOverviewHiddenId = Main.overview.connect('hidden', () => this.windowHandler.onOverviewHidden());
 
         this._workspaceManEventIds.push(global.workspace_manager.connect("active-workspace-changed", this._workspaceSwitchedHandler));
         this._workspaceManEventIds.push(global.workspace_manager.connect("workspace-added", this._workspaceAddSignal));
-        this._workspaceManEventIds.push(global.workspace_manager.connect("workspace-removed", (wm, index) => this.windowHandler.onWorkspaceRemoved(index)));
 
         let nWorkspaces = this._workspaceManager.get_n_workspaces();
         for(let i = 0; i < nWorkspaces; i++) {
@@ -439,11 +421,6 @@ export default class WindowMosaicExtension extends Extension {
         // Clear all managed timeouts first
         if (this._timeoutRegistry) {
             this._timeoutRegistry.clearAll();
-        }
-        
-        if (this._monitorChangeDebounceId) {
-            GLib.source_remove(this._monitorChangeDebounceId);
-            this._monitorChangeDebounceId = null;
         }
 
         if (this._resizeDebounceTimeout) {

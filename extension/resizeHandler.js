@@ -415,19 +415,11 @@ export const ResizeHandler = GObject.registerClass({
         const currentWorkspace = window.get_workspace();
         const workspaceManager = global.workspace_manager;
         const windowId = window.get_id();
-        const wasBornMaximized = WindowState.get(window, 'wasBornMaximized');
         
         if (preMaxSize) {
             WindowState.set(window, 'openingSize', preMaxSize);
         }
         
-        // Keep born-maximized windows in their current workspace during unmaximize.
-        if (wasBornMaximized) {
-            Logger.log(`handleUnmaximizeUndo: Window ${windowId} was born maximized. Ignoring return to WS-${origIndex}`);
-            this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor);
-            return;
-        }
-
         if (origIndex >= workspaceManager.get_n_workspaces()) {
             this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor);
             return;
@@ -455,16 +447,26 @@ export const ResizeHandler = GObject.registerClass({
             WindowState.set(window, 'preferredSize', preMaxSize);
         }
         
-        // Skip Smart Resize to preserve Mutter's "Restored Bounds" (top bar height) tracking in Wayland.
-        const canFit = this.tilingManager.canFitWindow(window, targetWorkspace, monitor, true, preMaxSize);
+        // SMART FIT: Try to fit without resize first, then attempt to fit WITH resize
+        const existingWindows = targetWorkspace.list_windows().filter(w => !this.windowingManager.isExcluded(w));
+        let canFit = this.tilingManager.canFitWindow(window, targetWorkspace, monitor, true, preMaxSize);
+        let resizeNeeded = false;
         
         if (!canFit) {
-            Logger.log(`handleUnmaximizeUndo: Window ${windowId} doesn't fit in WS-${origIndex} normally.`);
-            Logger.log(`handleUnmaximizeUndo: Smart Resize EXPLICITLY SKIPPED to preserve Wayland state. Staying in current workspace.`);
+            Logger.log(`handleUnmaximizeUndo: Window ${windowId} doesn't fit normally - attempting Smart Resize fit`);
+            // Pass preMaxSize as overrideSize to tryFitWithResize
+            canFit = await this.tilingManager.tryFitWithResize(window, existingWindows, targetWorkspace.get_work_area_for_monitor(monitor), preMaxSize);
+            resizeNeeded = canFit;
+        }
+        
+        if (!canFit) {
+            Logger.log(`handleUnmaximizeUndo: Window ${windowId} unable to fit even with Smart Resize - staying in current workspace`);
             this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor);
-            // Clear constraint specifically so Smart Resize allows natural dragging later
-            WindowState.remove(window, 'isConstrainedByMosaic');
             return;
+        }
+        
+        if (resizeNeeded) {
+            Logger.log(`handleUnmaximizeUndo: Smart Resize applied successfully for return of ${windowId}`);
         }
         
         window.unmaximize();

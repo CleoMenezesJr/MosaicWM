@@ -230,17 +230,6 @@ export const WindowHandler = GObject.registerClass({
         Logger.log(`Connecting signals for window ${window.get_id()}`);
         let ids = [];
 
-        // Handle window minimize/unminimize state changes
-        ids.push(window.connect('notify::minimized', (win) => {
-            const isMin = win.minimized;
-            Logger.log(`[STATE] notify::minimized fired for ${win.get_id()}! State now: ${isMin}`);
-            // Defer execution to ensure Mutter's internal window state is fully synced
-            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                this.handleExclusionStateChange(win);
-                return GLib.SOURCE_REMOVE;
-            });
-        }));
-
         // Final cleanup signal
         ids.push(window.connect('unmanaged', (win) => {
             Logger.log(`Window ${win.get_id()} (unmanaged) - cleaning up`);
@@ -383,7 +372,8 @@ export const WindowHandler = GObject.registerClass({
             return;
         }
 
-        const originIndex = WindowState.get(window, 'wasBornMaximized') ? undefined : WindowState.get(window, 'sacredOriginWorkspace');
+        this.windowingManager.invalidateWindowsCache();
+        const originIndex = WindowState.get(window, 'sacredOriginWorkspace');
 
         // Always set these flags to prevent giant dimensions during the in-place resize
         const preferredSize = WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize');
@@ -400,12 +390,6 @@ export const WindowHandler = GObject.registerClass({
             const workspace = window.get_workspace();
             const monitor = window.get_monitor();
             this.tilingManager.tileWorkspaceWindows(workspace, null, monitor);
-        } else if (WindowState.get(window, 'wasBornMaximized')) {
-            Logger.log(`Sacred exit for ${window.get_id()} (Born Maximized) - staying in current workspace.`);
-            // For born-maximized windows, we treat current workspace as the destination
-            const workspace = window.get_workspace();
-            const monitor = window.get_monitor();
-            this.enqueueWindowForEvaluation(window, workspace, monitor);
         }
     }
 
@@ -567,7 +551,7 @@ export const WindowHandler = GObject.registerClass({
             return;
         }
 
-        if (windowWorkspace) {
+        if (monitor === global.display.get_primary_monitor() && windowWorkspace) {
             const workspace = windowWorkspace;
 
             // Capture destroyed window size for reverse smart resize
@@ -581,7 +565,7 @@ export const WindowHandler = GObject.registerClass({
                 afterAnimations(this._ext.animationsManager, () => {
                     // Try to restore/reverse smart resize constrained windows with freed space
                     const remainingWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-                        .filter(w => w.get_id() !== windowId && !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
+                        .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
 
                     // Check if ANY remaining window was smart-resized (constrained)
                     const hasConstrainedWindows = remainingWindows.some(w => {
@@ -601,7 +585,7 @@ export const WindowHandler = GObject.registerClass({
             }, this._ext._timeoutRegistry);
 
             const windows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
-            const managedWindows = windows.filter(w => w.get_id() !== windowId && !this.windowingManager.isExcluded(w));
+            const managedWindows = windows.filter(w => !this.windowingManager.isExcluded(w));
 
             if (managedWindows.length === 0) {
                 // Skip if overflow is in progress - window is being moved and will arrive soon
@@ -615,75 +599,16 @@ export const WindowHandler = GObject.registerClass({
         }
     }
 
-    // TODO: Verify later if we need specific logic when a window enters
-    // or leaves a monitor to see if we can unify this code.
-    onWindowEnteredMonitor(monitorIndex, window) {
-        if (!this._ext.windowingManager.isRelated(window)) return;
-
-        Logger.log(`[MONITOR] Window ${window.get_id()} entered monitor ${monitorIndex}`);
-
-        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            if (!window || !window.get_compositor_private() || window.get_compositor_private().is_destroyed()) return GLib.SOURCE_REMOVE;
-
-            const workspace = window.get_workspace();
-            if (workspace) {
-                this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitorIndex, false);
-            }
-            return GLib.SOURCE_REMOVE;
-        });
-    }
-
-    onWindowLeftMonitor(monitorIndex, window) {
-        if (!this._ext.windowingManager.isRelated(window)) return;
-
-        Logger.log(`[MONITOR] Window ${window.get_id()} left monitor ${monitorIndex}`);
-
-        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            if (!window || !window.get_compositor_private() || window.get_compositor_private().is_destroyed()) return GLib.SOURCE_REMOVE;
-
-            const workspace = window.get_workspace();
-            if (workspace) {
-                this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitorIndex, false);
-            }
-            return GLib.SOURCE_REMOVE;
-        });
-    }
-
-    onWorkspaceRemoved(workspaceIndex) {
-        Logger.log(`[WORKSPACE] Removed index ${workspaceIndex}, pruning evaluation queues...`);
-        let initialLength = this._evaluationQueue.length;
-        
-        this._evaluationQueue = this._evaluationQueue.filter(item => {
-            if (!item.window || !item.window.get_compositor_private() || item.window.get_compositor_private().is_destroyed()) return false;
-            if (!item.workspace || (typeof item.workspace.index === 'function' && item.workspace.index() === workspaceIndex)) {
-                Logger.log(`Queue: Purging evaluation for window ${item.window.get_id()} because workspace was removed`);
-                return false;
-            }
-            return true;
-        });
-        
-        if (initialLength !== this._evaluationQueue.length) {
-            Logger.log(`WindowHandler: Pruned ${initialLength - this._evaluationQueue.length} items for workspace ${workspaceIndex}`);
-        }
-        
-        if (this.tilingManager) {
-            this.tilingManager.cancelWorkspaceOperations(workspaceIndex);
-        }
-    }
-
     onOverviewHidden() {
         const workspace = this.windowingManager.getWorkspace();
-        const nMonitors = global.display.get_n_monitors();
+        const monitor = global.display.get_primary_monitor();
+        const windows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
 
-        for (let m = 0; m < nMonitors; m++) {
-            const windows = this.windowingManager.getMonitorWorkspaceWindows(workspace, m);
-
-            for (const win of windows) {
-                if (WindowState.get(win, 'deferTilingUntilOverviewHidden')) {
-                    Logger.log(`Overview hidden: Tiling deferred window ${win.get_id()} on monitor ${m}`);
-                    WindowState.remove(win, 'deferTilingUntilOverviewHidden');
-                    this.enqueueWindowForEvaluation(win, workspace, m);
-                }
+        for (const win of windows) {
+            if (WindowState.get(win, 'deferTilingUntilOverviewHidden')) {
+                Logger.log(`Overview hidden: Tiling deferred window ${win.get_id()}`);
+                WindowState.remove(win, 'deferTilingUntilOverviewHidden');
+                this.enqueueWindowForEvaluation(win, workspace, monitor);
             }
         }
     }
@@ -906,7 +831,6 @@ export const WindowHandler = GObject.registerClass({
         this.windowingManager.invalidateWindowsCache();
         if (this.windowingManager.isMaximizedOrFullscreen(window)) {
             WindowState.set(window, 'openedMaximized', true);
-            WindowState.set(window, 'wasBornMaximized', true);
             Logger.log(`Window ${window.get_id()} opened maximized - marked for auto-tile check`);
         }
 
@@ -966,17 +890,7 @@ export const WindowHandler = GObject.registerClass({
                         Logger.log('Opened sacred (Max/Full) in occupied workspace - isolating (SACRED)');
                         // Save origin for restoration later
                         WindowState.set(window, 'sacredOriginWorkspace', workspace.index());
-                        
-                        this.windowingManager.moveOversizedWindow(window).then(() => {
-                            // After isolation, check if we should renavigate if the origin workspace is now empty
-                            const remaining = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-                                .filter(w => !this.windowingManager.isExcluded(w));
-                            
-                            if (remaining.length === 0) {
-                                Logger.log(`[SACRED] Isolated window left WS-${workspace.index()} empty - renavigating`);
-                                this.windowingManager.renavigate(workspace, true, this._ext._lastVisitedWorkspace, monitor);
-                            }
-                        });
+                        this.windowingManager.moveOversizedWindow(window);
                         return GLib.SOURCE_REMOVE;
                     } else {
                         Logger.log('Sacred window in empty workspace - keeping here');
@@ -1092,11 +1006,6 @@ export const WindowHandler = GObject.registerClass({
             }
         }
 
-        if (this.windowingManager.isMaximizedOrFullscreen(window)) {
-            Logger.log(`onWindowAdded: Window ${window.get_id()} was BORN MAXIMIZED/FULLSCREEN.`);
-            WindowState.set(window, 'wasBornMaximized', true);
-        }
-
         // Mark window as newly added for overflow protection logic
         WindowState.set(window, 'addedTime', Date.now());
 
@@ -1109,7 +1018,7 @@ export const WindowHandler = GObject.registerClass({
 
             const WORKSPACE = window.get_workspace();
             const WINDOW = window;
-            const MONITOR = window.get_monitor();
+            const MONITOR = global.display.get_primary_monitor();
 
             if (this._ext.tilingManager.checkValidity(MONITOR, WORKSPACE, WINDOW, false)) {
 
@@ -1191,7 +1100,7 @@ export const WindowHandler = GObject.registerClass({
 
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, () => {
             const WORKSPACE = workspace;
-            const MONITOR = window.get_monitor() ?? global.display.get_primary_monitor();
+            const MONITOR = global.display.get_primary_monitor();
 
             // Check if workspace still exists and has windows
             if (!WORKSPACE || WORKSPACE.index() < 0) {

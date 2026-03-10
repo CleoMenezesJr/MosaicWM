@@ -229,7 +229,7 @@ export const WindowingManager = GObject.registerClass({
     moveOversizedWindow(window, options = { switchFocus: true }) {
         return new Promise(resolve => {
             const workspaceManager = global.workspace_manager;
-            const monitor = window.get_monitor() ?? this.getPrimaryMonitor();
+            const monitor = this.getPrimaryMonitor();
             
             // Notify that overflow is starting
             if (this._overflowStartCallback) {
@@ -355,6 +355,10 @@ export const WindowingManager = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             });
         });
+    }
+
+    isPrimary(window) {
+        return window.get_monitor() === this.getPrimaryMonitor();
     }
 
     isExcluded(meta_window) {

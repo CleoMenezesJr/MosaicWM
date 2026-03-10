@@ -1,0 +1,1263 @@
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=33051 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+libmutter-Message: 14:04:49.632: Running GNOME Shell (using mutter 49.1) as a Wayland display server
+libmutter-Message: 14:04:49.632: Enabling experimental feature 'autoclose-xwayland'
+libmutter-Message: 14:04:49.632: Enabling experimental feature 'xwayland-native-scaling'
+libmutter-Message: 14:04:49.632: Enabling experimental feature 'variable-refresh-rate'
+libmutter-Message: 14:04:49.698: Added device '/dev/dri/renderD128' (amdgpu) using no mode setting.
+libmutter-Message: 14:04:49.701: Created gbm renderer for '/dev/dri/renderD128'
+libmutter-Message: 14:04:49.701: Boot VGA GPU /dev/dri/renderD128 selected as primary
+** Message: 14:04:49.703: Obtained a high priority EGL context
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.2' (uid=1000 pid=33051 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+
+(gnome-shell:33051): dbind-WARNING **: 14:04:49.723: Couldn't register with accessibility bus: Did not receive a reply. Possible causes include: the remote application did not send a reply, the message bus security policy blocked the reply, the reply timeout expired, or the network connection was broken.
+Failed to launch bus: Bus exited with code 1libmutter-Message: 14:04:49.724: Using public X11 display :2, (using :3 for managed services)
+
+(gnome-shell:33051): libmutter-WARNING **: 14:04:49.724: WL: unable to lock lockfile /run/user/1000/wayland-0.lock, maybe another compositor is running
+
+libmutter-Message: 14:04:49.724: Using Wayland display name 'wayland-1'
+GNOME Shell-Message: 14:04:50.121: Unset XDG_SESSION_ID, getCurrentSessionProxy() called outside a user session. Asking logind directly.
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gnome.Shell.Screencast' requested by ':1.0' (uid=1000 pid=33051 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.0' (uid=1000 pid=33051 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gnome.Shell.CalendarServer' requested by ':1.0' (uid=1000 pid=33051 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.7' (uid=1000 pid=33135 comm="/usr/libexec/gnome-shell-calendar-server" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.5' (uid=1000 pid=33114 comm="/usr/bin/gjs -m /usr/share/gnome-shell/org.gnome.S" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=33150 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+
+(/usr/libexec/xdg-desktop-portal:33150): xdg-desktop-portal-WARNING **: 14:04:50.257: Document portal fuse mount point unknown: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name :1.10 was not provided by any .service files
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.9' (uid=1000 pid=33150 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+GNOME Shell-Message: 14:04:50.265: Ignoring search provider /var/home/cleomenezesjr/.local/share/flatpak/exports/share/gnome-shell/search-providers/org.gnome.Epiphany.SearchProvider.ini: missing DesktopId
+GNOME Shell-Message: 14:04:50.283: Registering session with GDM
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gnome.Shell.Notifications' requested by ':1.0' (uid=1000 pid=33051 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gnome.OnlineAccounts' requested by ':1.8' (uid=1000 pid=33143 comm="/usr/libexec/evolution-source-registry" label="unconfined_u:unconfined_r:spc_t:s0")
+
+(process:33100): mdk-WARNING **: 14:04:50.297: Invalid application ID 'org.gnome.Ptyxis'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.8' (uid=1000 pid=33143 comm="/usr/libexec/evolution-source-registry" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'
+GNOME Shell-Message: 14:04:50.316: Failed to launch ibus-daemon: Failed to execute child process “ibus-daemon” (No such file or directory)
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gnome.evolution.dataserver.Sources5'
+GNOME Shell-Message: 14:04:50.322: Will monitor session 2
+GNOME Shell-Message: 14:04:50.324: Error looking up permission: GDBus.Error:org.freedesktop.portal.Error.NotFound: No entry for geolocation
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.0' (uid=1000 pid=33051 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gnome.evolution.dataserver.Calendar8' requested by ':1.7' (uid=1000 pid=33135 comm="/usr/libexec/gnome-shell-calendar-server" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gnome.Shell.CalendarServer'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gnome.Shell.Notifications'
+goa-daemon-Message: 14:04:50.351: goa-daemon version 3.56.0 starting
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gnome.Identity' requested by ':1.15' (uid=1000 pid=33177 comm="/usr/libexec/goa-daemon" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gnome.OnlineAccounts'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gnome.Identity'
+
+(process:33240): libgoaidentity-WARNING **: 14:04:50.363: GoaKerberosIdentityManager: Using polling for change notification for credential cache type 'KCM'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gtk.vfs.GoaVolumeMonitor' requested by ':1.0' (uid=1000 pid=33051 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gnome.evolution.dataserver.Calendar8'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gtk.vfs.GoaVolumeMonitor'
+GNOME Shell-Message: 14:04:50.399: Failed to register AuthenticationAgent
+GNOME Shell-Message: 14:04:50.528: Ignoring search provider /var/home/cleomenezesjr/.local/share/flatpak/exports/share/gnome-shell/search-providers/org.gnome.Epiphany.SearchProvider.ini: missing DesktopId
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='ca.desrt.dconf' requested by ':1.0' (uid=1000 pid=33051 comm="gnome-shell --devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'ca.desrt.dconf'
+
+(gnome-shell:33051): Clutter-CRITICAL **: 14:04:50.981: clutter_actor_remove_child: assertion 'child->priv->parent != NULL' failed
+
+(gnome-shell:33051): Clutter-CRITICAL **: 14:04:50.981: clutter_actor_remove_child: assertion 'child->priv->parent != NULL' failed
+GNOME Shell-Message: 14:04:50.987: Error looking up permission: GDBus.Error:org.freedesktop.portal.Error.NotFound: No entry for geolocation
+GNOME Shell-Message: 14:04:50.999: [static-workspace-background] enabled
+GNOME Shell-Message: 14:04:51.094: [MOSAIC INFO] Starting Mosaic layout manager.
+GNOME Shell-Message: 14:04:51.094: [MOSAIC WM] Failsafe: Restored attach-modal-dialogs setting
+GNOME Shell-Message: 14:04:51.100: [MOSAIC WM] Overriding org.gnome.mutter.edge-tiling
+GNOME Shell-Message: 14:04:51.100: [MOSAIC WM] Overriding org.gnome.mutter.attach-modal-dialogs
+GNOME Shell-Message: 14:04:51.101: [MOSAIC WM] About to call _setupKeybindings()
+GNOME Shell-Message: 14:04:51.101: [MOSAIC WM] *** _setupKeybindings called ***
+GNOME Shell-Message: 14:04:51.102: [MOSAIC WM] Registering swap-left keybinding
+GNOME Shell-Message: 14:04:51.102: [MOSAIC WM] Registering swap-right keybinding
+GNOME Shell-Message: 14:04:51.102: [MOSAIC WM] Registering swap-up keybinding
+GNOME Shell-Message: 14:04:51.102: [MOSAIC WM] Registering swap-down keybinding
+GNOME Shell-Message: 14:04:51.102: [MOSAIC WM] All swap keybindings registered successfully
+GNOME Shell-Message: 14:04:51.103: [MOSAIC WM] Keyboard shortcuts registered
+GNOME Shell-Message: 14:04:51.103: [MOSAIC WM] _setupKeybindings() completed
+
+(gnome-shell:33051): libmutter-WARNING **: 14:04:51.108: Overwriting existing binding of keysym ff52 with keysym ff52 (keycode 6f).
+
+(gnome-shell:33051): libmutter-WARNING **: 14:04:51.109: Overwriting existing binding of keysym ff54 with keysym ff54 (keycode 74).
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.gnome.Settings.GlobalShortcutsProvider' requested by ':1.12' (uid=1000 pid=33167 comm="/usr/libexec/xdg-desktop-portal-gnome" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gnome.Settings.GlobalShortcutsProvider'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=33150 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.22' (uid=1000 pid=33366 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+
+(xdg-desktop-portal-gtk:33366): dbind-WARNING **: 14:04:51.456: Couldn't register with accessibility bus: Did not receive a reply. Possible causes include: the remote application did not send a reply, the message bus security policy blocked the reply, the reply timeout expired, or the network connection was broken.
+Failed to launch bus: Bus exited with code 1dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.gnome.Shell.Screencast'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.4' (uid=1000 pid=33100 comm="/usr/libexec/mutter-devkit" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1
+(mutter-devkit:33100): Gtk-CRITICAL **: 14:04:51.682: Unable to connect to the accessibility bus at 'unix:path=/run/user/1000/at-spi/bus_2': Could not connect: Connection refused
+libmutter-Message: 14:04:51.733: Added virtual monitor Meta-0
+GNOME Shell-Message: 14:04:52.271: GNOME Shell started at Fri Feb 20 2026 14:04:50 GMT-0300 (Chile Summer Time)
+
+(gnome-shell:33051): GnomeDesktop-WARNING **: 14:05:15.206: Could not create transient scope for PID 33681: GDBus.Error:org.freedesktop.DBus.Error.NameHasNoOwner: Name "org.freedesktop.systemd1" does not exist
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.Flatpak' requested by ':1.26' (uid=1000 pid=33681 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.freedesktop.Flatpak'
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.26' (uid=1000 pid=33681 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.26' (uid=1000 pid=33681 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.34' (uid=1000 pid=33774 comm="/var/home/cleomenezesjr/.local/share/flatpak/app/i" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+GNOME Shell-Message: 14:05:15.628: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1641984751
+GNOME Shell-Message: 14:05:15.631: [MOSAIC WM] SLIDE-IN: First window 1641984751 - no animation needed
+GNOME Shell-Message: 14:05:15.640: [MOSAIC WM] window-added: window=1641984751, size=0x0, workArea=1280x768, timeSince=Infinityms, prevWS=undefined, currentWS=0
+GNOME Shell-Message: 14:05:15.642: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+GNOME Shell-Message: 14:05:15.653: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:05:15.653: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:05:15.653: [MOSAIC WM] _tile: 1 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:05:15.653: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:15.653: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:15.654: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:15.654: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:15.654: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:15.654: [MOSAIC WM] animateReTiling: single window, current=(460,216), target=(460,216), needsMove=false
+GNOME Shell-Message: 14:05:15.654: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:15.656: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+GNOME Shell-Message: 14:05:15.658: [MOSAIC WM] savePreferredSize: [INITIAL] Window 1641984751 set to 360x400
+GNOME Shell-Message: 14:05:15.658: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:05:15.658: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:05:15.658: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:15.658: [MOSAIC WM] [TRACE] ensureWindowFits: canFit=true, id=1641984751 (usingTargetSize: false)
+GNOME Shell-Message: 14:05:15.658: [MOSAIC WM] Enqueuing window 1641984751 for opening (queue size: 0)
+GNOME Shell-Message: 14:05:15.658: [MOSAIC WM] Processing queue: window 1641984751 (remaining: 0)
+GNOME Shell-Message: 14:05:15.659: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 14:05:15.659: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:15.659: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:15.659: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:15.659: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:15.659: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:15.659: [MOSAIC WM] animateReTiling: single window, current=(460,216), target=(460,216), needsMove=false
+GNOME Shell-Message: 14:05:15.659: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:15.659: [MOSAIC WM] Connecting signals for window 1641984751
+
+(gnome-shell:33051): GnomeDesktop-WARNING **: 14:05:15.716: Could not create transient scope for PID 33814: GDBus.Error:org.freedesktop.DBus.Error.NameHasNoOwner: Name "org.freedesktop.systemd1" does not exist
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.36' (uid=1000 pid=33814 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.38' (uid=1000 pid=33814 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1GNOME Shell-Message: 14:05:16.104: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:16.110: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:16.158: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1641984752
+GNOME Shell-Message: 14:05:16.159: [MOSAIC WM] SLIDE-IN: Window 1641984752 (Existing: 1, Dir: 0, PrevWS: undefined)
+GNOME Shell-Message: 14:05:16.169: [MOSAIC WM] window-added: window=1641984752, size=0x0, workArea=1280x768, timeSince=Infinityms, prevWS=undefined, currentWS=0
+GNOME Shell-Message: 14:05:16.191: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:05:16.191: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:05:16.191: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:16.191: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:16.192: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:16.192: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:16.192: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:16.192: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:16.192: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:16.193: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:16.202: [MOSAIC WM] savePreferredSize: [INITIAL] Window 1641984752 set to 360x616
+GNOME Shell-Message: 14:05:16.202: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] [TRACE] ensureWindowFits: canFit=true, id=1641984752 (usingTargetSize: false)
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] Enqueuing window 1641984752 for opening (queue size: 0)
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] Processing queue: window 1641984752 (remaining: 0)
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:16.203: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:16.204: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:16.204: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:16.204: [MOSAIC WM] Connecting signals for window 1641984752
+GNOME Shell-Message: 14:05:16.204: [MOSAIC WM] MAPPED SLIDE-IN: Applying offset (100, 0) to window 1641984752 Mode: 3
+GNOME Shell-Message: 14:05:16.643: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:16.654: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:17.404: [MOSAIC WM] Edge tiling: grab begin
+GNOME Shell-Message: 14:05:17.404: [MOSAIC WM] Connecting signal-based edge tiling listeners
+GNOME Shell-Message: 14:05:17.404: [MOSAIC WM] _grabOpBeginHandler: calling startDrag for window 1641984751
+GNOME Shell-Message: 14:05:17.404: [MOSAIC WM] startDrag called for window 1641984751
+GNOME Shell-Message: 14:05:17.404: [MOSAIC WM] startDrag: Total windows: 2, Edge-tiled: 0, Non-edge-tiled: 2
+GNOME Shell-Message: 14:05:17.404: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:17.405: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:17.405: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:17.405: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:17.405: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:17.405: [MOSAIC WM] Drawing tiles - isDragging: true, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:17.405: [MOSAIC WM] Animations did not handle positioning, calling drawTile
+GNOME Shell-Message: 14:05:17.406: [MOSAIC WM] Drawing vertical level at x=276, width=360, height=400
+GNOME Shell-Message: 14:05:17.406: [MOSAIC WM] Window mask_1641984751 target: 276,216 (360x400)
+GNOME Shell-Message: 14:05:17.407: [MOSAIC WM] Drawing vertical level at x=644, width=360, height=616
+GNOME Shell-Message: 14:05:17.407: [MOSAIC WM] Window 1641984752 target: 644,108 (360x616)
+GNOME Shell-Message: 14:05:17.407: [MOSAIC WM] draw (drag): id=1641984752, target=(644,108), current=(644,108), posChanged=false
+GNOME Shell-Message: 14:05:17.750: [MOSAIC WM] Edge tiling: detected zone 1
+GNOME Shell-Message: 14:05:17.750: [MOSAIC WM] Edge tiling state: false -> true, window: 1641984751
+GNOME Shell-Message: 14:05:17.752: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:17.752: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:17.752: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:17.752: [MOSAIC WM] _tile: 1 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:17.752: [MOSAIC WM] Drawing tiles - isDragging: true, using tileArea: x=640, y=32
+GNOME Shell-Message: 14:05:17.752: [MOSAIC WM] Animations did not handle positioning, calling drawTile
+GNOME Shell-Message: 14:05:17.752: [MOSAIC WM] Drawing vertical level at x=780, width=360, height=616
+GNOME Shell-Message: 14:05:17.752: [MOSAIC WM] Window 1641984752 target: 780,108 (360x616)
+GNOME Shell-Message: 14:05:17.752: [MOSAIC WM] draw (drag): id=1641984752, target=(780,108), current=(644,108), posChanged=true
+GNOME Shell-Message: 14:05:18.150: [MOSAIC WM] Edge tiling: applying zone 1
+GNOME Shell-Message: 14:05:18.150: [MOSAIC WM] DnD: zone 1 empty, applying tile
+GNOME Shell-Message: 14:05:18.150: [MOSAIC WM] Saved window 1641984751 PRE-TILING state: 360x400
+GNOME Shell-Message: 14:05:18.150: [MOSAIC WM] Window 1641984751 exited a sacred state (Unmaximized) - starting state machine
+GNOME Shell-Message: 14:05:18.150: [MOSAIC WM] Window 1641984751 exited a sacred state (Unmaximized) - starting state machine
+GNOME Shell-Message: 14:05:18.150: [MOSAIC WM] Edge tiling: apply result = true
+GNOME Shell-Message: 14:05:18.150: [MOSAIC WM] Edge tiling state: true -> false, window: null
+GNOME Shell-Message: 14:05:18.151: [MOSAIC WM] stopDrag called for window 1641984751, dragStart was: true
+GNOME Shell-Message: 14:05:18.151: [MOSAIC WM] stopDrag: Skipping workspace tiling (requested)
+GNOME Shell-Message: 14:05:18.152: [MOSAIC WM] Setup resize listener for window 1641984751
+GNOME Shell-Message: 14:05:18.152: [MOSAIC WM] Applied edge tile zone 1 to window 1641984751
+GNOME Shell-Message: 14:05:18.152: [MOSAIC WM] _handleMosaicOverflow: called for zone=1
+GNOME Shell-Message: 14:05:18.152: [MOSAIC WM] _handleMosaicOverflow: auto-tiling single window 1641984752 to opposite zone 2
+GNOME Shell-Message: 14:05:18.175: [MOSAIC WM] Resize detected on edge-tiled window 1641984751, zone=1
+GNOME Shell-Message: 14:05:18.252: [MOSAIC WM] Saved window 1641984752 PRE-TILING state: 360x616
+GNOME Shell-Message: 14:05:18.252: [MOSAIC WM] getZoneRect: Found existing tiled window with width 640px
+GNOME Shell-Message: 14:05:18.253: [MOSAIC WM] Window 1641984752 exited a sacred state (Unmaximized) - starting state machine
+GNOME Shell-Message: 14:05:18.253: [MOSAIC WM] Window 1641984752 exited a sacred state (Unmaximized) - starting state machine
+GNOME Shell-Message: 14:05:18.253: [MOSAIC WM] Registered auto-tile dependency: 1641984752 depends on 1641984751
+GNOME Shell-Message: 14:05:18.253: [MOSAIC WM] Setup resize listener for window 1641984752
+GNOME Shell-Message: 14:05:18.253: [MOSAIC WM] Applied edge tile zone 2 to window 1641984752
+GNOME Shell-Message: 14:05:18.253: [MOSAIC WM] _handleMosaicOverflow: called for zone=2
+GNOME Shell-Message: 14:05:18.256: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:19.551: [MOSAIC WM] Edge tiling: grab begin
+GNOME Shell-Message: 14:05:19.551: [MOSAIC WM] Edge tiling: window was in zone 1, initializing _currentZone
+GNOME Shell-Message: 14:05:19.551: [MOSAIC WM] removeTile: Removing tile from window 1641984751, zone=1
+GNOME Shell-Message: 14:05:19.551: [MOSAIC WM] removeTile: Saved state to restore: 360x400 at (-184, 210)
+GNOME Shell-Message: 14:05:19.551: [MOSAIC WM] Removed resize listener from window 1641984751
+GNOME Shell-Message: 14:05:19.551: [MOSAIC WM] removeTile: Checking dependencies for master=1641984751
+GNOME Shell-Message: 14:05:19.551: [MOSAIC WM] removeTile: Found 1 dependents
+GNOME Shell-Message: 14:05:19.552: [MOSAIC WM] removeTile: Calling removeTile on dependent 1641984752
+GNOME Shell-Message: 14:05:19.552: [MOSAIC WM] removeTile: Removing tile from window 1641984752, zone=2
+GNOME Shell-Message: 14:05:19.552: [MOSAIC WM] removeTile: Saved state to restore: 360x616 at (780, 108)
+GNOME Shell-Message: 14:05:19.552: [MOSAIC WM] Removed resize listener from window 1641984752
+GNOME Shell-Message: 14:05:19.552: [MOSAIC WM] removeTile: Checking dependencies for master=1641984752
+GNOME Shell-Message: 14:05:19.552: [MOSAIC WM] removeTile: Restoring window 1641984752 to size 360x616 at cursor (278, 47)
+GNOME Shell-Message: 14:05:19.552: [MOSAIC WM] removeTile: Restoring window 1641984751 to size 360x400 at cursor (278, 47)
+GNOME Shell-Message: 14:05:19.653: [MOSAIC WM] Edge tiling: restoration complete, checking if drag still active
+GNOME Shell-Message: 14:05:19.653: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=true)
+GNOME Shell-Message: 14:05:19.653: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:19.653: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:19.654: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:05:19.654: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:19.654: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:19.654: [MOSAIC WM] _grabOpBeginHandler: calling startDrag for window 1641984751
+GNOME Shell-Message: 14:05:19.654: [MOSAIC WM] startDrag called for window 1641984751
+GNOME Shell-Message: 14:05:19.654: [MOSAIC WM] startDrag: Total windows: 2, Edge-tiled: 0, Non-edge-tiled: 2
+GNOME Shell-Message: 14:05:19.654: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:19.654: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:19.655: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:19.655: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:19.655: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:19.655: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:19.655: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:19.655: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:19.655: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:19.656: [MOSAIC WM] Drawing tiles - isDragging: true, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:19.656: [MOSAIC WM] Animations did not handle positioning, calling drawTile
+GNOME Shell-Message: 14:05:19.656: [MOSAIC WM] Drawing vertical level at x=276, width=360, height=400
+GNOME Shell-Message: 14:05:19.656: [MOSAIC WM] Window mask_1641984751 target: 276,216 (360x400)
+GNOME Shell-Message: 14:05:19.656: [MOSAIC WM] Drawing vertical level at x=644, width=360, height=616
+GNOME Shell-Message: 14:05:19.656: [MOSAIC WM] Window 1641984752 target: 644,108 (360x616)
+GNOME Shell-Message: 14:05:19.656: [MOSAIC WM] draw (drag): id=1641984752, target=(644,108), current=(278,47), posChanged=true
+GNOME Shell-Message: 14:05:19.884: [MOSAIC WM] Edge tiling state: false -> false, window: null
+GNOME Shell-Message: 14:05:19.884: [MOSAIC WM] stopDrag called for window 1641984751, dragStart was: true
+GNOME Shell-Message: 14:05:19.884: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:19.884: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:19.884: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:19.885: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:19.885: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:19.885: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:19.885: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:19.885: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:19.886: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:20.245: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:20.245: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:20.246: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:20.246: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:20.246: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:20.246: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:20.246: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:20.247: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:20.336: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:20.697: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:20.998: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+
+(gnome-shell:33051): GnomeDesktop-WARNING **: 14:05:22.189: Could not create transient scope for PID 33920: GDBus.Error:org.freedesktop.DBus.Error.NameHasNoOwner: Name "org.freedesktop.systemd1" does not exist
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.42' (uid=1000 pid=33920 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1000/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1000/doc
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.44' (uid=1000 pid=33920 comm="/usr/bin/flatpak run --branch=stable --arch=x86_64" label="unconfined_u:unconfined_r:spc_t:s0")
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Successfully activated service 'org.a11y.Bus'
+ERROR nss_cache_populate_groups @ ../src/launch/nss-cache.c +278: Permission denied
+      nss_cache_populate @ ../src/launch/nss-cache.c +316
+      launcher_run @ ../src/launch/launcher.c +1348
+      run @ ../src/launch/main.c +152
+      main @ ../src/launch/main.c +178
+Exiting due to fatal error: -13
+Failed to launch bus: Bus exited with code 1GNOME Shell-Message: 14:05:23.567: [MOSAIC WM] savePreferredSize: Could not determine valid preferred size for 1641984753
+GNOME Shell-Message: 14:05:23.568: [MOSAIC WM] SLIDE-IN: Window 1641984753 (Existing: 2, Dir: 0, PrevWS: undefined)
+GNOME Shell-Message: 14:05:23.577: [MOSAIC WM] window-added: window=1641984753, size=0x0, workArea=1280x768, timeSince=Infinityms, prevWS=undefined, currentWS=0
+GNOME Shell-Message: 14:05:23.614: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:05:23.615: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:23.615: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:23.615: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:05:23.616: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 1ms
+GNOME Shell-Message: 14:05:23.616: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:23.616: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:23.616: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:23.617: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:23.617: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:23.617: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:23.617: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:23.617: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:23.618: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:23.619: [MOSAIC WM] savePreferredSize: [INITIAL] Window 1641984753 set to 360x320
+GNOME Shell-Message: 14:05:23.619: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:05:23.619: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:23.620: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:23.620: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:05:23.620: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:23.620: [MOSAIC WM] [TRACE] ensureWindowFits: canFit=true, id=1641984753 (usingTargetSize: false)
+GNOME Shell-Message: 14:05:23.620: [MOSAIC WM] Enqueuing window 1641984753 for opening (queue size: 0)
+GNOME Shell-Message: 14:05:23.620: [MOSAIC WM] Processing queue: window 1641984753 (remaining: 0)
+GNOME Shell-Message: 14:05:23.620: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 14:05:23.621: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:23.621: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:23.621: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:23.621: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:23.621: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:23.621: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:05:23.621: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:23.622: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:23.622: [MOSAIC WM] Connecting signals for window 1641984753
+GNOME Shell-Message: 14:05:23.622: [MOSAIC WM] MAPPED SLIDE-IN: Applying offset (0, -100) to window 1641984753 Mode: 3
+GNOME Shell-Message: 14:05:24.068: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:24.072: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:24.635: [MOSAIC WM] Edge tiling: grab begin
+GNOME Shell-Message: 14:05:24.635: [MOSAIC WM] Connecting signal-based edge tiling listeners
+GNOME Shell-Message: 14:05:24.635: [MOSAIC WM] _grabOpBeginHandler: calling startDrag for window 1641984752
+GNOME Shell-Message: 14:05:24.635: [MOSAIC WM] startDrag called for window 1641984752
+GNOME Shell-Message: 14:05:24.635: [MOSAIC WM] startDrag: Total windows: 3, Edge-tiled: 0, Non-edge-tiled: 3
+GNOME Shell-Message: 14:05:24.636: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:24.636: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:24.636: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:24.636: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:24.637: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:24.637: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:05:24.637: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:24.637: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] Drawing tiles - isDragging: true, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] Animations did not handle positioning, calling drawTile
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] Drawing vertical level at x=276, width=360, height=728
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] Window 1641984753 target: 276,52 (360x320)
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] draw (drag): id=1641984753, target=(276,52), current=(276,52), posChanged=false
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] Window 1641984751 target: 276,380 (360x400)
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] draw (drag): id=1641984751, target=(276,380), current=(276,380), posChanged=false
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] Drawing vertical level at x=644, width=360, height=616
+GNOME Shell-Message: 14:05:24.638: [MOSAIC WM] Window mask_1641984752 target: 644,108 (360x616)
+GNOME Shell-Message: 14:05:25.580: [MOSAIC WM] Edge tiling: detected zone 2
+GNOME Shell-Message: 14:05:25.580: [MOSAIC WM] Edge tiling state: false -> true, window: 1641984752
+GNOME Shell-Message: 14:05:25.581: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:25.581: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:25.581: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:25.581: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:05:25.582: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:25.582: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:25.582: [MOSAIC WM] Drawing tiles - isDragging: true, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:25.582: [MOSAIC WM] Animations did not handle positioning, calling drawTile
+GNOME Shell-Message: 14:05:25.582: [MOSAIC WM] Drawing vertical level at x=140, width=360, height=728
+GNOME Shell-Message: 14:05:25.582: [MOSAIC WM] Window 1641984753 target: 140,52 (360x320)
+GNOME Shell-Message: 14:05:25.582: [MOSAIC WM] draw (drag): id=1641984753, target=(140,52), current=(276,52), posChanged=true
+GNOME Shell-Message: 14:05:25.582: [MOSAIC WM] Window 1641984751 target: 140,380 (360x400)
+GNOME Shell-Message: 14:05:25.583: [MOSAIC WM] draw (drag): id=1641984751, target=(140,380), current=(276,380), posChanged=true
+GNOME Shell-Message: 14:05:26.249: [MOSAIC WM] Edge tiling: applying zone 2
+GNOME Shell-Message: 14:05:26.249: [MOSAIC WM] DnD: zone 2 empty, applying tile
+GNOME Shell-Message: 14:05:26.250: [MOSAIC WM] Window 1641984752 already has saved state (360x616), preserving it
+GNOME Shell-Message: 14:05:26.250: [MOSAIC WM] Window 1641984752 exited a sacred state (Unmaximized) - starting state machine
+GNOME Shell-Message: 14:05:26.250: [MOSAIC WM] Window 1641984752 exited a sacred state (Unmaximized) - starting state machine
+GNOME Shell-Message: 14:05:26.250: [MOSAIC WM] Edge tiling: apply result = true
+GNOME Shell-Message: 14:05:26.250: [MOSAIC WM] Edge tiling state: true -> false, window: null
+GNOME Shell-Message: 14:05:26.250: [MOSAIC WM] stopDrag called for window 1641984752, dragStart was: true
+GNOME Shell-Message: 14:05:26.250: [MOSAIC WM] stopDrag: Skipping workspace tiling (requested)
+GNOME Shell-Message: 14:05:26.252: [MOSAIC WM] Setup resize listener for window 1641984752
+GNOME Shell-Message: 14:05:26.252: [MOSAIC WM] Applied edge tile zone 2 to window 1641984752
+GNOME Shell-Message: 14:05:26.252: [MOSAIC WM] _handleMosaicOverflow: called for zone=2
+GNOME Shell-Message: 14:05:26.256: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.432: [MOSAIC WM] Tracking resize for window 1641984752, grabpo=4097
+GNOME Shell-Message: 14:05:27.448: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.511: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.542: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.577: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.584: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.597: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.609: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.623: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.636: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.649: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.663: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.676: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.689: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.702: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.716: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.729: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.743: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.756: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.770: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.783: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.796: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.809: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.822: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.836: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.849: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.863: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.878: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.890: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.903: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.916: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.929: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.943: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.956: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.969: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.983: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:27.996: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.603: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.635: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.649: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.662: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.676: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.689: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.702: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.716: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.729: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.743: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.756: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.769: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.782: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.796: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.809: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.822: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.836: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.849: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.883: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:28.889: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:29.066: [MOSAIC WM] stopDrag called for window 1641984752, dragStart was: false
+GNOME Shell-Message: 14:05:29.066: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:29.066: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:29.066: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:29.066: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:05:29.067: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:05:29.067: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:05:29.067: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:05:29.067: [MOSAIC WM] Remaining space: x=0, y=32, w=493, h=768
+GNOME Shell-Message: 14:05:29.067: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:05:29.067: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:05:29.067: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:29.067: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:29.067: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:29.068: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:29.068: [MOSAIC WM] Cleared resize tracking for window 1641984752
+
+(gnome-shell:33051): Gjs-CRITICAL **: 14:05:29.068: JS ERROR: ReferenceError: TileZone is not defined
+onResizeEnd@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/resizeHandler.js:60:61
+_grabOpEndHandler@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/dragHandler.js:289:41
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:294:120
+@resource:///org/gnome/shell/ui/init.js:21:20
+GNOME Shell-Message: 14:05:29.518: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:29.898: [MOSAIC WM] Tracking resize for window 1641984752, grabpo=4097
+GNOME Shell-Message: 14:05:29.958: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:29.996: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.011: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.023: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.038: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.050: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.063: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.077: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.090: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.103: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.127: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.130: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.144: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.157: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.170: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.204: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.210: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.244: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:30.438: [MOSAIC WM] stopDrag called for window 1641984752, dragStart was: false
+GNOME Shell-Message: 14:05:30.438: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:30.439: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:30.439: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:30.439: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:05:30.439: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:05:30.439: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:05:30.439: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:05:30.440: [MOSAIC WM] Remaining space: x=0, y=32, w=426, h=768
+GNOME Shell-Message: 14:05:30.440: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:05:30.440: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:05:30.440: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:30.441: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:30.441: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:30.442: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:30.442: [MOSAIC WM] Cleared resize tracking for window 1641984752
+
+(gnome-shell:33051): Gjs-CRITICAL **: 14:05:30.442: JS ERROR: ReferenceError: TileZone is not defined
+onResizeEnd@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/resizeHandler.js:60:61
+_grabOpEndHandler@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/dragHandler.js:289:41
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:294:120
+@resource:///org/gnome/shell/ui/init.js:21:20
+GNOME Shell-Message: 14:05:30.892: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:31.405: [MOSAIC WM] Tracking resize for window 1641984752, grabpo=4097
+GNOME Shell-Message: 14:05:31.499: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.530: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.545: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.557: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.571: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.586: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.598: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.611: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.624: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.638: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.651: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.664: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.678: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.691: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.704: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.718: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.731: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.745: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.758: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.771: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.784: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.798: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.811: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.825: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:31.838: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:32.092: [MOSAIC WM] stopDrag called for window 1641984752, dragStart was: false
+GNOME Shell-Message: 14:05:32.092: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:32.092: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:32.093: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:32.093: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:05:32.093: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:05:32.093: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:05:32.093: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:05:32.093: [MOSAIC WM] Remaining space: x=0, y=32, w=337, h=768
+GNOME Shell-Message: 14:05:32.093: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:05:32.093: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:05:32.094: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:32.094: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:32.094: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:32.094: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:32.095: [MOSAIC WM] Cleared resize tracking for window 1641984752
+
+(gnome-shell:33051): Gjs-CRITICAL **: 14:05:32.095: JS ERROR: ReferenceError: TileZone is not defined
+onResizeEnd@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/resizeHandler.js:60:61
+_grabOpEndHandler@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/dragHandler.js:289:41
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:294:120
+@resource:///org/gnome/shell/ui/init.js:21:20
+GNOME Shell-Message: 14:05:32.545: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:32.915: [MOSAIC WM] Tracking resize for window 1641984752, grabpo=4097
+GNOME Shell-Message: 14:05:32.994: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.023: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.037: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.051: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.064: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.077: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.091: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.104: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.118: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.131: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.144: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.158: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.171: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.184: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.198: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.211: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.224: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:33.406: [MOSAIC WM] stopDrag called for window 1641984752, dragStart was: false
+GNOME Shell-Message: 14:05:33.406: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:33.406: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:33.407: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:33.407: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:05:33.407: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:05:33.407: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:05:33.407: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:05:33.407: [MOSAIC WM] Remaining space: x=0, y=32, w=266, h=768
+GNOME Shell-Message: 14:05:33.407: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:05:33.407: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:05:33.408: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:33.408: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:33.408: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:33.409: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:33.409: [MOSAIC WM] Cleared resize tracking for window 1641984752
+
+(gnome-shell:33051): Gjs-CRITICAL **: 14:05:33.409: JS ERROR: ReferenceError: TileZone is not defined
+onResizeEnd@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/resizeHandler.js:60:61
+_grabOpEndHandler@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/dragHandler.js:289:41
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:294:120
+@resource:///org/gnome/shell/ui/init.js:21:20
+GNOME Shell-Message: 14:05:33.859: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:34.474: [MOSAIC WM] Tracking resize for window 1641984752, grabpo=4097
+GNOME Shell-Message: 14:05:34.568: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.598: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.612: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.625: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.638: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.651: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.665: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.678: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.691: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.705: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.718: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.731: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.745: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.758: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.772: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.785: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.798: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:34.986: [MOSAIC WM] stopDrag called for window 1641984752, dragStart was: false
+GNOME Shell-Message: 14:05:34.986: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:34.986: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:34.987: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:34.987: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:05:34.987: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:05:34.987: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:05:34.987: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:05:34.987: [MOSAIC WM] Remaining space: x=0, y=32, w=187, h=768
+GNOME Shell-Message: 14:05:34.987: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:05:34.987: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:05:34.988: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:34.988: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:34.988: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:34.988: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:34.989: [MOSAIC WM] Cleared resize tracking for window 1641984752
+
+(gnome-shell:33051): Gjs-CRITICAL **: 14:05:34.989: JS ERROR: ReferenceError: TileZone is not defined
+onResizeEnd@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/resizeHandler.js:60:61
+_grabOpEndHandler@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/dragHandler.js:289:41
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:294:120
+@resource:///org/gnome/shell/ui/init.js:21:20
+GNOME Shell-Message: 14:05:35.439: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:36.553: [MOSAIC WM] window map timeout - falling back to immediate processing
+GNOME Shell-Message: 14:05:36.554: [MOSAIC WM] Connecting signals for window 1641984754
+GNOME Shell-Message: 14:05:53.302: [MOSAIC WM] onWindowDestroyed: 1641984754
+GNOME Shell-Message: 14:05:53.302: [MOSAIC WM] Disconnected signals for window 1641984754
+GNOME Shell-Message: 14:05:53.302: [MOSAIC WM] Excluded window closed - no workspace navigation
+GNOME Shell-Message: 14:05:56.755: [MOSAIC WM] Tracking resize for window 1641984752, grabpo=4097
+GNOME Shell-Message: 14:05:56.816: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.830: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.843: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.856: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.870: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.883: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.896: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.909: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.923: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.937: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.972: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.980: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:56.992: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.006: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.018: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.032: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.045: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.058: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.085: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.098: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.112: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.125: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.138: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.152: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.165: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.178: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.192: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.205: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:57.537: [MOSAIC WM] stopDrag called for window 1641984752, dragStart was: false
+GNOME Shell-Message: 14:05:57.537: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:57.537: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:57.537: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:57.538: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:05:57.538: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:05:57.538: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:05:57.538: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:05:57.538: [MOSAIC WM] Remaining space: x=0, y=32, w=845, h=768
+GNOME Shell-Message: 14:05:57.538: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:05:57.538: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:05:57.539: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:57.539: [MOSAIC WM] _tile: 2 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:05:57.539: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:57.539: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:57.539: [MOSAIC WM] Cleared resize tracking for window 1641984752
+
+(gnome-shell:33051): Gjs-CRITICAL **: 14:05:57.540: JS ERROR: ReferenceError: TileZone is not defined
+onResizeEnd@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/resizeHandler.js:60:61
+_grabOpEndHandler@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/dragHandler.js:289:41
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:294:120
+@resource:///org/gnome/shell/ui/init.js:21:20
+GNOME Shell-Message: 14:05:57.990: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:05:58.415: [MOSAIC WM] Tracking resize for window 1641984752, grabpo=4097
+GNOME Shell-Message: 14:05:58.483: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.506: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.514: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.527: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.541: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.554: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.567: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.580: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.594: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.610: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.620: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.633: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.647: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.660: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.673: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.687: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:58.700: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:05:59.018: [MOSAIC WM] stopDrag called for window 1641984752, dragStart was: false
+GNOME Shell-Message: 14:05:59.018: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:05:59.018: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:05:59.018: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:05:59.019: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:05:59.019: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:05:59.019: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:05:59.019: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:05:59.019: [MOSAIC WM] Remaining space: x=0, y=32, w=372, h=768
+GNOME Shell-Message: 14:05:59.019: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:05:59.019: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:05:59.019: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:05:59.020: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:05:59.020: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:05:59.020: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:05:59.020: [MOSAIC WM] Cleared resize tracking for window 1641984752
+
+(gnome-shell:33051): Gjs-CRITICAL **: 14:05:59.020: JS ERROR: ReferenceError: TileZone is not defined
+onResizeEnd@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/resizeHandler.js:60:61
+_grabOpEndHandler@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/dragHandler.js:289:41
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:294:120
+@resource:///org/gnome/shell/ui/init.js:21:20
+GNOME Shell-Message: 14:05:59.470: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:39.221: [MOSAIC WM] Window 1641984752 entered a sacred state (Maximized) - checking for isolation
+GNOME Shell-Message: 14:06:39.221: [MOSAIC WM] Window 1641984752 maximized in occupied workspace - isolating (SACRED)
+GNOME Shell-Message: 14:06:39.221: [MOSAIC WM] moveOversizedWindow: origin=0, next=1
+GNOME Shell-Message: 14:06:39.222: [MOSAIC WM] Checking if window 1641984752 fits in workspace 1
+GNOME Shell-Message: 14:06:39.222: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 14:06:39.222: [MOSAIC WM] canFitWindow: Window is sacred and workspace is empty - fits
+GNOME Shell-Message: 14:06:39.222: [MOSAIC WM] Window fits in existing workspace 1
+GNOME Shell-Message: 14:06:39.222: [MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping preferred size
+GNOME Shell-Message: 14:06:39.223: [MOSAIC WM] savePreferredSize: Skipping for 1641984752 - already constrained by smart resize
+GNOME Shell-Message: 14:06:39.223: [MOSAIC WM] Window 1641984752 entered a sacred state (Maximized) - checking for isolation
+GNOME Shell-Message: 14:06:39.227: [MOSAIC WM] Workspace animation complete - ready for operations on workspace 1
+GNOME Shell-Message: 14:06:39.235: [MOSAIC WM] [SWITCHER] Activating OSD for WS-1
+GNOME Shell-Message: 14:06:39.235: [MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace 1 on monitor 0
+GNOME Shell-Message: 14:06:39.250: [MOSAIC WM] _windowRemoved: 2 remaining windows, freed 908x768, wasOverflowMove=true
+GNOME Shell-Message: 14:06:39.250: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 14:06:39.251: [MOSAIC WM] tryRestoreWindowSizes: Check 1641984753: frame=360x320, pref=360x320, diff=0x0
+GNOME Shell-Message: 14:06:39.251: [MOSAIC WM] tryRestoreWindowSizes: Check 1641984751: frame=360x400, pref=360x400, diff=0x0
+GNOME Shell-Message: 14:06:39.251: [MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore (0/3 windows had deficits > 2px)
+GNOME Shell-Message: 14:06:39.251: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:39.251: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:39.252: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:39.252: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:06:39.252: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:06:39.252: [MOSAIC WM] _tile: 2 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:06:39.252: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:39.253: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:39.253: [MOSAIC WM] [TRACE] WINDOW OPENED: "org.gnome.Calculator" size=908x768
+GNOME Shell-Message: 14:06:39.253: [MOSAIC WM] window-added: window=1641984752, size=908x768, workArea=1280x768, timeSince=31ms, prevWS=0, currentWS=1
+GNOME Shell-Message: 14:06:39.253: [MOSAIC WM] window-added: Skipping drag-drop handling - window was moved by overflow
+GNOME Shell-Message: 14:06:39.262: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:06:39.264: [MOSAIC WM] Window 1641984752 ready: size=1280x768, workArea=1280x768
+GNOME Shell-Message: 14:06:39.264: [MOSAIC WM] Skipping early tile in waitForGeometry - window was moved by overflow
+GNOME Shell-Message: 14:06:39.288: [MOSAIC WM] moveOversizedWindow: window geometry ready (1280x768), waiting for animation then retiling
+GNOME Shell-Message: 14:06:39.538: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:06:39.538: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:06:39.703: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:41.163: [MOSAIC WM] Window 1641984752 exited a sacred state (Unmaximized) - starting state machine
+GNOME Shell-Message: 14:06:41.163: [MOSAIC WM] Sacred exit detected for 1641984752. Flagging for deferred move to WS 0.
+GNOME Shell-Message: 14:06:41.163: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:06:41.163: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:06:41.164: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:41.164: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:41.164: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:41.164: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:41.164: [MOSAIC WM] Remaining space: x=0, y=32, w=0, h=768
+GNOME Shell-Message: 14:06:41.164: [MOSAIC WM] Total workspace windows: 1, Non-edge-tiled: 0
+GNOME Shell-Message: 14:06:41.165: [MOSAIC WM] After filtering edge-tiled: 0 windows to tile
+GNOME Shell-Message: 14:06:41.165: [MOSAIC WM] No non-edge-tiled windows to tile
+GNOME Shell-Message: 14:06:41.165: [MOSAIC WM] Window 1641984752 exited a sacred state (Unmaximized) - starting state machine
+GNOME Shell-Message: 14:06:41.165: [MOSAIC WM] Sacred exit detected for 1641984752. Flagging for deferred move to WS 0.
+GNOME Shell-Message: 14:06:41.165: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:06:41.165: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:06:41.165: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:41.165: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:41.166: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:41.166: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:41.166: [MOSAIC WM] Remaining space: x=0, y=32, w=0, h=768
+GNOME Shell-Message: 14:06:41.166: [MOSAIC WM] Total workspace windows: 1, Non-edge-tiled: 0
+GNOME Shell-Message: 14:06:41.166: [MOSAIC WM] After filtering edge-tiled: 0 windows to tile
+GNOME Shell-Message: 14:06:41.166: [MOSAIC WM] No non-edge-tiled windows to tile
+GNOME Shell-Message: 14:06:41.183: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:06:41.185: [MOSAIC WM] Window 1641984752 finished in-place resize. Moving to origin workspace 0.
+GNOME Shell-Message: 14:06:41.185: [MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping preferred size
+GNOME Shell-Message: 14:06:41.185: [MOSAIC WM] savePreferredSize: Skipping for 1641984752 - already constrained by smart resize
+GNOME Shell-Message: 14:06:41.185: [MOSAIC WM] [WORKSPACE SWITCH] WS-1 -> WS-0 (Stored 1 as last visited)
+GNOME Shell-Message: 14:06:41.186: [MOSAIC WM] Workspace animation complete - ready for operations on workspace 0
+GNOME Shell-Message: 14:06:41.190: [MOSAIC WM] [SWITCHER] Activating OSD for WS-0
+GNOME Shell-Message: 14:06:41.190: [MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace 0 on monitor 0
+GNOME Shell-Message: 14:06:41.195: [MOSAIC WM] _windowRemoved: 0 remaining windows, freed 908x768, wasOverflowMove=false
+GNOME Shell-Message: 14:06:41.195: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 14:06:41.195: [MOSAIC WM] _windowRemoved: Workspace truly empty, navigating away
+GNOME Shell-Message: 14:06:41.196: [MOSAIC WM] [TRACE] WINDOW OPENED: "org.gnome.Calculator" size=908x768
+GNOME Shell-Message: 14:06:41.196: [MOSAIC WM] window-added: window=1641984752, size=908x768, workArea=1280x768, timeSince=11ms, prevWS=1, currentWS=0
+GNOME Shell-Message: 14:06:41.196: [MOSAIC WM] window-added: Overview drag-drop - window 1641984752 from workspace 1 to 0
+GNOME Shell-Message: 14:06:41.196: [MOSAIC WM] DnD: Activating workspace 0 and exiting Overview
+GNOME Shell-Message: 14:06:41.196: [MOSAIC WM] [SWITCHER] Activating OSD for WS-0
+GNOME Shell-Message: 14:06:41.196: [MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace 0 on monitor 0
+GNOME Shell-Message: 14:06:41.207: [MOSAIC WM] Window 1641984752 ready: size=908x768, workArea=1280x768
+GNOME Shell-Message: 14:06:41.207: [MOSAIC WM] Cross-workspace move: Waiting for workspace animation
+GNOME Shell-Message: 14:06:41.307: [MOSAIC WM] Skipping final overflow check - window is unmaximizing (undo)
+GNOME Shell-Message: 14:06:41.441: [MOSAIC WM] Triggering tiling in destination workspace 0
+GNOME Shell-Message: 14:06:41.441: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:41.441: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:41.442: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:41.442: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:41.442: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:41.442: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:41.442: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:41.442: [MOSAIC WM] Remaining space: x=0, y=32, w=372, h=768
+GNOME Shell-Message: 14:06:41.442: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:06:41.442: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:06:41.443: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 1ms
+GNOME Shell-Message: 14:06:41.443: [MOSAIC WM] _tile: 2 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:41.443: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:41.444: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:41.457: [MOSAIC WM] savePreferredSize: Skipping for 1641984752 - already constrained by smart resize
+GNOME Shell-Message: 14:06:41.458: [MOSAIC WM] DnD arrival: Extra space 536px - trying expansion
+GNOME Shell-Message: 14:06:41.458: [MOSAIC WM] tryRestoreWindowSizes: Check 1641984753: frame=360x320, pref=360x320, diff=0x0
+GNOME Shell-Message: 14:06:41.458: [MOSAIC WM] tryRestoreWindowSizes: Check 1641984751: frame=360x400, pref=360x400, diff=0x0
+GNOME Shell-Message: 14:06:41.458: [MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore (0/3 windows had deficits > 2px)
+GNOME Shell-Message: 14:06:41.458: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=[object Object])
+GNOME Shell-Message: 14:06:41.458: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:41.459: [MOSAIC WM] canFitWindow: Using remaining space after snap: 372x768
+GNOME Shell-Message: 14:06:41.459: [MOSAIC WM] canFitWindow: Window not in workspace - adding with size 360x616 (preferred=true)
+GNOME Shell-Message: 14:06:41.459: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x616 for 1641984752
+GNOME Shell-Message: 14:06:41.459: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:06:41.459: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:41.459: [MOSAIC WM] [TRACE] ensureWindowFits: canFit=false, id=1641984752 (usingTargetSize: true)
+GNOME Shell-Message: 14:06:41.460: [MOSAIC WM] [SMART RESIZE] SmartResizeIterator created for 3 resizable windows (0 non-resizable, 0 already at minimum) - 3 available for resize
+GNOME Shell-Message: 14:06:41.460: [MOSAIC WM] [SMART RESIZE] tryFitWithResize START: 3 total windows (2 existing + 1 new)
+GNOME Shell-Message: 14:06:41.460: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:06:41.460: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:41.460: [MOSAIC WM] [SMART RESIZE] Natural fit failed - starting iterative smart resize
+GNOME Shell-Message: 14:06:41.460: [MOSAIC WM] [SMART RESIZE] ===== Iteration 1 start =====
+GNOME Shell-Message: 14:06:41.461: [MOSAIC WM] [SMART RESIZE] Windows: 3 candidates, 0 at minimum
+GNOME Shell-Message: 14:06:41.461: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:06:41.461: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 1641984753: 360x320
+GNOME Shell-Message: 14:06:41.461: [MOSAIC WM] [SMART RESIZE] Iter 1: 1641984753 shrinking 360x320 -> 288x256
+GNOME Shell-Message: 14:06:41.461: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 1641984751: 360x400
+GNOME Shell-Message: 14:06:41.461: [MOSAIC WM] [SMART RESIZE] Iter 1: 1641984751 shrinking 360x400 -> 288x320
+GNOME Shell-Message: 14:06:41.461: [MOSAIC WM] [SMART RESIZE] Iter 1: Learning original size for 1641984752: 908x768
+GNOME Shell-Message: 14:06:41.461: [MOSAIC WM] [SMART RESIZE] Iter 1: 1641984752 shrinking 908x768 -> 726x614
+GNOME Shell-Message: 14:06:41.461: [MOSAIC WM] [SMART RESIZE] Iter 1: Waiting for size-changed signals...
+GNOME Shell-Message: 14:06:41.469: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:41.469: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] Remaining space: x=0, y=32, w=372, h=768
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:41.470: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:41.471: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:41.471: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:06:41.471: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 1641984752 fired size-changed (10ms after batch resize)
+GNOME Shell-Message: 14:06:41.471: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in 10ms
+GNOME Shell-Message: 14:06:41.471: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 1641984753: shrank_w=0px (req=72), shrank_h=0px (req=64)
+GNOME Shell-Message: 14:06:41.471: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 1641984751: shrank_w=0px (req=72), shrank_h=0px (req=80)
+GNOME Shell-Message: 14:06:41.472: [MOSAIC WM] [SMART RESIZE] Iter 1: Verify 1641984752: shrank_w=182px (req=181), shrank_h=152px (req=153)
+GNOME Shell-Message: 14:06:41.472: [MOSAIC WM] [SMART RESIZE] Iter 1: 1641984752 shrank successfully to 726x616
+GNOME Shell-Message: 14:06:41.472: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:06:41.472: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:41.472: [MOSAIC WM] [SMART RESIZE] Iter 1: Layout simulation: overflow=true
+GNOME Shell-Message: 14:06:41.472: [MOSAIC WM] [SMART RESIZE] Iter 1: Still overflowing. Resizable remaining: 3
+GNOME Shell-Message: 14:06:41.472: [MOSAIC WM] [SMART RESIZE] Iter 1: Will continue on next iteration (3 can still shrink)
+GNOME Shell-Message: 14:06:41.573: [MOSAIC WM] [SMART RESIZE] ===== Iteration 2 start =====
+GNOME Shell-Message: 14:06:41.573: [MOSAIC WM] [SMART RESIZE] Windows: 3 candidates, 0 at minimum
+GNOME Shell-Message: 14:06:41.573: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:06:41.573: [MOSAIC WM] [SMART RESIZE] Iter 2: 1641984753 shrinking 360x320 -> 288x256
+GNOME Shell-Message: 14:06:41.573: [MOSAIC WM] [SMART RESIZE] Iter 2: 1641984751 shrinking 360x400 -> 288x320
+GNOME Shell-Message: 14:06:41.573: [MOSAIC WM] [SMART RESIZE] Iter 2: 1641984752 shrinking 726x616 -> 580x492
+GNOME Shell-Message: 14:06:41.573: [MOSAIC WM] [SMART RESIZE] Iter 2: Waiting for size-changed signals...
+GNOME Shell-Message: 14:06:41.578: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:41.579: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:41.579: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:41.579: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:41.579: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:41.579: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:41.579: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:41.579: [MOSAIC WM] Remaining space: x=0, y=32, w=372, h=768
+GNOME Shell-Message: 14:06:41.579: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:06:41.580: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:06:41.580: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:41.580: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:41.580: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:41.580: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:06:41.580: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 1641984752 fired size-changed (7ms after batch resize)
+GNOME Shell-Message: 14:06:41.580: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in 7ms
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] [SMART RESIZE] Iter 2: Verify 1641984753: shrank_w=0px (req=72), shrank_h=0px (req=64)
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] [SMART RESIZE] Iter 2: 1641984753 HIT MINIMUM (Behavioral detection: stuck)
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] [SMART RESIZE] Iter 2: Verify 1641984751: shrank_w=0px (req=72), shrank_h=0px (req=80)
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] [SMART RESIZE] Iter 2: 1641984751 HIT MINIMUM (Behavioral detection: stuck)
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] [SMART RESIZE] Iter 2: Verify 1641984752: shrank_w=146px (req=145), shrank_h=0px (req=123)
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] [SMART RESIZE] Iter 2: 1641984752 shrank successfully to 580x616
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] [SMART RESIZE] Iter 2: Layout simulation: overflow=true
+GNOME Shell-Message: 14:06:41.581: [MOSAIC WM] [SMART RESIZE] Iter 2: Still overflowing. Resizable remaining: 1
+GNOME Shell-Message: 14:06:41.582: [MOSAIC WM] [SMART RESIZE] Iter 2: Will continue on next iteration (1 can still shrink)
+GNOME Shell-Message: 14:06:41.682: [MOSAIC WM] [SMART RESIZE] ===== Iteration 3 start =====
+GNOME Shell-Message: 14:06:41.682: [MOSAIC WM] [SMART RESIZE] Windows: 3 candidates, 2 at minimum
+GNOME Shell-Message: 14:06:41.682: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:06:41.682: [MOSAIC WM] [SMART RESIZE] Iter 3: 1641984752 shrinking 580x616 -> 464x492
+GNOME Shell-Message: 14:06:41.682: [MOSAIC WM] [SMART RESIZE] Iter 3: Waiting for size-changed signals...
+GNOME Shell-Message: 14:06:41.691: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:41.691: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:41.691: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:41.691: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:41.692: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:41.692: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:41.692: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:41.692: [MOSAIC WM] Remaining space: x=0, y=32, w=372, h=768
+GNOME Shell-Message: 14:06:41.692: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:06:41.692: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:06:41.692: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:41.692: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:41.692: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 1641984752 fired size-changed (11ms after batch resize)
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in 11ms
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] [SMART RESIZE] Iter 3: Verify 1641984752: shrank_w=116px (req=116), shrank_h=0px (req=123)
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] [SMART RESIZE] Iter 3: 1641984752 shrank successfully to 464x616
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] [SMART RESIZE] Iter 3: Layout simulation: overflow=true
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] [SMART RESIZE] Iter 3: Still overflowing. Resizable remaining: 1
+GNOME Shell-Message: 14:06:41.693: [MOSAIC WM] [SMART RESIZE] Iter 3: Will continue on next iteration (1 can still shrink)
+GNOME Shell-Message: 14:06:41.794: [MOSAIC WM] [SMART RESIZE] ===== Iteration 4 start =====
+GNOME Shell-Message: 14:06:41.794: [MOSAIC WM] [SMART RESIZE] Windows: 3 candidates, 2 at minimum
+GNOME Shell-Message: 14:06:41.794: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:06:41.795: [MOSAIC WM] [SMART RESIZE] Iter 4: 1641984752 shrinking 464x616 -> 371x492
+GNOME Shell-Message: 14:06:41.795: [MOSAIC WM] [SMART RESIZE] Iter 4: Waiting for size-changed signals...
+GNOME Shell-Message: 14:06:41.797: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:41.797: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:41.797: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:41.797: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:41.797: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:41.797: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:41.797: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] Remaining space: x=0, y=32, w=372, h=768
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 1641984752 fired size-changed (3ms after batch resize)
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in 3ms
+GNOME Shell-Message: 14:06:41.798: [MOSAIC WM] [SMART RESIZE] Iter 4: Verify 1641984752: shrank_w=93px (req=92), shrank_h=0px (req=123)
+GNOME Shell-Message: 14:06:41.799: [MOSAIC WM] [SMART RESIZE] Iter 4: 1641984752 shrank successfully to 371x616
+GNOME Shell-Message: 14:06:41.799: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:06:41.799: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:41.799: [MOSAIC WM] [SMART RESIZE] Iter 4: Layout simulation: overflow=true
+GNOME Shell-Message: 14:06:41.799: [MOSAIC WM] [SMART RESIZE] Iter 4: Still overflowing. Resizable remaining: 1
+GNOME Shell-Message: 14:06:41.799: [MOSAIC WM] [SMART RESIZE] Iter 4: Will continue on next iteration (1 can still shrink)
+GNOME Shell-Message: 14:06:41.894: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:41.899: [MOSAIC WM] [SMART RESIZE] ===== Iteration 5 start =====
+GNOME Shell-Message: 14:06:41.899: [MOSAIC WM] [SMART RESIZE] Windows: 3 candidates, 2 at minimum
+GNOME Shell-Message: 14:06:41.899: [MOSAIC WM] [SMART RESIZE] Reduction ratio: 0.800 (20% shrink)
+GNOME Shell-Message: 14:06:41.899: [MOSAIC WM] [SMART RESIZE] Iter 5: 1641984752 shrinking 371x616 -> 296x492
+GNOME Shell-Message: 14:06:41.900: [MOSAIC WM] [SMART RESIZE] Iter 5: Waiting for size-changed signals...
+GNOME Shell-Message: 14:06:41.903: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:41.903: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:41.903: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:41.903: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:41.904: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:41.904: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:41.904: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:41.904: [MOSAIC WM] Remaining space: x=0, y=32, w=372, h=768
+GNOME Shell-Message: 14:06:41.904: [MOSAIC WM] Total workspace windows: 3, Non-edge-tiled: 2
+GNOME Shell-Message: 14:06:41.904: [MOSAIC WM] After filtering edge-tiled: 2 windows to tile
+GNOME Shell-Message: 14:06:41.904: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:41.904: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] Window 1641984752 fired size-changed (5ms after batch resize)
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] [SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in 5ms
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] [SMART RESIZE] Iter 5: Verify 1641984752: shrank_w=11px (req=74), shrank_h=0px (req=123)
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] [SMART RESIZE] Iter 5: Layout simulation: overflow=true
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] [SMART RESIZE] Iter 5: Still overflowing. Resizable remaining: 1
+GNOME Shell-Message: 14:06:41.905: [MOSAIC WM] [SMART RESIZE] Iteration 5: Permanent cycle detected - no window made progress and overflow=true. IMPOSSIBLE to fit. Aborting.
+GNOME Shell-Message: 14:06:41.906: [MOSAIC WM] [SMART RESIZE] OVERFLOW: Cannot fit even at minimum - applying reverse resize
+GNOME Shell-Message: 14:06:41.906: [MOSAIC WM] [SMART RESIZE] Reverting 3 windows to original sizes
+GNOME Shell-Message: 14:06:41.906: [MOSAIC WM] [SMART RESIZE] Reverting 1641984753: 360x320
+GNOME Shell-Message: 14:06:41.906: [MOSAIC WM] [SMART RESIZE] Reverting 1641984751: 360x400
+GNOME Shell-Message: 14:06:41.906: [MOSAIC WM] [SMART RESIZE] Reverting 1641984752: 908x768
+GNOME Shell-Message: 14:06:41.919: [MOSAIC WM] Resize detected on edge-tiled window 1641984752, zone=2
+
+(gnome-shell:33051): Gjs-CRITICAL **: 14:06:41.919: JS ERROR: ReferenceError: TileZone is not defined
+onSizeChanged@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/resizeHandler.js:260:63
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:290:109
+@resource:///org/gnome/shell/ui/init.js:21:20
+GNOME Shell-Message: 14:06:41.921: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:42.006: [MOSAIC WM] [SMART RESIZE] tryFitWithResize finished - unblocked overflow
+GNOME Shell-Message: 14:06:42.006: [MOSAIC WM] [TRACE] OVERFLOW: No fit, no smart resize possible
+GNOME Shell-Message: 14:06:42.007: [MOSAIC WM] moveOversizedWindow: origin=0, next=1
+GNOME Shell-Message: 14:06:42.007: [MOSAIC WM] Checking if window 1641984752 fits in workspace 1
+GNOME Shell-Message: 14:06:42.007: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=false)
+GNOME Shell-Message: 14:06:42.007: [MOSAIC WM] canFitWindow: Window not in workspace - adding with size 360x616 (preferred=true)
+GNOME Shell-Message: 14:06:42.007: [MOSAIC WM] _tile: 1 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:42.007: [MOSAIC WM] Window fits in existing workspace 1
+GNOME Shell-Message: 14:06:42.007: [MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping preferred size
+GNOME Shell-Message: 14:06:42.007: [MOSAIC WM] savePreferredSize: Skipping for 1641984752 - already constrained by smart resize
+GNOME Shell-Message: 14:06:42.016: [MOSAIC WM] [WORKSPACE SWITCH] WS-0 -> WS-1 (Stored 0 as last visited)
+GNOME Shell-Message: 14:06:42.019: [MOSAIC WM] [SWITCHER] Activating OSD for WS-1
+GNOME Shell-Message: 14:06:42.019: [MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace 1 on monitor 0
+GNOME Shell-Message: 14:06:42.021: [MOSAIC WM] _windowRemoved: 2 remaining windows, freed 908x768, wasOverflowMove=true
+GNOME Shell-Message: 14:06:42.021: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 14:06:42.021: [MOSAIC WM] tryRestoreWindowSizes: Check 1641984753: frame=360x320, pref=360x320, diff=0x0
+GNOME Shell-Message: 14:06:42.021: [MOSAIC WM] tryRestoreWindowSizes: Check 1641984751: frame=360x400, pref=360x400, diff=0x0
+GNOME Shell-Message: 14:06:42.021: [MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore (0/3 windows had deficits > 2px)
+GNOME Shell-Message: 14:06:42.021: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:42.021: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:42.022: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:42.022: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:06:42.022: [MOSAIC WM] _findOptimalOrder: 2 windows, 2 permutations, 0ms
+GNOME Shell-Message: 14:06:42.022: [MOSAIC WM] _tile: 2 windows, vertical=false, optimized order
+GNOME Shell-Message: 14:06:42.022: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:42.023: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:42.023: [MOSAIC WM] [TRACE] WINDOW OPENED: "org.gnome.Calculator" size=908x768
+GNOME Shell-Message: 14:06:42.023: [MOSAIC WM] window-added: window=1641984752, size=908x768, workArea=1280x768, timeSince=16ms, prevWS=0, currentWS=1
+GNOME Shell-Message: 14:06:42.023: [MOSAIC WM] window-added: Skipping drag-drop handling - window was moved by overflow
+GNOME Shell-Message: 14:06:42.030: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:42.033: [MOSAIC WM] Window 1641984752 ready: size=908x768, workArea=1280x768
+GNOME Shell-Message: 14:06:42.033: [MOSAIC WM] Skipping early tile in waitForGeometry - window was moved by overflow
+GNOME Shell-Message: 14:06:42.070: [MOSAIC WM] moveOversizedWindow: window geometry ready (908x768), waiting for animation then retiling
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] moveOversizedWindow: window mispositioned by 186px, retiling
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] Remaining space: x=0, y=32, w=372, h=768
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] Total workspace windows: 1, Non-edge-tiled: 0
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] After filtering edge-tiled: 0 windows to tile
+GNOME Shell-Message: 14:06:42.071: [MOSAIC WM] No non-edge-tiled windows to tile
+GNOME Shell-Message: 14:06:42.143: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:42.248: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:42.274: [MOSAIC WM] Workspace animation complete - ready for operations on workspace 1
+GNOME Shell-Message: 14:06:42.321: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:06:42.321: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:06:42.321: [MOSAIC WM] tileWorkspaceWindows: Found 1 edge-tiled windows
+GNOME Shell-Message: 14:06:42.321: [MOSAIC WM] Found 1 edge-tiled window(s)
+GNOME Shell-Message: 14:06:42.321: [MOSAIC WM] Edge tile zones detected: [2]
+GNOME Shell-Message: 14:06:42.321: [MOSAIC WM] Zone check: leftFull=false, rightFull=true, leftQuarters=false, rightQuarters=false
+GNOME Shell-Message: 14:06:42.321: [MOSAIC WM] Remaining space: x=0, y=32, w=372, h=768
+GNOME Shell-Message: 14:06:42.322: [MOSAIC WM] Total workspace windows: 1, Non-edge-tiled: 0
+GNOME Shell-Message: 14:06:42.322: [MOSAIC WM] After filtering edge-tiled: 0 windows to tile
+GNOME Shell-Message: 14:06:42.322: [MOSAIC WM] No non-edge-tiled windows to tile
+GNOME Shell-Message: 14:06:42.355: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:42.473: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:43.370: [MOSAIC WM] Edge tiling: grab begin
+GNOME Shell-Message: 14:06:43.370: [MOSAIC WM] Edge tiling: window was in zone 2, initializing _currentZone
+GNOME Shell-Message: 14:06:43.370: [MOSAIC WM] removeTile: Removing tile from window 1641984752, zone=2
+GNOME Shell-Message: 14:06:43.370: [MOSAIC WM] removeTile: Saved state to restore: 360x616 at (780, 108)
+GNOME Shell-Message: 14:06:43.370: [MOSAIC WM] Removed resize listener from window 1641984752
+GNOME Shell-Message: 14:06:43.370: [MOSAIC WM] removeTile: Checking dependencies for master=1641984752
+GNOME Shell-Message: 14:06:43.370: [MOSAIC WM] removeTile: Restoring window 1641984752 to size 360x616 at cursor (390, 40)
+GNOME Shell-Message: 14:06:43.471: [MOSAIC WM] Edge tiling: restoration complete, checking if drag still active
+GNOME Shell-Message: 14:06:43.471: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 1 (relaxed=true)
+GNOME Shell-Message: 14:06:43.471: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:06:43.471: [MOSAIC WM] _tile: 1 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:43.471: [MOSAIC WM] _grabOpBeginHandler: calling startDrag for window 1641984752
+GNOME Shell-Message: 14:06:43.471: [MOSAIC WM] startDrag called for window 1641984752
+GNOME Shell-Message: 14:06:43.472: [MOSAIC WM] startDrag: Total windows: 1, Edge-tiled: 0, Non-edge-tiled: 1
+GNOME Shell-Message: 14:06:43.472: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:06:43.472: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:06:43.472: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:06:43.472: [MOSAIC WM] _tile: 1 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:43.473: [MOSAIC WM] Drawing tiles - isDragging: true, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:43.473: [MOSAIC WM] Animations did not handle positioning, calling drawTile
+GNOME Shell-Message: 14:06:43.473: [MOSAIC WM] Drawing vertical level at x=460, width=360, height=616
+GNOME Shell-Message: 14:06:43.473: [MOSAIC WM] Window mask_1641984752 target: 460,108 (360x616)
+GNOME Shell-Message: 14:06:43.542: [MOSAIC WM] Edge tiling state: false -> false, window: null
+GNOME Shell-Message: 14:06:43.542: [MOSAIC WM] stopDrag called for window 1641984752, dragStart was: true
+GNOME Shell-Message: 14:06:43.542: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:06:43.542: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:06:43.542: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:06:43.542: [MOSAIC WM] _tile: 1 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:43.543: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:43.543: [MOSAIC WM] animateReTiling: single window, current=(491,90), target=(460,108), needsMove=true
+
+(gnome-shell:33051): Gjs-CRITICAL **: 14:06:43.543: JS ERROR: ReferenceError: TileZone is not defined
+onSizeChanged@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/resizeHandler.js:260:63
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:290:109
+animateWindow@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/animations.js:185:16
+animateReTiling@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/animations.js:330:18
+_animateTileLayout@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/tiling.js:1597:37
+tileWorkspaceWindows@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/tiling.js:1864:49
+stopDrag@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/reordering.js:241:33
+_grabOpEndHandler@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/dragHandler.js:285:36
+enable/<@file:///var/home/cleomenezesjr/.local/share/gnome-shell/extensions/mosaicwm@cleomenezesjr.github.io/extension.js:294:120
+@resource:///org/gnome/shell/ui/init.js:21:20
+GNOME Shell-Message: 14:06:43.543: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:43.902: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 1 (isRecursive=false)
+GNOME Shell-Message: 14:06:43.902: [MOSAIC WM] Workspace 1 LOCKED for tiling
+GNOME Shell-Message: 14:06:43.902: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:06:43.902: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:43.902: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:43.902: [MOSAIC WM] animateReTiling: single window, current=(460,108), target=(460,108), needsMove=false
+GNOME Shell-Message: 14:06:43.902: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:43.993: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:06:44.353: [MOSAIC WM] Workspace 1 UNLOCKED
+GNOME Shell-Message: 14:06:44.469: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+GNOME Shell-Message: 14:06:44.469: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+GNOME Shell-Message: 14:06:45.391: [MOSAIC WM] _windowRemoved: Window still exists (DnD move) - keeping preferred size
+GNOME Shell-Message: 14:06:45.393: [MOSAIC WM] savePreferredSize: Skipping for 1641984752 - already constrained by smart resize
+GNOME Shell-Message: 14:06:45.402: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+GNOME Shell-Message: 14:06:45.406: [MOSAIC WM] _windowRemoved: 0 remaining windows, freed 360x616, wasOverflowMove=false
+GNOME Shell-Message: 14:06:45.406: [MOSAIC WM] [SMART RESIZE] Cleaning up transient flags for remaining windows
+GNOME Shell-Message: 14:06:45.406: [MOSAIC WM] _windowRemoved: Workspace truly empty, navigating away
+GNOME Shell-Message: 14:06:45.407: [MOSAIC WM] [TRACE] WINDOW OPENED: "org.gnome.Calculator" size=360x616
+GNOME Shell-Message: 14:06:45.407: [MOSAIC WM] window-added: window=1641984752, size=360x616, workArea=1280x768, timeSince=16ms, prevWS=1, currentWS=0
+GNOME Shell-Message: 14:06:45.407: [MOSAIC WM] window-added: Overview drag-drop - window 1641984752 from workspace 1 to 0
+GNOME Shell-Message: 14:06:45.407: [MOSAIC WM] DnD: Activating workspace 0 and exiting Overview
+GNOME Shell-Message: 14:06:45.407: [MOSAIC WM] [WORKSPACE SWITCH] WS-1 -> WS-0 (Stored 1 as last visited)
+GNOME Shell-Message: 14:06:45.407: [MOSAIC WM] Workspace animation complete - ready for operations on workspace 0
+GNOME Shell-Message: 14:06:45.408: [MOSAIC WM] [SWITCHER] Activating OSD for WS-0
+GNOME Shell-Message: 14:06:45.408: [MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace 0 on monitor 0
+GNOME Shell-Message: 14:06:45.420: [MOSAIC WM] [RENAVIGATE] On final workspace, moving to left neighbor (WS-0)
+GNOME Shell-Message: 14:06:45.420: [MOSAIC WM] [SWITCHER] Activating OSD for WS-0
+GNOME Shell-Message: 14:06:45.420: [MOSAIC WM] showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace 0 on monitor 0
+GNOME Shell-Message: 14:06:45.421: [MOSAIC WM] Window 1641984752 ready: size=360x616, workArea=1280x768
+GNOME Shell-Message: 14:06:45.421: [MOSAIC WM] Window created while overview visible - tiling now + after hide
+GNOME Shell-Message: 14:06:45.421: [MOSAIC WM] savePreferredSize: Skipping for 1641984752 - already constrained by smart resize
+GNOME Shell-Message: 14:06:45.422: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:45.422: [MOSAIC WM] _findOptimalOrder: 3 windows, 6 permutations, 0ms
+GNOME Shell-Message: 14:06:45.422: [MOSAIC WM] _tile: 3 windows, vertical=true, optimized order
+GNOME Shell-Message: 14:06:45.422: [MOSAIC WM] Drawing vertical level at x=276, width=360, height=728
+GNOME Shell-Message: 14:06:45.422: [MOSAIC WM] Drawing vertical level at x=644, width=360, height=616
+GNOME Shell-Message: 14:06:45.665: [MOSAIC WM] Overview hidden: Tiling deferred window 1641984752
+GNOME Shell-Message: 14:06:45.665: [MOSAIC WM] savePreferredSize: Skipping for 1641984752 - already constrained by smart resize
+GNOME Shell-Message: 14:06:45.666: [MOSAIC WM] DnD arrival: Extra space 168px - trying expansion
+GNOME Shell-Message: 14:06:45.666: [MOSAIC WM] tryRestoreWindowSizes: Check 1641984753: frame=360x320, pref=360x320, diff=0x0
+GNOME Shell-Message: 14:06:45.666: [MOSAIC WM] tryRestoreWindowSizes: Check 1641984751: frame=360x400, pref=360x400, diff=0x0
+GNOME Shell-Message: 14:06:45.666: [MOSAIC WM] tryRestoreWindowSizes: Check 1641984752: frame=360x616, pref=360x616, diff=0x0
+GNOME Shell-Message: 14:06:45.666: [MOSAIC WM] tryRestoreWindowSizes: No shrunk windows to restore (0/3 windows had deficits > 2px)
+GNOME Shell-Message: 14:06:45.666: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:06:45.666: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:45.666: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:06:45.666: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] [TRACE] ensureWindowFits: canFit=true, id=1641984752 (usingTargetSize: false)
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] Enqueuing window 1641984752 for opening (queue size: 0)
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] Processing queue: window 1641984752 (remaining: 0)
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] Window fits - adding to tiling via queue
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:45.667: [MOSAIC WM] canFitWindow: Checking if window can fit in workspace 0 (relaxed=false)
+GNOME Shell-Message: 14:06:45.668: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:45.668: [MOSAIC WM] canFitWindow: Window already in workspace - checking current layout
+GNOME Shell-Message: 14:06:45.668: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:45.668: [MOSAIC WM] tileWorkspaceWindows: Starting for workspace 0 (isRecursive=false)
+GNOME Shell-Message: 14:06:45.668: [MOSAIC WM] Workspace 0 LOCKED for tiling
+GNOME Shell-Message: 14:06:45.668: [MOSAIC WM] WindowDescriptor: Using targetRestoredSize 360x400 for 1641984751
+GNOME Shell-Message: 14:06:45.668: [MOSAIC WM] tileWorkspaceWindows: Found 0 edge-tiled windows
+GNOME Shell-Message: 14:06:45.668: [MOSAIC WM] _tile: Cache hit, reusing layout
+GNOME Shell-Message: 14:06:45.669: [MOSAIC WM] Drawing tiles - isDragging: false, using tileArea: x=0, y=32
+GNOME Shell-Message: 14:06:45.669: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:45.669: [MOSAIC WM] Animations handled positioning, skipping drawTile
+GNOME Shell-Message: 14:06:46.119: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:06:46.119: [MOSAIC WM] Workspace 0 UNLOCKED
+GNOME Shell-Message: 14:07:08.623: [MOSAIC WM] Overview: Using MOSAIC Strategy for monitor 0
+libmutter-Message: 14:07:09.239: Removed virtual monitor Meta-0
+
+(gnome-shell:33051): libmutter-CRITICAL **: 14:07:09.250: meta_monitor_manager_get_logical_monitor_from_number: assertion '(unsigned int) number < g_list_length (manager->logical_monitors)' failed
+
+(gnome-shell:33051): libmutter-CRITICAL **: 14:07:09.250: meta_workspace_get_work_area_for_monitor: assertion 'logical_monitor != NULL' failed
+
+(gnome-shell:33051): libmutter-CRITICAL **: 14:07:09.251: meta_monitor_manager_get_logical_monitor_from_number: assertion '(unsigned int) number < g_list_length (manager->logical_monitors)' failed
+
+(gnome-shell:33051): libmutter-CRITICAL **: 14:07:09.251: meta_workspace_get_work_area_for_monitor: assertion 'logical_monitor != NULL' failed
+** Message: 14:07:09.255: Shutting down GNOME Shell
+Gdk-Message: 14:07:09.393: Error reading events from display: Broken pipe
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=33150 comm="/usr/libexec/xdg-desktop-portal" label="unconfined_u:unconfined_r:spc_t:s0")
+
+(xdg-desktop-portal-gtk:34386): Gtk-WARNING **: 14:07:09.433: cannot open display: :2
+dbus-daemon[33050]: [session uid=1000 pid=33050 pidfd=5] Activated service 'org.freedesktop.impl.portal.desktop.gtk' failed: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+** (/usr/libexec/xdg-desktop-portal:33150): WARNING **: 14:07:09.434: Failed to close session implementation: GDBus.Error:org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+
+** (/usr/libexec/xdg-desktop-portal:33150): WARNING **: 14:07:09.434: Failed to close session implementation: GDBus.Error:org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.impl.portal.desktop.gtk exited with status 1
+gnome-shell-calendar-server[33135]: Lost (or failed to acquire) the name org.gnome.Shell.CalendarServer - exiting
+A connection to the bus can't be made
+Gdk-Message: 14:07:09.438: Error flushing display: Broken pipe
+
+(evolution-calendar-factory:33230): libedbus-private-WARNING **: 14:07:09.440: Error setting property 'ConnectionStatus' on interface org.gnome.evolution.dataserver.Source: The connection is closed (g-io-error-quark, 18)
+
+(evolution-calendar-factory:33230): libedbus-private-WARNING **: 14:07:09.440: Error setting property 'ConnectionStatus' on interface org.gnome.evolution.dataserver.Source: The connection is closed (g-io-error-quark, 18)
