@@ -1674,6 +1674,11 @@ export const TilingManager = GObject.registerClass({
     }
 
     tileWorkspaceWindows(workspace, reference_meta_window, _monitor, keep_oversized_windows, excludeFromTiling = false, dryRun = false, isRecursive = false) {
+        if (!workspace || workspace.index() < 0) {
+            Logger.log(`tileWorkspaceWindows: Invalid workspace (index=${workspace?.index?.() ?? 'null'}) - skipping`);
+            return { overflow: false, layout: null };
+        }
+
         if (this._extension && !this._extension.isMosaicEnabledForWorkspace(workspace)) {
             Logger.log(`Mosaic disabled for workspace ${workspace.index()} - skipping tiling`);
             return { overflow: false, layout: null };

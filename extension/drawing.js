@@ -90,16 +90,18 @@ export const DrawingManager = GObject.registerClass({
 
     clearActors() {
         this.removeBoxes();
-        
+
         // Clean up pool
         while(this._boxPool.length > 0) {
             let box = this._boxPool.pop();
-            Main.uiGroup.remove_child(box);
+            if (box.get_parent())
+                Main.uiGroup.remove_child(box);
             box.destroy();
         }
-        
+
         if (this._tilePreview) {
-            Main.uiGroup.remove_child(this._tilePreview);
+            if (this._tilePreview.get_parent())
+                Main.uiGroup.remove_child(this._tilePreview);
             this._tilePreview.destroy();
             this._tilePreview = null;
         }

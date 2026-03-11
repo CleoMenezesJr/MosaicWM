@@ -1127,21 +1127,26 @@ export const WindowHandler = GObject.registerClass({
 
             // Try to restore window sizes with freed space (Reverse Smart Resize)
             if (remainingWindows.length > 0) {
-                const workArea = this._ext.tilingManager.getUsableWorkArea(WORKSPACE, MONITOR);
-                // PASS null to force recalculation of real incremental available space
-                const restored = this._ext.tilingManager.tryRestoreWindowSizes(remainingWindows, workArea, null, null, WORKSPACE, MONITOR);
+                if (freedWidth > 0 && freedHeight > 0) {
+                    const workArea = this._ext.tilingManager.getUsableWorkArea(WORKSPACE, MONITOR);
+                    // PASS null to force recalculation of real incremental available space
+                    const restored = this._ext.tilingManager.tryRestoreWindowSizes(remainingWindows, workArea, null, null, WORKSPACE, MONITOR);
 
-                if (restored) {
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.RESIZE_SETTLE_DELAY_MS, () => {
-                        Logger.log('Retiling after restore delay');
-                        // Ensure flags are cleared after settlement
-                        for (const w of remainingWindows) {
-                             WindowState.remove(w, 'isReverseSmartResizing');
-                        }
+                    if (restored) {
+                        GLib.timeout_add(GLib.PRIORITY_DEFAULT, constants.RESIZE_SETTLE_DELAY_MS, () => {
+                            Logger.log('Retiling after restore delay');
+                            // Ensure flags are cleared after settlement
+                            for (const w of remainingWindows) {
+                                 WindowState.remove(w, 'isReverseSmartResizing');
+                            }
+                            this._ext.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
+                            return GLib.SOURCE_REMOVE;
+                        });
+                    } else {
                         this._ext.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
-                        return GLib.SOURCE_REMOVE;
-                    });
+                    }
                 } else {
+                    // Skip restore, just retile
                     this._ext.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
                 }
             } else {
