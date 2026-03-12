@@ -335,6 +335,7 @@ export const WindowHandler = GObject.registerClass({
         // Track for lifecycle exclusion updates
         ids.push(window.connect('notify::above', (win) => this.handleExclusionStateChange(win)));
         ids.push(window.connect('notify::on-all-workspaces', (win) => this.handleExclusionStateChange(win)));
+        ids.push(window.connect('notify::minimized', (win) => this.handleExclusionStateChange(win)));
 
         this._windowSignals.set(window, ids);
 
