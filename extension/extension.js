@@ -523,6 +523,9 @@ export default class WindowMosaicExtension extends Extension {
         this.windowingManager = null;
 
         // Clean up handler classes
+        if (this.resizeHandler) this.resizeHandler.destroy();
+        if (this.dragHandler) this.dragHandler.destroy();
+        if (this.windowHandler?.destroy) this.windowHandler.destroy();
         this.windowHandler = null;
         this.dragHandler = null;
         this.resizeHandler = null;

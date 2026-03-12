@@ -410,6 +410,20 @@ export const ResizeHandler = GObject.registerClass({
         }
     };
 
+    destroy() {
+        if (this._resizeDebounceTimeout) {
+            this._timeoutRegistry.remove(this._resizeDebounceTimeout);
+            this._resizeDebounceTimeout = null;
+        }
+        this._resizeInOverflow = false;
+        this._resizeOverflowWindow = null;
+        this._sizeChanged = false;
+        this._resizeGracePeriod = null;
+        this._lastResizeWindow = null;
+        this._lastResizeTime = 0;
+        this._ext = null;
+    }
+
     async handleUnmaximizeUndo(window, maxInfo) {
         const { originalWorkspace: origIndex, monitor, preMaxSize } = maxInfo;
         const currentWorkspace = window.get_workspace();

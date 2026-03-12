@@ -456,5 +456,12 @@ export const DragHandler = GObject.registerClass({
         }
         
         this.clearGhostWindows();
+        this._skipNextTiling = null;
+        this._draggedWindow = null;
+        this._currentZone = null;
+        this._restoringFromEdgeTile = false;
+        this._isPositionProcessing = false;
+        this._dragOverflowWindow = null;
+        this._currentGrabOp = null;
     }
 } );

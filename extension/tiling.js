@@ -2481,7 +2481,10 @@ export const TilingManager = GObject.registerClass({
     }
 
     destroy() {
+        this.abortActiveSmartResize();
         this.destroyMasks();
+        this._isSmartResizingBlocked = false;
+        this._processingQueue = false;
         this._edgeTilingManager = null;
         this._drawingManager = null;
         this._animationsManager = null;
