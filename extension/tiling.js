@@ -967,29 +967,37 @@ export const TilingManager = GObject.registerClass({
         return compactness * 50 + centralization * 30 + sizeEfficiency * 20;
     }
 
-    // Find the optimal window ordering by trying permutations
+    // Find optimal ordering via permutations (with stability bonus for current order)
     _findOptimalOrder(windows, workArea, tilingFn) {
         if (windows.length <= 1) return windows;
-        
+
         const startTime = Date.now();
         const permutations = this._generatePermutations(windows);
-        
+        const currentIds = windows.map(w => w.id);
+
         let bestOrder = windows;
         let bestScore = -Infinity;
-        
+
         for (const perm of permutations) {
             const result = tilingFn.call(this, perm, workArea, constants.WINDOW_SPACING);
-            const score = this._scoreLayout(result, workArea);
-            
+            let score = this._scoreLayout(result, workArea);
+
+            // Prefer current order (+5) to avoid unnecessary visual swaps
+            if (score > -Infinity) {
+                const isSameOrder = perm.length === currentIds.length &&
+                    perm.every((w, i) => w.id === currentIds[i]);
+                if (isSameOrder) score += 5;
+            }
+
             if (score > bestScore) {
                 bestScore = score;
                 bestOrder = perm;
             }
         }
-        
+
         const elapsed = Date.now() - startTime;
         Logger.log(`_findOptimalOrder: ${windows.length} windows, ${permutations.length} permutations, ${elapsed}ms`);
-        
+
         return bestOrder;
     }
 
@@ -997,8 +1005,10 @@ export const TilingManager = GObject.registerClass({
     // If windows haven't changed IDs/sizes, we can reuse the previous layout.
     _getLayoutHash(windows, work_area) {
         const sorted = [...windows].sort((a, b) => a.id - b.id);
-        const parts = sorted.map(w => `${w.id}:${w.width}x${w.height}`);
-        return `${work_area.width}x${work_area.height}|${parts.join(',')}`;
+        // Snap to 8px grid to reduce cache invalidation during resize
+        const snap = v => Math.round(v / 8) * 8;
+        const parts = sorted.map(w => `${w.id}:${snap(w.width)}x${snap(w.height)}`);
+        return `${snap(work_area.width)}x${snap(work_area.height)}|${parts.join(',')}`;
     }
 
     // Tile windows with dynamic orientation and optimal search
@@ -1028,20 +1038,25 @@ export const TilingManager = GObject.registerClass({
         
         // Select tiling function based on orientation
         const tilingFn = useVerticalShelves ? this._verticalShelves : this._horizontalShelves;
-        
-        // Find optimal window ordering (tries permutations, scores each layout)
-        const optimalWindows = this._findOptimalOrder(windows, work_area, tilingFn);
-        
-        Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, optimized order`);
-        
-        // Execute with optimal order and cache result (unless simulation)
-        const result = tilingFn.call(this, optimalWindows, work_area, spacing);
-        
+
+        // Try current order first; only permute on overflow
+        const currentResult = tilingFn.call(this, windows, work_area, spacing);
+        let result;
+
+        if (!currentResult.overflow) {
+            result = currentResult;
+            Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, stable order`);
+        } else {
+            const optimalWindows = this._findOptimalOrder(windows, work_area, tilingFn);
+            result = tilingFn.call(this, optimalWindows, work_area, spacing);
+            Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, reordered (overflow fallback)`);
+        }
+
         if (!isSimulation) {
             this._lastLayoutHash = hash;
             this._cachedTileResult = result;
         }
-        
+
         return result;
     }
     
