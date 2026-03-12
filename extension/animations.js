@@ -320,6 +320,12 @@ export const AnimationsManager = GObject.registerClass({
         }
     }
 
+    removeAnimatingWindow(windowId) {
+        if (this._animatingWindows.delete(windowId)) {
+            this._checkAllAnimationsComplete();
+        }
+    }
+
     cleanup() {
         this._animatingWindows.clear();
         this._checkAllAnimationsComplete();

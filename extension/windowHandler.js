@@ -233,6 +233,7 @@ export const WindowHandler = GObject.registerClass({
         // Final cleanup signal
         ids.push(window.connect('unmanaged', (win) => {
             Logger.log(`Window ${win.get_id()} (unmanaged) - cleaning up`);
+            this.animationsManager.removeAnimatingWindow(win.get_id());
             const ws = win.get_workspace();
             if (ws) this.onWindowRemoved(ws, win);
             this.disconnectWindowSignals(win);
