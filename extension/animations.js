@@ -86,31 +86,31 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     shouldAnimateWindow(window, draggedWindow = null) {
+        // During active resize, position all sibling windows instantly (real-time retile)
+        if (this._resizingWindowId !== null) {
+            return false;
+        }
+
         // Skip if slide-in animation is in progress (handled by first-frame)
         if (WindowState.get(window, 'slideInAnimating')) {
             return false;
         }
-        
+
         // Skip for windows created during overview - already positioned correctly
         if (WindowState.get(window, 'createdDuringOverview')) {
             WindowState.remove(window, 'createdDuringOverview'); // Clear after first use
             return false;
         }
-        
+
         // Don't animate the window being dragged
         if (draggedWindow && window.get_id() === draggedWindow.get_id()) {
             return false;
         }
-        
+
         if (this._animatingWindows.has(window.get_id())) {
             return false;
         }
-        
-        // Don't animate manually resized windows
-        if (this._resizingWindowId === window.get_id()) {
-            return false;
-        }
-        
+
         return true;
     }
 

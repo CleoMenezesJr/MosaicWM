@@ -42,6 +42,7 @@ export const ResizeHandler = GObject.registerClass({
 
     onResizeBegin(window, grabpo) {
         this._resizeInOverflow = false;
+        this._lastResizeTileTime = 0;
         this.animationsManager.setResizingWindow(window.get_id());
         
         // Always clear smart-resize target so manual resize takes precedence
@@ -55,12 +56,12 @@ export const ResizeHandler = GObject.registerClass({
     }
 
     onResizeEnd(window, grabpo, skipTiling) {
-        this.animationsManager.setResizingWindow(null);
-        Logger.log(`Cleared resize tracking for window ${window.get_id()}`);
-        
+        // Keep resizingWindowId set during final retile to prevent animation jiggle
+        Logger.log(`Resize ended for window ${window.get_id()}`);
+
         const tileState = this.edgeTilingManager.getWindowState(window);
         const isEdgeTiled = tileState && tileState.zone !== TileZone.NONE;
-        
+
         if (isEdgeTiled && (tileState.zone === TileZone.LEFT_FULL || tileState.zone === TileZone.RIGHT_FULL)) {
             Logger.log(`Resize ended (grabpo=${grabpo}) for FULL edge-tiled window - fixing final sizes`);
             const adjacentWindow = this.edgeTilingManager._getAdjacentWindow(window, window.get_workspace(), window.get_monitor(), tileState.zone);
@@ -73,20 +74,20 @@ export const ResizeHandler = GObject.registerClass({
             Logger.log(`Resize ended (grabpo=${grabpo}) for QUARTER edge-tiled window - fixing final sizes`);
             this.edgeTilingManager.fixQuarterPairSizes(window, tileState.zone);
         }
-        
+
         if (this._resizeDebounceTimeout) {
             this._timeoutRegistry.remove(this._resizeDebounceTimeout);
             this._resizeDebounceTimeout = null;
         }
-        
+
         this._resizeGracePeriod = GLib.get_monotonic_time() / 1000;
-        
+
         if (this._resizeInOverflow || this._resizeOverflowWindow === window) {
             Logger.log('Resize ended with overflow - moving window to new workspace');
             this._resizeInOverflow = false;
             const actor = window.get_compositor_private();
             if (actor) actor.opacity = 255;
-            
+
             let oldWorkspace = window.get_workspace();
             this.windowingManager.moveOversizedWindow(window).then(newWorkspace => {
                 if (newWorkspace) {
@@ -104,6 +105,9 @@ export const ResizeHandler = GObject.registerClass({
             this.tilingManager.invalidateLayoutCache();
             this.tilingManager.tileWorkspaceWindows(window.get_workspace(), null, window.get_monitor(), true);
         }
+
+        // Clear resizing state AFTER final retile to prevent animation jiggle on drop
+        this.animationsManager.setResizingWindow(null);
     }
 
     onSizeChange = (_, win, mode) => {
@@ -317,55 +321,56 @@ export const ResizeHandler = GObject.registerClass({
                 this._lastResizeTime = resizeNow;
                 
                 if (isActiveResize) {
+                    // Throttle: execute immediately, skip if too soon since last retile
+                    if (this._lastResizeTileTime && (resizeNow - this._lastResizeTileTime) < 16) {
+                        this._sizeChanged = false;
+                        return;
+                    }
+                    this._lastResizeTileTime = resizeNow;
+
                     if (this._resizeDebounceTimeout) {
                         this._timeoutRegistry.remove(this._resizeDebounceTimeout);
                         this._resizeDebounceTimeout = null;
                     }
-                    
-                    // Batch events with 50ms delay to allow overflow detection and
-                    // ghost mode feedback during continuous resizing.
-                    this._resizeDebounceTimeout = this._timeoutRegistry.add(50, () => {
-                        this._resizeDebounceTimeout = null;
-                        
-                        let canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
-                        const mosaicWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-                            .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
-                        const isSolo = mosaicWindows.length <= 1;
-                        
-                        // Block moves during smart resize to prevent expelling windows on revert.
-                        const isSmartResizing = this.tilingManager._isSmartResizingBlocked;
-                        // Skip ghost detection right after smart resize to prevent false positives from unsettled rects.
-                        const wasSmartResized = WindowState.get(window, 'smartResizeApplied');
 
-                        if (!canFit && !this._resizeInOverflow && !isSolo && !isSmartResizing && !wasSmartResized) {
-                            if (WindowState.get(window, 'waitingForGeometry') || !WindowState.get(window, 'geometryReady')) {
-                                return GLib.SOURCE_REMOVE;
-                            }
-                            
-                            // GHOST MODE: Reduce opacity to signal that the window no longer fits.
-                            this._resizeInOverflow = true;
-                            this._resizeOverflowWindow = window;
-                            const actor = window.get_compositor_private();
-                            if (actor) actor.opacity = 128;
-                            Logger.log(`Resize overflow detected for window ${window.get_id()} - enabling ghost mode`);
-                            this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true, false);
-                        } else {
-                            // Recovery logic: if it fits again, clear overflow state and restore full opacity
-                            if (canFit && this._resizeInOverflow) {
-                                this._resizeInOverflow = false;
-                                this._resizeOverflowWindow = null;
-                                const actor = window.get_compositor_private();
-                                if (actor) actor.opacity = 255;
-                                Logger.log(`Window ${window.get_id()} recovered from resize overflow`);
-                            }
-                            
-                            const excludeWindow = this._resizeInOverflow ? window : null;
-                            const excludeFromTiling = this._resizeInOverflow;
-                            this.tilingManager.tileWorkspaceWindows(workspace, excludeWindow, monitor, true, excludeFromTiling);
+                    let canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
+                    const mosaicWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
+                        .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
+                    const isSolo = mosaicWindows.length <= 1;
+
+                    // Block moves during smart resize to prevent expelling windows on revert.
+                    const isSmartResizing = this.tilingManager._isSmartResizingBlocked;
+                    // Skip ghost detection right after smart resize to prevent false positives from unsettled rects.
+                    const wasSmartResized = WindowState.get(window, 'smartResizeApplied');
+
+                    if (!canFit && !this._resizeInOverflow && !isSolo && !isSmartResizing && !wasSmartResized) {
+                        if (WindowState.get(window, 'waitingForGeometry') || !WindowState.get(window, 'geometryReady')) {
+                            this._sizeChanged = false;
+                            return;
                         }
-                        return GLib.SOURCE_REMOVE;
-                    });
-                    
+
+                        // GHOST MODE: Reduce opacity to signal that the window no longer fits.
+                        this._resizeInOverflow = true;
+                        this._resizeOverflowWindow = window;
+                        const actor = window.get_compositor_private();
+                        if (actor) actor.opacity = 128;
+                        Logger.log(`Resize overflow detected for window ${window.get_id()} - enabling ghost mode`);
+                        this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true, false);
+                    } else {
+                        // Recovery logic: if it fits again, clear overflow state and restore full opacity
+                        if (canFit && this._resizeInOverflow) {
+                            this._resizeInOverflow = false;
+                            this._resizeOverflowWindow = null;
+                            const actor = window.get_compositor_private();
+                            if (actor) actor.opacity = 255;
+                            Logger.log(`Window ${window.get_id()} recovered from resize overflow`);
+                        }
+
+                        const excludeWindow = this._resizeInOverflow ? window : null;
+                        const excludeFromTiling = this._resizeInOverflow;
+                        this.tilingManager.tileWorkspaceWindows(workspace, excludeWindow, monitor, true, excludeFromTiling);
+                    }
+
                     this._sizeChanged = false;
                     return;
                 }
@@ -440,6 +445,7 @@ export const ResizeHandler = GObject.registerClass({
         this._resizeGracePeriod = null;
         this._lastResizeWindow = null;
         this._lastResizeTime = 0;
+        this._lastResizeTileTime = 0;
         this._ext = null;
     }
 
