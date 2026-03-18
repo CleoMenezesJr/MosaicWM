@@ -868,6 +868,14 @@ export const WindowHandler = GObject.registerClass({
     }
     onWindowCreated(window) {
         this.windowingManager.invalidateWindowsCache();
+
+        // Shift held at launch: make always-on-top before any tiling runs
+        const [, , creationMods] = global.get_pointer();
+        if (creationMods & Clutter.ModifierType.SHIFT_MASK) {
+            window.make_above();
+            Logger.log(`Window ${window.get_id()} opened with Shift — set always-on-top`);
+        }
+
         if (this.windowingManager.isMaximizedOrFullscreen(window)) {
             WindowState.set(window, 'openedMaximized', true);
             // Defense: clean up flags that onSizeChange may have set before window-created fired
