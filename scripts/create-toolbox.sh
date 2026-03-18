@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
-# Copied from: https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/main/tools/toolbox/create-toolbox.sh
+# Creates a Fedora toolbox with gnome-shell, mutter-devkit and flatpak
+# for running a nested GNOME Shell session with host apps and extensions.
 
 set -e
 
-DEFAULT_TOOLBOX=gnome-shell-devel
-DEFAULT_IMAGE=registry.fedoraproject.org/fedora-toolbox:42
+DEFAULT_TOOLBOX=gnome-ext-test
+DEFAULT_RELEASE=44
 CONFIG_FILE=${XDG_CONFIG_HOME:-$HOME/.config}/gnome-shell-toolbox-tools.conf
+
+PACKAGES=(
+  gnome-shell
+  mutter
+  mutter-devkit
+  flatpak
+  dbus-tools
+)
 
 usage() {
   cat <<-EOF
@@ -15,7 +24,7 @@ usage() {
 
 	Options:
 	  -t, --toolbox=TOOLBOX   Use TOOLBOX instead of the default "$DEFAULT_TOOLBOX"
-	  -i, --image=IMAGE       Use IMAGE instead of the default "$DEFAULT_IMAGE"
+	  -r, --release=RELEASE   Use Fedora RELEASE instead of the default "$DEFAULT_RELEASE"
 
 	  -h, --help              Display this help
 
@@ -28,13 +37,13 @@ die() {
 }
 
 TOOLBOX=$DEFAULT_TOOLBOX
-IMAGE=$DEFAULT_IMAGE
+RELEASE=$DEFAULT_RELEASE
 
 TEMP=$(getopt \
  --name $(basename $0) \
- --options 't:i:h' \
+ --options 't:r:h' \
  --longoptions 'toolbox:' \
- --longoptions 'image:' \
+ --longoptions 'release:' \
  --longoptions 'help' \
  -- "$@") || die "Run $(basename $0) --help to see available options"
 
@@ -48,8 +57,8 @@ while true; do
       shift 2
     ;;
 
-    -i|--image)
-      IMAGE=$2
+    -r|--release)
+      RELEASE=$2
       shift 2
     ;;
 
@@ -65,22 +74,20 @@ while true; do
   esac
 done
 
-PACKAGES=(
-  gnome-shell
-  glib2-devel
-)
+echo "Creating toolbox $TOOLBOX (Fedora $RELEASE)..."
+toolbox create --assumeyes --distro fedora --release "$RELEASE" "$TOOLBOX"
 
-echo "Creating toolbox $TOOLBOX from $IMAGE..."
+echo "Installing packages: ${PACKAGES[*]}..."
+toolbox run --container "$TOOLBOX" sudo dnf install -y "${PACKAGES[@]}"
 
-toolbox create --image $IMAGE $TOOLBOX
-
-echo "Installing packages..."
-toolbox run --container $TOOLBOX sudo dnf install -y ${PACKAGES[@]}
+echo "Upgrading packages to avoid version mismatches..."
+toolbox run --container "$TOOLBOX" sudo dnf upgrade -y --refresh
 
 echo "Saving configuration..."
-mkdir -p $(dirname $CONFIG_FILE)
-cat > $CONFIG_FILE <<-EOF
+mkdir -p "$(dirname "$CONFIG_FILE")"
+cat > "$CONFIG_FILE" <<-EOF
 DEFAULT_TOOLBOX=$TOOLBOX
 EOF
 
 echo "Toolbox $TOOLBOX created successfully!"
+echo "Run: ./scripts/run-gnome-shell.sh -t $TOOLBOX"

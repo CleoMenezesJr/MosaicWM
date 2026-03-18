@@ -4,7 +4,7 @@
 
 set -e
 
-DEFAULT_TOOLBOX=gnome-shell-devel
+DEFAULT_TOOLBOX=gnome-ext-test
 CONFIG_FILE=${XDG_CONFIG_HOME:-$HOME/.config}/gnome-shell-toolbox-tools.conf
 
 usage() {
