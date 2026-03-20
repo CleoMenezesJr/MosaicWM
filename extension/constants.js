@@ -65,14 +65,9 @@ export const ANIMATION_DIFF_THRESHOLD = 10;
 // Smart resize
 export const SMART_RESIZE_ANIMATION_MS = 400; // Dedicated animation duration for auto-resize (smoother)
 
-// Smart Resize Iterative - Democratic Proportional Resizing
-export const SMART_RESIZE_STEP_PERCENTAGE = 20;      // Reduce 20% per cycle (multiply by 0.8) - aggressive to fit quickly
-export const SMART_RESIZE_DETECTION_DELTA_PX = 2;    // Tolerance (in pixels) to detect if window actually shrank
-export const SMART_RESIZE_MAX_ITERATIONS = 10;       // Maximum cycles before declaring overflow
-export const SMART_RESIZE_ITERATION_DEBOUNCE_MS = 100;  // Delay between cycles to let Mutter apply resize
-export const SMART_RESIZE_LEARNING_DEBOUNCE_MS = 200;  // Delay before checking window movement
-export const SMART_RESIZE_MIN_WINDOW_WIDTH = 100;    // Minimum window size during smart resize
-export const SMART_RESIZE_MIN_WINDOW_HEIGHT = 100;   // Minimum window size during smart resize
+// Fallback when get_min_size() has no hint
+export const SMART_RESIZE_MIN_WINDOW_WIDTH = 100;
+export const SMART_RESIZE_MIN_WINDOW_HEIGHT = 100;
 
 // Slide-in animation for new windows
 export const SLIDE_IN_OFFSET_PX = 100;        // Offset in pixels for new window slide-in animation

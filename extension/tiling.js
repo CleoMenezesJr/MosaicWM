@@ -12,547 +12,6 @@ import * as WindowState from './windowState.js';
 
 export const ComputedLayouts = new WeakMap();
 
-class SmartResizeIterator {
-    constructor(windows, newWindow, workArea, tilingManager) {
-        // Filter to only resizable windows - non-resizable windows can't be shrunk
-        const existingResizable = windows.filter(w => w.allows_resize && w.allows_resize());
-        const existingNonResizable = windows.filter(w => !w.allows_resize || !w.allows_resize());
-        
-        // Include newWindow in resize pool if it's resizable
-        // This ensures BOTH existing and new windows are democratically resized together
-        const newWindowResizable = newWindow.allows_resize && newWindow.allows_resize();
-        const allResizable = newWindowResizable ? [...existingResizable, newWindow] : existingResizable;
-        
-        this.resizableWindows = allResizable;
-        this.nonResizableWindows = existingNonResizable;
-        
-        // Early exit if no resizable windows found
-        if (this.resizableWindows.length === 0) {
-            Logger.log(`[SMART RESIZE] No resizable windows found - cannot shrink anything`);
-        }
-        
-        // Use resizable windows for the resize loop
-        this.windows = this.resizableWindows;
-        
-        // Include newWindow in ALL simulations, even if it's not resizable
-        this.newWindow = newWindow;
-        this.allWindows = [...this.resizableWindows, ...this.nonResizableWindows];
-        // Ensure newWindow is in allWindows if not already there (e.g. if it's non-resizable)
-        if (!this.allWindows.some(w => w.get_id() === newWindow.get_id())) {
-            this.allWindows.push(newWindow);
-        }
-
-        this.workArea = workArea;
-        this.tilingManager = tilingManager;
-        this.iteration = 0;
-        
-        this.windowsAtMinimum = new Set();
-        for (const window of this.windows) {
-            if (tilingManager.isWindowAtMinimum(window)) {
-                this.windowsAtMinimum.add(window.get_id());
-                Logger.log(`[SMART RESIZE] Window ${window.get_id()} already at minimum (shared check)`);
-            }
-        }
-        this.originalSizes = new Map();      // {windowId -> {w, h}} before smart resize
-        this.currentSizes = new Map();       // {windowId -> {w, h}} current size during reduction
-        this.resizeAttempts = new Map();     // {windowId -> count} how many times attempted to shrink
-        this.noMovementCount = new Map();    // {windowId -> count} iterations without movement
-        this.lastIterationWindowShrank = new Map(); // {windowId -> iteration} last iteration window shrank
-        this.maxIterations = constants.SMART_RESIZE_MAX_ITERATIONS;
-        this.MIN_MOVEMENT_ITERATIONS = 2;   // Require 2 iterations without movement to confirm minimum (avoid false positives)
-        this.consecutiveTimeouts = 0;       // Counter of consecutive timeouts in event-driven wait
-        this._ext = tilingManager._extension; // Access to TimeoutRegistry for async waits
-        
-        const actuallyResizable = this.resizableWindows.length - this.windowsAtMinimum.size;
-        Logger.log(`[SMART RESIZE] SmartResizeIterator created for ${this.resizableWindows.length} resizable windows (${this.nonResizableWindows.length} non-resizable, ${this.windowsAtMinimum.size} already at minimum) - ${actuallyResizable} available for resize`);
-        
-        // CRITICAL: Mark all windows as constrained to protect natural sizes from onSizeChanged overrides
-        for (const window of this.allWindows) {
-            WindowState.set(window, 'isConstrainedByMosaic', true);
-        }
-
-        this._aborted = false;
-    }
-
-    _getEffectiveSize(window) {
-        return this.tilingManager.getEffectiveWindowSize(window);
-    }
-
-    // Immediate cancellation of the iterator
-    abort() {
-        if (this._aborted) return;
-        this._aborted = true;
-        
-        // If we are currently awaiting size changes, resolve immediately
-        if (this._abortResolver) {
-            this._abortResolver();
-        }
-
-        Logger.log(`[SMART RESIZE] Iterator aborted - cancelling all operations`);
-    }
-
-    // Check if all tracked windows are still valid actors on their workspace
-    _validateWindows() {
-        if (this._aborted) return false;
-
-        for (const window of this.allWindows) {
-            // Check if window is destroyed or moved to another workspace/monitor unexpectedly
-            if (!window) {
-                Logger.log(`[SMART RESIZE] Validation FAILED: Window is gone`);
-                return false;
-            }
-            const actor = window.get_compositor_private();
-            if (!actor || actor.is_destroyed()) {
-                Logger.log(`[SMART RESIZE] Validation FAILED: Window ${window ? window.get_id() : 'unknown'} is gone`);
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // Calculate current simulated layout based on currentSizes
-    calculateLayout() {
-        const simulatedWindows = this.allWindows.map(w => {
-            const id = w.get_id();
-            const current = this.currentSizes.get(id);
-            if (current) {
-                return { id, width: current.width, height: current.height };
-            }
-            
-            // Use effective size for windows not yet in currentSizes
-            const size = this._getEffectiveSize(w);
-            return { id, width: size.width, height: size.height };
-        });
-
-        return this.tilingManager._tile(simulatedWindows, this.workArea, true);
-    }
-
-    async executeIteration() {
-        if (!this._validateWindows()) {
-            return { success: false, allAtMinimum: false, shouldRetry: false, aborted: true };
-        }
-
-        this.iteration++;
-        Logger.log(`[SMART RESIZE] ===== Iteration ${this.iteration} start =====`);
-        Logger.log(`[SMART RESIZE] Windows: ${this.windows.length} candidates, ${this.windowsAtMinimum.size} at minimum`);
-        
-        if (this.iteration > this.maxIterations) {
-            Logger.log(`[SMART RESIZE] Max iterations (${this.maxIterations}) reached - overflow`);
-            return { success: false, allAtMinimum: true, shouldRetry: false };
-        }
-
-        // Phase 1: Filter windows that are NOT at minimum
-        const toShrink = this.windows.filter(w => !this.windowsAtMinimum.has(w.get_id()));
-        
-        if (toShrink.length === 0) {
-            Logger.log(`[SMART RESIZE] All windows at minimum - cannot shrink further`);
-            return { success: false, allAtMinimum: true, shouldRetry: false };
-        }
-
-        // Phase 2: Calculate proportional reduction (10% per iteration)
-        const reductionPercentage = 1 - (constants.SMART_RESIZE_STEP_PERCENTAGE / 100); // 0.90 if 10%
-        Logger.log(`[SMART RESIZE] Reduction ratio: ${reductionPercentage.toFixed(3)} (${constants.SMART_RESIZE_STEP_PERCENTAGE}% shrink)`);
-        
-        // Phase 3: Apply resize to ALL candidate windows
-        for (const window of toShrink) {
-            const id = window.get_id();
-            this.resizeAttempts.set(id, (this.resizeAttempts.get(id) || 0) + 1);
-            
-            // Mark window as smart resizing BEFORE calling move_resize_frame
-            // This prevents onSizeChanged from interfering with the resizing
-            WindowState.set(window, 'isSmartResizing', true);
-            
-            // Save ORIGINAL size if first time
-            if (!this.originalSizes.has(id)) {
-                const size = this._getEffectiveSize(window);
-                this.originalSizes.set(id, { width: size.width, height: size.height });
-                this.currentSizes.set(id, { width: size.width, height: size.height });
-                Logger.log(`[SMART RESIZE] Iter ${this.iteration}: Learning original size for ${id}: ${size.width}x${size.height}`);
-            }
-            
-            // Apply proportional reduction to CURRENT size
-            const current = this.currentSizes.get(id);
-            let newWidth = Math.floor(current.width * reductionPercentage);
-            let newHeight = Math.floor(current.height * reductionPercentage);
-            
-            // Respect absolute minimum size of 250x250 for smart resize
-            const minWidth = constants.SMART_RESIZE_MIN_WINDOW_WIDTH || 250;
-            const minHeight = constants.SMART_RESIZE_MIN_WINDOW_HEIGHT || 250;
-            
-            if (newWidth < minWidth) {
-                newWidth = minWidth;
-            }
-            if (newHeight < minHeight) {
-                newHeight = minHeight;
-            }
-            
-            Logger.log(`[SMART RESIZE] Iter ${this.iteration}: ${id} shrinking ${current.width}x${current.height} -> ${newWidth}x${newHeight}`);
-            
-            // Do NOT set targetSmartResizeSize here - will be set in commitResizes() after validation
-            const frame = window.get_frame_rect();
-            window.move_resize_frame(false, frame.x, frame.y, newWidth, newHeight);
-        }
-
-        // Check if anything changed while we were triggering resizes
-        if (!this._validateWindows()) return { success: false, allAtMinimum: false, shouldRetry: false, aborted: true };
-
-        // EVENT-DRIVEN - Wait for resizes to be applied by TMutter
-        Logger.log(`[SMART RESIZE] Iter ${this.iteration}: Waiting for size-changed signals...`);
-        const hadTimeout = await this._waitForSizeChanges(toShrink, 500);
-
-        // Pre-flight check: Was the iterator aborted while we were waiting?
-        if (this._aborted) {
-            Logger.log(`[SMART RESIZE] Iteration ${this.iteration} aborted during await - escaping`);
-            return { success: false, allAtMinimum: false, shouldRetry: false, aborted: true };
-        }
-
-        if (hadTimeout) {
-            this.consecutiveTimeouts++;
-        } else {
-            this.consecutiveTimeouts = 0;
-        }
-
-        // Phase 5: Detect which windows actually shrank (dynamic minimum discovery)
-        const minWidth = constants.SMART_RESIZE_MIN_WINDOW_WIDTH || 250;
-        const minHeight = constants.SMART_RESIZE_MIN_WINDOW_HEIGHT || 250;
-        
-        for (const window of toShrink) {
-            // Keep isSmartResizing flag active during detection
-            // Prevents onSizeChanged from triggering tiling during iteration
-            WindowState.set(window, 'isSmartResizing', true);
-            const id = window.get_id();
-            const frame = window.get_frame_rect();
-            
-            // CRITICAL: If Mutter returns 0x0 (common for brand new windows), do NOT trust it as a resize result
-            if (frame.width === 0 || frame.height === 0) {
-                Logger.log(`[SMART RESIZE] Iter ${this.iteration}: Window ${id} is 0x0 - skipping detection (will retry)`);
-                continue;
-            }
-
-            const current = this.currentSizes.get(id);
-            
-            // DETECTION LOGIC: Proportional progress checking
-            const widthShrinkage = current.width - frame.width;
-            const heightShrinkage = current.height - frame.height;
-            
-            // We asked for a set reduction (ReductionPercentage). 
-            // If the window only shrank by a tiny amount compared to what we asked, it's stuck.
-            const requestedWidthReduction = Math.floor(current.width * (constants.SMART_RESIZE_STEP_PERCENTAGE / 100));
-            const requestedHeightReduction = Math.floor(current.height * (constants.SMART_RESIZE_STEP_PERCENTAGE / 100));
-            
-            // Threshold: If it shrank less than 20% of what was requested AND less than 5px, it's virtually stuck
-            const isWidthStuck = widthShrinkage < Math.max(2, requestedWidthReduction * 0.2);
-            const isHeightStuck = heightShrinkage < Math.max(2, requestedHeightReduction * 0.2);
-            
-            Logger.log(`[SMART RESIZE] Iter ${this.iteration}: Verify ${id}: shrank_w=${widthShrinkage}px (req=${requestedWidthReduction}), shrank_h=${heightShrinkage}px (req=${requestedHeightReduction})`);
-            
-            if (isWidthStuck && isHeightStuck) {
-                const noMovCount = (this.noMovementCount.get(id) || 0) + 1;
-                this.noMovementCount.set(id, noMovCount);
-                
-                if (noMovCount >= this.MIN_MOVEMENT_ITERATIONS) {
-                    Logger.log(`[SMART RESIZE] Iter ${this.iteration}: ${id} HIT MINIMUM (Behavioral detection: stuck)`);
-                    this.windowsAtMinimum.add(id);
-                    WindowState.set(window, 'hitMinimumSize', true);
-                    WindowState.set(window, 'learnedMinSize', { width: frame.width, height: frame.height });
-                }
-                // Update currentSizes even if stuck to prevent compounding errors
-                this.currentSizes.set(id, { width: frame.width, height: frame.height });
-            } else {
-                // Window shrank in at least one dimension
-                this.noMovementCount.set(id, 0);
-                this.lastIterationWindowShrank.set(id, this.iteration);
-                this.currentSizes.set(id, { width: frame.width, height: frame.height });
-                Logger.log(`[SMART RESIZE] Iter ${this.iteration}: ${id} shrank successfully to ${frame.width}x${frame.height}`);
-            }
-        }
-
-        // Phase 6: Simulate layout with CURRENT sizes (after this.iteration)
-        const layoutResult = this.calculateLayout();
-        
-        Logger.log(`[SMART RESIZE] Iter ${this.iteration}: Layout simulation: overflow=${layoutResult.overflow}`);
-        
-        if (!layoutResult.overflow) {
-            Logger.log(`[SMART RESIZE] Iteration ${this.iteration}: SUCCESS - all windows fit!`);
-            return { success: true, shouldRetry: false };
-        }
-
-        // Phase 7: Check if can continue or overflow is inevitable
-        const allAtMinimum = this.windows.every(w => this.windowsAtMinimum.has(w.get_id()));
-        const stillResizableCandidates = this.windows.length - this.windowsAtMinimum.size;
-        
-        Logger.log(`[SMART RESIZE] Iter ${this.iteration}: Still overflowing. Resizable remaining: ${stillResizableCandidates}`);
-        
-        // OPTIMIZATION (Iter 1 Early Exit): If NO window made progress in this iteration
-        // Means preferred sizes are at the app's real limit - overflow is permanent and future iterations are futile
-        const anyWindowMadeProgressThisIteration = this.windows.some(w => {
-            const lastShrank = this.lastIterationWindowShrank.get(w.get_id());
-            return lastShrank === this.iteration; // Did this window shrink in THIS iteration?
-        });
-
-        // Safety check for rapid creation: skip if window actually grew (Mutter still settling resize).
-        const mutterIsLagging = this.windows.some(w => {
-            const id = w.get_id();
-            if (!this.currentSizes.has(id)) return false;
-            
-            const current = this.currentSizes.get(id);
-            const frame = w.get_frame_rect();
-            const widthShrinkage = current.width - frame.width;
-            const heightShrinkage = current.height - frame.height;
-            
-            // If it grew, Mutter is out of sync with our current size expectations
-            return widthShrinkage < 0 || heightShrinkage < 0;
-        });
-        
-        if (!anyWindowMadeProgressThisIteration && layoutResult.overflow && this.iteration === 1 && !mutterIsLagging) {
-            Logger.log(`[SMART RESIZE] Iteration 1 EARLY EXIT: No window could even start shrinking - preferred sizes too tight. IMPOSSIBLE to fit. Aborting.`);
-            return { success: false, allAtMinimum: false, shouldRetry: false, earlyEscape: true };
-        }
-        
-        if (!anyWindowMadeProgressThisIteration && layoutResult.overflow && this.iteration >= 3 && !mutterIsLagging) {
-            Logger.log(`[SMART RESIZE] Iteration ${this.iteration}: Permanent cycle detected - no window made progress and overflow=true. IMPOSSIBLE to fit. Aborting.`);
-            return { success: false, allAtMinimum: false, shouldRetry: false, earlyEscape: true };
-        }
-        
-        // Only reliable condition: 100% of windows are at minimum but overflow still exists
-        if (allAtMinimum) {
-            Logger.log(`[SMART RESIZE] All windows at minimum but overflow persists - CANNOT FIT (overflow inevitable)`);
-            return { success: false, allAtMinimum: true, shouldRetry: false };
-        }
-
-        // Direct overflow if small windows already fill space
-        const isLandscape = this.workArea.width > this.workArea.height;
-        const primaryDimension = isLandscape ? this.workArea.width : this.workArea.height;
-        const SMALL_WINDOW_RATIO = 0.25; // 25% of primary axis
-        const SMALL_WINDOW_THRESHOLD = Math.round(primaryDimension * SMALL_WINDOW_RATIO);
-        
-        const nonMinimumWindows = this.windows.filter(w => !this.windowsAtMinimum.has(w.get_id()));
-        const smallWindowsCount = nonMinimumWindows.filter(w => {
-            const size = this.currentSizes.get(w.get_id());
-            const windowPrimaryDimension = isLandscape ? size.width : size.height;
-            return size && windowPrimaryDimension < SMALL_WINDOW_THRESHOLD;
-        }).length;
-        
-        const mostlySmallWindows = nonMinimumWindows.length > 0 && 
-                                   (smallWindowsCount / nonMinimumWindows.length) >= 0.5;
-        
-        if (mostlySmallWindows && layoutResult.overflow) {
-            const dimensionName = isLandscape ? "width" : "height";
-            Logger.log(`[SMART RESIZE] Iter ${this.iteration}: SMALL WINDOW OPTIMIZATION (${dimensionName}=${primaryDimension}px) - Most remaining windows are < ${SMALL_WINDOW_THRESHOLD}px (25% of ${dimensionName}) and overflow persists. Impossible to fit. ABORTING.`);
-            return { success: false, allAtMinimum: false, shouldRetry: false, earlyEscape: true };
-        }
-
-        Logger.log(`[SMART RESIZE] Iter ${this.iteration}: Will continue on next iteration (${stillResizableCandidates} can still shrink)`);
-        return { success: false, allAtMinimum: false, shouldRetry: true };
-    }
-
-    _calculateFreeSpacePercent(layoutResult) {
-        if (!layoutResult || !layoutResult.levels || layoutResult.levels.length === 0) {
-            return 100; // If no data, assume available space
-        }
-        
-        const totalArea = this.workArea.width * this.workArea.height;
-        
-        // Calculate bounding box for all levels
-        let minX = Infinity, maxX = -Infinity;
-        let minY = Infinity, maxY = -Infinity;
-        
-        for (const level of layoutResult.levels) {
-            minX = Math.min(minX, level.x);
-            maxX = Math.max(maxX, level.x + level.width);
-            minY = Math.min(minY, level.y);
-            maxY = Math.max(maxY, level.y + level.height);
-        }
-        
-        // If no valid level, return 100%
-        if (minX === Infinity || maxX === -Infinity) {
-            return 100;
-        }
-        
-        const usedWidth = maxX - minX;
-        const usedHeight = maxY - minY;
-        const usedArea = usedWidth * usedHeight;
-        const freeArea = totalArea - usedArea;
-        const freePercent = (freeArea / totalArea) * 100;
-        
-        return Math.max(0, freePercent); // Nunca retornar negativo
-    }
-
-    _waitMs(ms) {
-        return new Promise(resolve => {
-            if (this._ext && this._ext._timeoutRegistry) {
-                this._ext._timeoutRegistry.add(ms, () => {
-                    resolve();
-                }, '_waitMs');
-            } else {
-                // No registry available — resolve immediately to avoid unmanaged timeouts
-                resolve();
-            }
-        });
-    }
-
-    // Wait for resize completion via 'size-changed' signals
-    async _waitForSizeChanges(windows, timeoutMs = 1500) {
-        if (windows.length === 0) {
-            Logger.log(`[SMART RESIZE EVENT-DRIVEN] No windows to monitor, returning immediately`);
-            return false;
-        }
-
-        const startTime = Date.now();
-        const promises = [];
-        const signalHandlers = [];
-        let timeoutOccurred = false;
-
-        // Create a Promise for each window that resolves on its first 'size-changed'
-        for (const window of windows) {
-            const promise = new Promise((resolve) => {
-                const handler = window.connect('size-changed', () => {
-                    const elapsed = Date.now() - startTime;
-                    Logger.log(`[SMART RESIZE EVENT-DRIVEN] Window ${window.get_id()} fired size-changed (${elapsed}ms after batch resize)`);
-                    resolve();
-                });
-                signalHandlers.push({ window, handler });
-            });
-            promises.push(promise);
-        }
-
-        // Promise.race: resolve when ANY window moves
-        // Timeout fallback if window manager is slow to respond
-        let registryId = null;
-        const timeoutPromise = new Promise((resolve) => {
-            if (this._ext && this._ext._timeoutRegistry) {
-                registryId = this._ext._timeoutRegistry.add(timeoutMs, () => {
-                    timeoutOccurred = true;
-                    resolve();
-                }, '_waitForSizeChanges');
-            } else {
-                // No registry available — resolve immediately to avoid unmanaged timeouts
-                timeoutOccurred = true;
-                resolve();
-            }
-        });
-        
-        // Instant Abort Promise
-        const abortPromise = new Promise((resolve) => {
-            this._abortResolver = resolve;
-        });
-
-        try {
-            // Wait for the first window to resize, then give others 40ms to catch up
-            const firstResizeWithDebounce = Promise.race(promises).then(() => {
-                return new Promise(resolve => {
-                    if (this._ext && this._ext._timeoutRegistry) {
-                        this._ext._timeoutRegistry.add(40, resolve, '_waitForSizeChanges_debounce');
-                    } else {
-                        // No registry available — resolve immediately to avoid unmanaged timeouts
-                        resolve();
-                    }
-                });
-            });
-
-            await Promise.race([
-                firstResizeWithDebounce,
-                timeoutPromise,
-                abortPromise
-            ]);
-            this._abortResolver = null; // Clean up
-            if (registryId !== null && this._ext && this._ext._timeoutRegistry && !timeoutOccurred) {
-                this._ext._timeoutRegistry.remove(registryId);
-            }
-            
-            const totalElapsed = Date.now() - startTime;
-            if (timeoutOccurred) {
-                Logger.log(`[SMART RESIZE EVENT-DRIVEN] ⏱ Timeout after ${totalElapsed}ms (window manager slow to respond)`);
-            } else {
-                Logger.log(`[SMART RESIZE EVENT-DRIVEN] ✓ Size change detected in ${totalElapsed}ms`);
-            }
-        } catch (e) {
-            Logger.log(`[SMART RESIZE EVENT-DRIVEN] Promise.race error (should not happen): ${e}`);
-        } finally {
-            // Cleanup - disconnect all handlers
-            for (const { window, handler } of signalHandlers) {
-                try {
-                    window.disconnect(handler);
-                } catch (e) {
-                    Logger.log(`[SMART RESIZE EVENT-DRIVEN] Warning: Failed to disconnect signal from ${window.get_id()}`);
-                }
-            }
-        }
-        
-        return timeoutOccurred;
-    }
-
-    // Apply final reduced sizes and mark appropriate flags
-    commitResizes() {
-        if (!this._validateWindows()) {
-            Logger.log(`[SMART RESIZE] Aborting commit - environment changed`);
-            return;
-        }
-
-        Logger.log(`[SMART RESIZE] Committing ${this.windows.length} resized windows`);
-        
-        for (const window of this.windows) {
-            const id = window.get_id();
-            const originalSize = this.originalSizes.get(id);
-            const current = this.currentSizes.get(id) || this._getEffectiveSize(window);
-            const frame = window.get_frame_rect();
-
-            if (originalSize) {
-                WindowState.set(window, 'originalSize', originalSize);
-                // Protect original size for restoration
-                if (!WindowState.has(window, 'preferredSize')) {
-                    WindowState.set(window, 'preferredSize', { width: originalSize.width, height: originalSize.height });
-                    Logger.log(`[SMART RESIZE] Initial preferredSize set for ${id}: ${originalSize.width}x${originalSize.height}`);
-                }
-            }
-
-            // CRITICAL: Mark AS constrained to protect preferredSize from onSizeChanged
-            WindowState.set(window, 'isConstrainedByMosaic', true);
-            // Disable isSmartResizing flag AFTER successful commit
-            WindowState.set(window, 'isSmartResizing', false);
-            WindowState.set(window, 'hitMinimumSize', false);
-            
-            Logger.log(`[SMART RESIZE] Committed: ${id}, current=${current.width}x${current.height}`);
-            
-            // Validate that the CURRENT window size matches what was applied
-            const borderMismatch = Math.max(
-                Math.abs(frame.width - current.width),
-                Math.abs(frame.height - current.height)
-            );
-            
-            if (borderMismatch > constants.SMART_RESIZE_DETECTION_DELTA_PX) {
-                Logger.log(`[SMART RESIZE] WARNING: Size mismatch for ${id}: frame=${frame.width}x${frame.height}, expected=${current.width}x${current.height}, delta=${borderMismatch}px`);
-                WindowState.set(window, 'targetSmartResizeSize', null);
-            } else {
-                WindowState.set(window, 'targetSmartResizeSize', current);
-            }
-        }
-    }
-
-    // Revert all windows to original sizes (reverse smart resize on final overflow)
-    async revertAll() {
-        Logger.log(`[SMART RESIZE] Reverting ${this.windows.length} windows to original sizes`);
-        
-        for (const window of this.windows) {
-            const id = window.get_id();
-            const originalSize = this.originalSizes.get(id);
-            if (!originalSize) continue;
-
-            Logger.log(`[SMART RESIZE] Reverting ${id}: ${originalSize.width}x${originalSize.height}`);
-            
-            const frame = window.get_frame_rect();
-            window.move_resize_frame(false, frame.x, frame.y, originalSize.width, originalSize.height);
-            
-            WindowState.remove(window, 'targetSmartResizeSize');
-            WindowState.set(window, 'hitMinimumSize', false);
-            WindowState.set(window, 'isSmartResizing', false);
-        }
-        
-        // Wait for Mutter to apply reverts
-        await this._waitMs(constants.SMART_RESIZE_ITERATION_DEBOUNCE_MS);
-    }
-}
-
 export const TilingManager = GObject.registerClass({
     GTypeName: 'MosaicTilingManager',
     Signals: {
@@ -574,18 +33,8 @@ export const TilingManager = GObject.registerClass({
         this._windowingManager = null;
         this._extension = null;
         
-        // Queue for serializing window opening operations to prevent race conditions
-        this._openingQueue = [];
-        this._processingQueue = false;
-        
-        // Promise chain to serialize smart resize operations
-        this._smartResizeQueue = Promise.resolve();
         // Flag to block overflow decisions during smart resize
         this._isSmartResizingBlocked = false;
-        // Reference to the currently active SmartResizeIterator
-        this._activeSmartResize = null;
-        // Track which workspace the active smart resize is operating on
-        this._activeSmartResizeWorkspace = null;
         
         // Layout cache to avoid redundant O(n!) permutation calculations
         this._lastLayoutHash = null;
@@ -612,17 +61,21 @@ export const TilingManager = GObject.registerClass({
         this._windowingManager = manager;
     }
 
-    // Get the effective size of a window, handling 0×0 for newly-created windows
+    // Effective size: pending async sizes → frame rect → saved sizes → fallback
     getEffectiveWindowSize(window) {
+        const smartSize = WindowState.get(window, 'targetSmartResizeSize');
+        if (smartSize) {
+            return { width: smartSize.width, height: smartSize.height };
+        }
+
+        const restoredSize = WindowState.get(window, 'targetRestoredSize');
+        if (restoredSize) {
+            return { width: restoredSize.width, height: restoredSize.height };
+        }
+
         const frame = window.get_frame_rect();
         if (frame.width > 0 && frame.height > 0) {
             return { width: frame.width, height: frame.height };
-        }
-
-        // Fallback: learned minimum (high reliability)
-        const learnedMin = WindowState.get(window, 'learnedMinSize');
-        if (learnedMin) {
-            return { width: learnedMin.width, height: learnedMin.height };
         }
 
         const preferred = WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize');
@@ -632,41 +85,44 @@ export const TilingManager = GObject.registerClass({
 
         // Final fallback (should rarely happen for managed windows)
         return {
-            width: constants.SMART_RESIZE_MIN_WINDOW_WIDTH || 250,
-            height: constants.SMART_RESIZE_MIN_WINDOW_HEIGHT || 250,
+            width: constants.SMART_RESIZE_MIN_WINDOW_WIDTH,
+            height: constants.SMART_RESIZE_MIN_WINDOW_HEIGHT,
         };
     }
 
-    // Get the minimum allowed size for a window during smart resize
+    // Native minimum size via Mutter 50+ get_min_size(), with fallback
     getWindowMinimumSize(window) {
-        const learnedMin = WindowState.get(window, 'learnedMinSize');
+        if (window.get_min_size) {
+            const [hasHint, minW, minH] = window.get_min_size();
+            if (hasHint) {
+                return {
+                    width: Math.max(minW, constants.SMART_RESIZE_MIN_WINDOW_WIDTH),
+                    height: Math.max(minH, constants.SMART_RESIZE_MIN_WINDOW_HEIGHT),
+                };
+            }
+        }
         return {
-            width: learnedMin?.width ?? (constants.SMART_RESIZE_MIN_WINDOW_WIDTH || 250),
-            height: learnedMin?.height ?? (constants.SMART_RESIZE_MIN_WINDOW_HEIGHT || 250),
+            width: constants.SMART_RESIZE_MIN_WINDOW_WIDTH,
+            height: constants.SMART_RESIZE_MIN_WINDOW_HEIGHT,
         };
+    }
+
+    // Native maximum size via Mutter 50+ get_max_size()
+    getWindowMaximumSize(window) {
+        if (window.get_max_size) {
+            const [hasHint, maxW, maxH] = window.get_max_size();
+            if (hasHint && maxW > 0 && maxH > 0)
+                return { width: maxW, height: maxH };
+        }
+        return null;
     }
 
     // Check if a window is already at (or below) its minimum size
     isWindowAtMinimum(window, tolerance = 10) {
         const currentSize = this.getEffectiveWindowSize(window);
-        const learnedMin = WindowState.get(window, 'learnedMinSize');
-        const hitMinimumBefore = WindowState.get(window, 'hitMinimumSize');
         const minSize = this.getWindowMinimumSize(window);
-
-        // 1. Learned minimum match
-        if (learnedMin &&
-            currentSize.width <= learnedMin.width + tolerance &&
-            currentSize.height <= learnedMin.height + tolerance) {
-            return true;
-        }
-        // 2. Previously hit minimum flag
-        if (hitMinimumBefore) return true;
-        // 3. Absolute safety minimum
-        if (currentSize.width <= minSize.width + tolerance &&
-            currentSize.height <= minSize.height + tolerance) {
-            return true;
-        }
-        return false;
+        return currentSize.width <= minSize.width + tolerance &&
+               currentSize.height <= minSize.height + tolerance;
     }
 
     // Try gain factors from 1.0→0.1 and return the best one that fits without overflow
@@ -680,14 +136,19 @@ export const TilingManager = GObject.registerClass({
                 }
 
                 const f = w.get_frame_rect();
-                const nw = Math.floor(f.width + (shrunk.widthDeficit * gainFactor));
-                const nh = Math.floor(f.height + (shrunk.heightDeficit * gainFactor));
+                let nw = Math.floor(f.width + (shrunk.widthDeficit * gainFactor));
+                let nh = Math.floor(f.height + (shrunk.heightDeficit * gainFactor));
 
-                return {
-                    id: w.get_id(),
-                    width: Math.min(nw, shrunk.openingWidth),
-                    height: Math.min(nh, shrunk.openingHeight),
-                };
+                // Clamp to opening size and native maximum
+                nw = Math.min(nw, shrunk.openingWidth);
+                nh = Math.min(nh, shrunk.openingHeight);
+                const maxSize = this.getWindowMaximumSize(w);
+                if (maxSize) {
+                    nw = Math.min(nw, maxSize.width);
+                    nh = Math.min(nh, maxSize.height);
+                }
+
+                return { id: w.get_id(), width: nw, height: nh };
             });
 
             const tile_result = this._tile(simulatedWindows, workArea, true);
@@ -885,53 +346,6 @@ export const TilingManager = GObject.registerClass({
 
     // Queue a window opening operation to prevent race conditions
     // The callback will be called when it's this window's turn. Supports async callbacks.
-    enqueueWindowOpen(windowId, callback) {
-        Logger.log(`Enqueuing window ${windowId} for opening (queue size: ${this._openingQueue.length})`);
-        this._openingQueue.push({ windowId, callback });
-        if (!this._processingQueue) {
-            this._processOpeningQueue().catch(e => {
-                Logger.error(`Opening queue failed: ${e}\n${e.stack}`);
-                this._processingQueue = false;
-            });
-        }
-    }
-    
-    // Process the opening queue one window at a time sequentially
-    async _processOpeningQueue() {
-        if (this._processingQueue || this._openingQueue.length === 0) {
-            return;
-        }
-        
-        this._processingQueue = true;
-        
-        while (this._openingQueue.length > 0) {
-            const { windowId, callback } = this._openingQueue.shift();
-            
-            Logger.log(`Processing queue: window ${windowId} (remaining: ${this._openingQueue.length})`);
-            
-            try {
-                // If callback is async, this naturally awaits it
-                const result = callback();
-                if (result instanceof Promise) {
-                    await result;
-                }
-            } catch (e) {
-                Logger.error(`Error processing window queue for ${windowId}: ${e}\n${e.stack}`);
-            }
-            
-            // Small delay to let animations/mutter settle before next evaluation
-            await this._waitMs(constants.QUEUE_PROCESS_DELAY_MS);
-        }
-        
-        this._processingQueue = false;
-    }
-    
-    // Clear queue (e.g., on disable)
-    clearOpeningQueue() {
-        this._openingQueue = [];
-        this._processingQueue = false;
-    }
-
     setTmpSwap(id1, id2) {
         if (id1 === id2 || (this.tmp_swap[0] === id2 && this.tmp_swap[1] === id1))
             return;
@@ -2091,9 +1505,10 @@ export const TilingManager = GObject.registerClass({
                      // Only try resize if we haven't already (to avoid loops)
                      if (!WindowState.get(reference_meta_window, 'isSmartResizing')) {
                          Logger.log(`Triggering Smart Resize for returning sacred window`);
-                         this.tryFitWithResize(reference_meta_window, realExisting, workArea).catch(e =>
-                             Logger.error(`Smart resize failed for sacred window: ${e}`));
-                         return { overflow: false, layout: null }; // Return early to let async resize handle it
+                         const resizeOk = this.tryFitWithResize(reference_meta_window, realExisting, workArea);
+                         if (!resizeOk)
+                             Logger.log(`Smart resize could not fit sacred window`);
+                         return { overflow: !resizeOk, layout: null };
                      }
                 }
             } else {
@@ -2222,18 +1637,21 @@ export const TilingManager = GObject.registerClass({
             !edgeTiledIds.includes(w.id)
         );
         
-        // Use actual frame dimensions for existing windows to avoid stale targetSmartResizeSize
-        // causing false overflow. Only targetRestoredSize is honored (active unmaximize flow).
+        // Use pending async sizes over stale frame rects
         const workspaceWindows = workspace.list_windows();
 
         for (const w of windows) {
             const realWindow = workspaceWindows.find(win => win.get_id() === w.id);
             if (realWindow) {
                 const restoredSize = WindowState.get(realWindow, 'targetRestoredSize');
+                const smartSize = WindowState.get(realWindow, 'targetSmartResizeSize');
 
                 if (restoredSize) {
                     w.width = restoredSize.width;
                     w.height = restoredSize.height;
+                } else if (smartSize) {
+                    w.width = smartSize.width;
+                    w.height = smartSize.height;
                 } else {
                     const realFrame = realWindow.get_frame_rect();
                     w.width = realFrame.width;
@@ -2304,9 +1722,8 @@ export const TilingManager = GObject.registerClass({
     restorePreferredSize(window) {
         if (!window) return;
         
-        const preferredSize = WindowState.get(window, 'preferredSize') || 
-                              WindowState.get(window, 'openingSize') ||
-                              WindowState.get(window, 'learnedMinSize');
+        const preferredSize = WindowState.get(window, 'preferredSize') ||
+                              WindowState.get(window, 'openingSize');
                               
         if (preferredSize) {
             Logger.log(`restorePreferredSize: Restoring window ${window.get_id()} to ${preferredSize.width}x${preferredSize.height}`);
@@ -2588,91 +2005,116 @@ export const TilingManager = GObject.registerClass({
         this._drawTile(tile_info, work_area, meta_windows, true);
     }
 
-     // Try to fit a new window by democratically resizing ALL resizable windows
-    async tryFitWithResize(newWindow, windows, workArea) {
-        if (this._isSmartResizingBlocked) return false;
-        
-        // Serialize smart resize operations via Promise queue
-        return this._smartResizeQueue = this._smartResizeQueue.then(async () => {
-            // Block overflow decisions while smart resize runs
-            this._isSmartResizingBlocked = true;
-            
-            const iterator = new SmartResizeIterator(windows, newWindow, workArea, this);
-            this._activeSmartResize = iterator;
-            this._activeSmartResizeWorkspace = newWindow.get_workspace();
-            
-            try {
-                Logger.log(`[SMART RESIZE] tryFitWithResize START: ${windows.length + 1} total windows (${windows.length} existing + 1 new)`);
-                
-                // First check if it fits WITHOUT any resize (natural fit)
-                const naturalLayout = iterator.calculateLayout();
-                if (!naturalLayout.overflow) {
-                    Logger.log(`[SMART RESIZE] Natural fit confirmed - no resize needed`);
-                    return true;
+    // Binary search for optimal scale factor that makes all windows fit
+    tryFitWithResize(newWindow, windows, workArea) {
+        if (this._isSmartResizingBlocked) {
+            Logger.log(`[SMART RESIZE] tryFitWithResize BLOCKED by _isSmartResizingBlocked`);
+            return false;
+        }
+        this._isSmartResizingBlocked = true;
+
+        try {
+            const allResizable = [];
+            const allWindows = [];
+            const windowData = new Map();
+
+            // Collect data for all windows (deduplicated)
+            for (const w of [...windows, newWindow]) {
+                if (allWindows.some(aw => aw.get_id() === w.get_id())) continue;
+
+                // Skip uninitialized windows — unreliable geometry corrupts binary search
+                if (w.get_id() !== newWindow.get_id()
+                    && !WindowState.get(w, 'preferredSize')
+                    && !WindowState.get(w, 'openingSize')
+                    && !WindowState.get(w, 'isConstrainedByMosaic')) {
+                    Logger.log(`[SMART RESIZE] Skipping uninitialized window ${w.get_id()}`);
+                    continue;
                 }
 
-                Logger.log(`[SMART RESIZE] Natural fit failed - starting iterative smart resize`);
-                
-                while (iterator.iteration < iterator.maxIterations) {
-                    const result = await iterator.executeIteration();
-                    
-                    if (result.aborted) {
-                        Logger.log(`[SMART RESIZE] tryFitWithResize ABORTED`);
-                        return false;
-                    }
+                allWindows.push(w);
 
-                    if (result.success) {
-                        Logger.log(`[SMART RESIZE] SUCCESS at iteration ${iterator.iteration}`);
-                        iterator.commitResizes();
-                        return true;
-                    }
-                    
-                    if (!result.shouldRetry) {
-                        // Overflow final: apply reverse resize
-                        Logger.log(`[SMART RESIZE] OVERFLOW: Cannot fit even at minimum - applying reverse resize`);
-                        await iterator.revertAll();
-                        return false;
-                    }
-                    
-                    // Delay between cycles (let Mutter apply resize)
-                    await iterator._waitMs(constants.SMART_RESIZE_ITERATION_DEBOUNCE_MS);
-                }
-                
-                return false;
-            } catch (e) {
-                Logger.error(`[SMART RESIZE] Critical error in iterator: ${e.message}`);
-                return false;
-            } finally {
-                // Clear isSmartResizing flags but preserve targetSmartResizeSize on success.
-                const allInvolvedWindows = [...windows, newWindow];
-                for (const window of allInvolvedWindows) {
-                    if (WindowState.get(window, 'isSmartResizing')) {
-                        WindowState.set(window, 'isSmartResizing', false);
-                    }
-                }
+                const current = this.getEffectiveWindowSize(w);
+                const min = this.getWindowMinimumSize(w);
+                const isResizable = w.allows_resize && w.allows_resize();
 
-                this._isSmartResizingBlocked = false;
-                this._activeSmartResize = null;
-                this._activeSmartResizeWorkspace = null;
-                Logger.log(`[SMART RESIZE] tryFitWithResize finished - unblocked overflow - flags cleared`);
+                windowData.set(w.get_id(), { window: w, current, min, isResizable });
+                if (isResizable) allResizable.push(w);
             }
-        });
-    }
 
-    // Abort ongoing smart resize to prevent state corruption
-    abortActiveSmartResize() {
-        if (this._activeSmartResize) {
-            this._activeSmartResize.abort();
-            this._activeSmartResize = null;
-            this._activeSmartResizeWorkspace = null;
+            if (allResizable.length === 0) return false;
+
+            Logger.log(`[SMART RESIZE] tryFitWithResize: ${allWindows.length} windows (${allResizable.length} resizable), workArea: ${workArea.width}×${workArea.height}`);
+            for (const [id, d] of windowData) {
+                Logger.log(`[SMART RESIZE]   ${id}: current=${d.current.width}×${d.current.height}, min=${d.min.width}×${d.min.height}, resizable=${d.isResizable}`);
+            }
+
+            // Interpolate between min and current sizes at factor t (1=current, 0=min)
+            const buildSimulated = (t) => allWindows.map(w => {
+                const d = windowData.get(w.get_id());
+                if (!d.isResizable)
+                    return { id: w.get_id(), width: d.current.width, height: d.current.height };
+                const effMinW = Math.min(d.min.width, d.current.width);
+                const effMinH = Math.min(d.min.height, d.current.height);
+                return {
+                    id: w.get_id(),
+                    width: Math.round(effMinW + (d.current.width - effMinW) * t),
+                    height: Math.round(effMinH + (d.current.height - effMinH) * t),
+                };
+            });
+
+            // Step 1: Natural fit check (current sizes)
+            if (!this._tile(buildSimulated(1.0), workArea, true).overflow) {
+                Logger.log(`[SMART RESIZE] Natural fit — no resize needed`);
+                return true;
+            }
+
+            // Step 2: Minimum fit check — if doesn't fit at minimums, overflow is inevitable
+            if (this._tile(buildSimulated(0.0), workArea, true).overflow) {
+                Logger.log(`[SMART RESIZE] Overflow inevitable — even at minimums, windows don't fit`);
+                return false;
+            }
+
+            // Step 3: Binary search for optimal scale factor
+            let lo = 0.0, hi = 1.0;
+            for (let i = 0; i < 15; i++) {
+                const mid = (lo + hi) / 2;
+                if (!this._tile(buildSimulated(mid), workArea, true).overflow)
+                    lo = mid;
+                else
+                    hi = mid;
+            }
+
+            Logger.log(`[SMART RESIZE] Optimal scale factor: ${lo.toFixed(4)}`);
+
+            // Step 4: Apply final sizes (factor lo = largest that fits)
+            const finalSizes = buildSimulated(lo);
+            for (const sim of finalSizes) {
+                const d = windowData.get(sim.id);
+                if (!d.isResizable) continue;
+                if (sim.width >= d.current.width && sim.height >= d.current.height) continue;
+
+                const w = d.window;
+                const frame = w.get_frame_rect();
+
+                if (!WindowState.has(w, 'preferredSize'))
+                    WindowState.set(w, 'preferredSize', { width: d.current.width, height: d.current.height });
+                WindowState.set(w, 'originalSize', { width: d.current.width, height: d.current.height });
+                WindowState.set(w, 'isConstrainedByMosaic', true);
+                WindowState.set(w, 'targetSmartResizeSize', { width: sim.width, height: sim.height });
+
+                w.move_resize_frame(false, frame.x, frame.y, sim.width, sim.height);
+                Logger.log(`[SMART RESIZE] ${sim.id}: ${d.current.width}×${d.current.height} → ${sim.width}×${sim.height}`);
+            }
+
+            return true;
+        } finally {
+            this._isSmartResizingBlocked = false;
         }
     }
 
     destroy() {
-        this.abortActiveSmartResize();
         this.destroyMasks();
         this._isSmartResizingBlocked = false;
-        this._processingQueue = false;
         this._edgeTilingManager = null;
         this._drawingManager = null;
         this._animationsManager = null;

@@ -183,6 +183,14 @@ export const ResizeHandler = GObject.registerClass({
                 return;
             }
 
+            // Skip size-changed from tryFitWithResize; clear bridge state for future resizes
+            const pendingSmartSize = WindowState.get(window, 'targetSmartResizeSize');
+            if (pendingSmartSize) {
+                WindowState.set(window, 'targetSmartResizeSize', null);
+                this._sizeChanged = false;
+                return;
+            }
+
             // STATE MACHINE STAGE 2: Deferred Move Completion
             const originWorkspaceIndex = WindowState.get(window, 'isRestoringSacred');
             if (originWorkspaceIndex !== undefined) {
@@ -341,9 +349,9 @@ export const ResizeHandler = GObject.registerClass({
                     // Block moves during smart resize to prevent expelling windows on revert.
                     const isSmartResizing = this.tilingManager._isSmartResizingBlocked;
                     // Skip ghost detection right after smart resize to prevent false positives from unsettled rects.
-                    const wasSmartResized = WindowState.get(window, 'smartResizeApplied');
+                    const hasUnsettledSmartResize = WindowState.get(window, 'targetSmartResizeSize') !== null;
 
-                    if (!canFit && !this._resizeInOverflow && !isSolo && !isSmartResizing && !wasSmartResized) {
+                    if (!canFit && !this._resizeInOverflow && !isSolo && !isSmartResizing && !hasUnsettledSmartResize) {
                         if (WindowState.get(window, 'waitingForGeometry') || !WindowState.get(window, 'geometryReady')) {
                             this._sizeChanged = false;
                             return;
