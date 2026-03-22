@@ -389,6 +389,10 @@ export const WindowingManager = GObject.registerClass({
         if (meta_window.is_attached_dialog()) {
             return false;
         }
+
+        if (meta_window.get_transient_for() !== null) {
+            return false;
+        }
         
         if (meta_window.window_type !== Meta.WindowType.NORMAL) {
             return false;
