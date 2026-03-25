@@ -6,7 +6,8 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Clutter from 'gi://Clutter';
 import * as Logger from './logger.js';
-import { TileZone, isResizeGrabOp, isMoveGrabOp } from './constants.js';
+import { TileZone } from './constants.js';
+import { isResizeGrabOp, isMoveGrabOp } from './grabOps.js';
 import * as constants from './constants.js';
 import { afterAnimations } from './timing.js';
 

@@ -3,7 +3,6 @@
 // Shared constants for the extension
 
 import Clutter from 'gi://Clutter';
-import Meta from 'gi://Meta';
 
 export const WINDOW_SPACING = 8; // Pixels
 
@@ -72,24 +71,3 @@ export const SMART_RESIZE_MIN_WINDOW_HEIGHT = 100;
 // Slide-in animation for new windows
 export const SLIDE_IN_OFFSET_PX = 100;        // Offset in pixels for new window slide-in animation
 export const QUEUE_PROCESS_DELAY_MS = 100;   // Delay between processing window opening queue items (Mutter settling)
-
-export const RESIZE_GRAB_OPS = [
-    Meta.GrabOp.RESIZING_NW, Meta.GrabOp.RESIZING_N, Meta.GrabOp.RESIZING_NE,
-    Meta.GrabOp.RESIZING_E, Meta.GrabOp.RESIZING_SE, Meta.GrabOp.RESIZING_S,
-    Meta.GrabOp.RESIZING_SW, Meta.GrabOp.RESIZING_W,
-    Meta.GrabOp.KEYBOARD_RESIZING_UNKNOWN,
-    Meta.GrabOp.KEYBOARD_RESIZING_SE,
-];
-
-// Robust resize detection (handles Super+click composite grab ops via bitmask)
-export function isResizeGrabOp(grabOp) {
-    if (RESIZE_GRAB_OPS.includes(grabOp)) return true;
-    // Composite resize bitmask: WINDOW_BASE (bit 0) + any directional bit
-    return (grabOp & 0x1) !== 0 && (grabOp & 0x3000) !== 0;
-}
-
-// Robust move detection (handles Super+click composite grab ops via bitmask)
-// A window grab op with no directional bits set is a move (Mutter convention)
-export function isMoveGrabOp(grabOp) {
-    return (grabOp & 0x1) !== 0 && (grabOp & 0xF000) === 0;
-}

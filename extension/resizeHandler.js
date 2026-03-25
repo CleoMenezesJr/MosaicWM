@@ -8,7 +8,8 @@ import * as Logger from './logger.js';
 import { afterWorkspaceSwitch, afterAnimations } from './timing.js';
 import * as WindowState from './windowState.js';
 import * as constants from './constants.js';
-import { TileZone, isResizeGrabOp } from './constants.js';
+import { TileZone } from './constants.js';
+import { isResizeGrabOp } from './grabOps.js';
 
 import GObject from 'gi://GObject';
 
