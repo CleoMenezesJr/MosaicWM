@@ -6,7 +6,7 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Clutter from 'gi://Clutter';
 import * as Logger from './logger.js';
-import { TileZone, isResizeGrabOp } from './constants.js';
+import { TileZone, isResizeGrabOp, isMoveGrabOp } from './constants.js';
 import * as constants from './constants.js';
 import { afterAnimations } from './timing.js';
 
@@ -80,7 +80,7 @@ export const DragHandler = GObject.registerClass({
             this._ext.resizeHandler.onResizeBegin(window, grabpo);
         }
         
-        if (grabpo === Meta.GrabOp.MOVING && !this.windowingManager.isExcluded(window)) {
+        if (isMoveGrabOp(grabpo) && !this.windowingManager.isExcluded(window)) {
             Logger.log(`Edge tiling: grab begin`);
             this._draggedWindow = window;
             
@@ -123,9 +123,8 @@ export const DragHandler = GObject.registerClass({
                         return;
                     }
 
-                    // Window logic continues...
-                    if ( 
-                        (grabpo === Meta.GrabOp.MOVING || grabpo === Meta.GrabOp.KEYBOARD_MOVING) && 
+                    if (
+                        (isMoveGrabOp(grabpo) || grabpo === Meta.GrabOp.KEYBOARD_MOVING) &&
                         window && !this.windowingManager.isMaximizedOrFullscreen(window)
                     ) {
                          const workspace = window.get_workspace();
@@ -165,7 +164,7 @@ export const DragHandler = GObject.registerClass({
         }
 
         if ( !this.windowingManager.isExcluded(window) &&
-            (grabpo === Meta.GrabOp.MOVING || grabpo === Meta.GrabOp.KEYBOARD_MOVING) && 
+            (isMoveGrabOp(grabpo) || grabpo === Meta.GrabOp.KEYBOARD_MOVING) &&
             !(this.windowingManager.isMaximizedOrFullscreen(window))) {
             Logger.log(`_grabOpBeginHandler: calling startDrag for window ${window.get_id()}`);
             this.reorderingManager.startDrag(window);
@@ -214,7 +213,7 @@ export const DragHandler = GObject.registerClass({
             return;
         }
         
-        if ((grabpo === Meta.GrabOp.MOVING || grabpo === Meta.GrabOp.KEYBOARD_MOVING) && window === this._draggedWindow) {
+        if ((isMoveGrabOp(grabpo) || grabpo === Meta.GrabOp.KEYBOARD_MOVING) && window === this._draggedWindow) {
             if (this._dragPositionChangedId && window) {
                 try {
                     window.disconnect(this._dragPositionChangedId);
@@ -224,7 +223,7 @@ export const DragHandler = GObject.registerClass({
                 this._dragPositionChangedId = 0;
             }
 
-            if (grabpo === Meta.GrabOp.MOVING && this._currentZone !== TileZone.NONE) {
+            if (isMoveGrabOp(grabpo) && this._currentZone !== TileZone.NONE) {
                 Logger.log(`Edge tiling: applying zone ${this._currentZone}`);
                 const workspace = window.get_workspace();
                 const monitor = window.get_monitor();
@@ -297,7 +296,7 @@ export const DragHandler = GObject.registerClass({
                 this._ext.resizeHandler.onResizeEnd(window, grabpo, skipTiling);
             }
             
-            if ( (grabpo === Meta.GrabOp.MOVING || grabpo === Meta.GrabOp.KEYBOARD_MOVING) && 
+            if ( (isMoveGrabOp(grabpo) || grabpo === Meta.GrabOp.KEYBOARD_MOVING) &&
                 !(this.windowingManager.isMaximizedOrFullscreen(window)) &&
                 !skipTiling) 
             {

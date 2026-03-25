@@ -87,3 +87,9 @@ export function isResizeGrabOp(grabOp) {
     // Composite resize bitmask: WINDOW_BASE (bit 0) + any directional bit
     return (grabOp & 0x1) !== 0 && (grabOp & 0x3000) !== 0;
 }
+
+// Robust move detection (handles Super+click composite grab ops via bitmask)
+// A window grab op with no directional bits set is a move (Mutter convention)
+export function isMoveGrabOp(grabOp) {
+    return (grabOp & 0x1) !== 0 && (grabOp & 0xF000) === 0;
+}
