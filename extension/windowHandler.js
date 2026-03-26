@@ -413,6 +413,13 @@ export const WindowHandler = GObject.registerClass({
             const workspace = window.get_workspace();
             const monitor = window.get_monitor();
             this.tilingManager.tileWorkspaceWindows(workspace, null, monitor);
+        } else {
+            // No workspace move needed — clear transition flags after settle
+            this._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
+                WindowState.remove(window, 'unmaximizing');
+                WindowState.remove(window, 'targetRestoredSize');
+                return GLib.SOURCE_REMOVE;
+            }, 'windowHandler_settleSacredExit');
         }
     }
 

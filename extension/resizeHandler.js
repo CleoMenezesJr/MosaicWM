@@ -278,6 +278,7 @@ export const ResizeHandler = GObject.registerClass({
             }
 
             if (this.windowingManager.isMaximizedOrFullscreen(window)) {
+                WindowState.remove(window, 'isEnteringSacred');
                 this._sizeChanged = false;
                 return;
             }
