@@ -1130,7 +1130,7 @@ export const TilingManager = GObject.registerClass({
         meta_windows = meta_windows.filter(w => !WindowState.get(w, 'pendingInQueue'));
         
         // Exclude the reference window only if explicitly requested (for overflow scenarios)
-        if (window && excludeFromTiling && !this.isDragging) {
+        if (window && excludeFromTiling) {
             const windowId = window.get_id();
             meta_windows = meta_windows.filter(w => w.get_id() !== windowId);
         }
@@ -2432,3 +2432,4 @@ class Mask {
         }
     }
 }
+

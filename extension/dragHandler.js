@@ -32,6 +32,7 @@ export const DragHandler = GObject.registerClass({
         this._currentGrabOp = null;
         this._restoringFromEdgeTile = false;
         this._skipNextTiling = null;
+        this._lastReorderMonitor = null;
     }
 
     // Accessor shortcuts
@@ -169,6 +170,7 @@ export const DragHandler = GObject.registerClass({
             !(this.windowingManager.isMaximizedOrFullscreen(window))) {
             Logger.log(`_grabOpBeginHandler: calling startDrag for window ${window.get_id()}`);
             this.reorderingManager.startDrag(window);
+            this._lastReorderMonitor = global.display.get_current_monitor();
         }
     };
     
@@ -227,7 +229,7 @@ export const DragHandler = GObject.registerClass({
             if (isMoveGrabOp(grabpo) && this._currentZone !== TileZone.NONE) {
                 Logger.log(`Edge tiling: applying zone ${this._currentZone}`);
                 const workspace = window.get_workspace();
-                const monitor = window.get_monitor();
+                const monitor = global.display.get_current_monitor();
                 const workArea = workspace.get_work_area_for_monitor(monitor);
                 
                 const occupiedWindow = this.edgeTilingManager.getWindowInZone(this._currentZone, workspace, monitor);
@@ -278,7 +280,8 @@ export const DragHandler = GObject.registerClass({
             this.drawingManager.hideTilePreview();
             this._draggedWindow = null;
             this._currentZone = TileZone.NONE;
-            
+            this._lastReorderMonitor = null;
+
             this.tilingManager.clearDragRemainingSpace();
             
             this.edgeTilingManager.setEdgeTilingActive(false, null);
@@ -333,7 +336,7 @@ export const DragHandler = GObject.registerClass({
         
         if (this._currentZone !== TileZone.NONE) {
             const workspace = this._draggedWindow.get_workspace();
-            const monitor = this._draggedWindow.get_monitor();
+            const monitor = global.display.get_current_monitor();
             const workArea = workspace.get_work_area_for_monitor(monitor);
             
             Logger.log(`Applying zone ${this._currentZone} on button release`);
@@ -376,11 +379,11 @@ export const DragHandler = GObject.registerClass({
 
     _onDragPositionChanged() {
         if (!this._draggedWindow) return;
-        
-        const monitor = this._draggedWindow.get_monitor();
+
+        const [x, y] = global.get_pointer();
+        const monitor = global.display.get_current_monitor();
         const workspace = this._draggedWindow.get_workspace();
         const workArea = workspace.get_work_area_for_monitor(monitor);
-        const [x, y] = global.get_pointer();
         
         const zone = this.edgeTilingManager.detectZone(x, y, workArea, workspace);
         const isInZone = zone !== TileZone.NONE;
@@ -406,6 +409,12 @@ export const DragHandler = GObject.registerClass({
              if (zone !== TileZone.NONE && zone !== this._currentZone) {
                  Logger.log(`Edge tiling: detected zone ${zone}`);
                  this._currentZone = zone;
+
+                 if (this._lastReorderMonitor != null && monitor !== this._lastReorderMonitor) {
+                     this.tilingManager.setDragRemainingSpace(null);
+                     this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, this._lastReorderMonitor, false, true);
+                 }
+                 this._lastReorderMonitor = monitor;
                  this.edgeTilingManager.setEdgeTilingActive(true, this._draggedWindow);
                  this.drawingManager.showTilePreview(zone, workArea, this._draggedWindow);
                  
@@ -435,12 +444,23 @@ export const DragHandler = GObject.registerClass({
                  this.edgeTilingManager.setEdgeTilingActive(false, null);
                  this.drawingManager.hideTilePreview();
                  this.tilingManager.setDragRemainingSpace(null);
-                 
+
                  this.clearGhostWindows();
-                 
+
                  this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor);
-                 
+
                  this.reorderingManager.startDrag(this._draggedWindow);
+                 this._lastReorderMonitor = monitor;
+             } else if (zone === TileZone.NONE && monitor !== this._lastReorderMonitor) {
+                 Logger.log(`Drag monitor changed to ${monitor} (fast drag skipped edge zone), restarting reorder`);
+
+                 if (this._lastReorderMonitor != null) {
+                     this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, this._lastReorderMonitor, false, true)
+                 }
+
+                 this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor);
+                 this.reorderingManager.startDrag(this._draggedWindow);
+                 this._lastReorderMonitor = monitor;
              }
              
              this._isPositionProcessing = false;

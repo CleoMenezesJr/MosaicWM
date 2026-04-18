@@ -66,7 +66,7 @@ export const ReorderingManager = GObject.registerClass({
         const { meta_window } = this._dragContext;
 
         let workspace = meta_window.get_workspace();
-        let monitor = meta_window.get_monitor();
+        let monitor = global.display.get_current_monitor();
         let workArea = workspace.get_work_area_for_monitor(monitor);
 
         let _cursor = global.get_pointer();
@@ -122,8 +122,14 @@ export const ReorderingManager = GObject.registerClass({
 
         Logger.log(`startDrag called for window ${meta_window.get_id()}`);
         let workspace = meta_window.get_workspace()
-        let monitor = meta_window.get_monitor();
+        let monitor = global.display.get_current_monitor();
         let meta_windows = this._windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+
+        // If the dragged window is on a different monitor (cursor crossed before window did),
+        // include it so layout computation can place it in the cursor monitor's mosaic.
+        if (!meta_windows.find(w => w.get_id() === meta_window.get_id())) {
+            meta_windows = [meta_window, ...meta_windows];
+        }
 
         if (this._animationsManager) {
             this._animationsManager.setDragging(true);
@@ -141,7 +147,7 @@ export const ReorderingManager = GObject.registerClass({
 
         this._tilingManager.applySwaps(workspace, nonEdgeTiledMetaWindows);
 
-        let descriptors = this._tilingManager.windowsToDescriptors(nonEdgeTiledMetaWindows, monitor);
+        let descriptors = this._tilingManager.windowsToDescriptors(nonEdgeTiledMetaWindows, monitor, meta_window);
 
         let remainingSpace = null;
         if (edgeTiledWindows.length > 0 && this._edgeTilingManager) {
