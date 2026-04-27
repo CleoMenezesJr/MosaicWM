@@ -2127,6 +2127,75 @@ export const TilingManager = GObject.registerClass({
 
             Logger.log(`[SMART RESIZE] Optimal scale factor: ${lo.toFixed(4)}`);
 
+            // Step 4a: Iterative miniaturization (before applying final sizes)
+            const ext = global.MosaicExtension;
+            if (ext?.miniatureManager) {
+                const focusedId   = global.display.focus_window?.get_id();
+                const newWindowId = newWindow.get_id();
+
+                const getMiniatureThreshold = (w) => {
+                    const min        = this.getWindowMinimumSize(w);
+                    const maxSize    = this.getWindowMaximumSize(w);
+                    const effectiveMaxW = maxSize?.width  || workArea.width;
+                    const effectiveMaxH = maxSize?.height || workArea.height;
+                    return {
+                        thresholdW: (min.width  + effectiveMaxW) / 2,
+                        thresholdH: (min.height + effectiveMaxH) / 2,
+                    };
+                };
+
+                for (let iter = 0; iter < allWindows.length; iter++) {
+                    const candidates = buildSimulated(lo).filter(sim => {
+                        const d = windowData.get(sim.id);
+                        if (!d) return false;
+                        if (sim.id === focusedId || sim.id === newWindowId) return false;
+                        if (WindowState.get(d.window, IS_MINIATURE)) return false;
+                        if (this._windowingManager.isMaximizedOrFullscreen(d.window)) return false;
+                        const { thresholdW, thresholdH } = getMiniatureThreshold(d.window);
+                        return sim.width < thresholdW || sim.height < thresholdH;
+                    });
+
+                    if (candidates.length === 0) break;
+
+                    candidates.sort((a, b) => a.id - b.id);
+                    const candidateSim  = candidates[0];
+                    const candidateData = windowData.get(candidateSim.id);
+
+                    // Guard 1: never miniaturize the last non-miniature window
+                    const nonMiniatureCount = allWindows.filter(w => !WindowState.get(w, IS_MINIATURE)).length;
+                    if (nonMiniatureCount <= 1) {
+                        Logger.log(`[MINIATURE] Guard 1: refusing to miniaturize last non-miniature window ${candidateSim.id}`);
+                        break;
+                    }
+
+                    const success = transitionToMiniature(candidateData.window, workArea, ext);
+                    if (!success) break;
+
+                    ext._miniatureCascadeIds.add(candidateSim.id);
+
+                    // Remove candidate from simulation (mutates allWindows/windowData/allResizable)
+                    const wIdx = allWindows.findIndex(w => w.get_id() === candidateSim.id);
+                    if (wIdx !== -1) allWindows.splice(wIdx, 1);
+                    windowData.delete(candidateSim.id);
+                    const rIdx = allResizable.findIndex(w => w.get_id() === candidateSim.id);
+                    if (rIdx !== -1) allResizable.splice(rIdx, 1);
+
+                    if (allResizable.length === 0) break;
+
+                    // Check if remaining windows now fit naturally
+                    if (!this._tile(buildSimulated(1.0), workArea, true).overflow) break;
+
+                    // Binary search on remaining windows
+                    lo = 0.0;
+                    let hiNew = 1.0;
+                    for (let i = 0; i < 15; i++) {
+                        const mid = (lo + hiNew) / 2;
+                        if (!this._tile(buildSimulated(mid), workArea, true).overflow) lo = mid;
+                        else hiNew = mid;
+                    }
+                }
+            }
+
             // Step 4: Apply final sizes (factor lo = largest that fits)
             const finalSizes = buildSimulated(lo);
             for (const sim of finalSizes) {
@@ -2290,6 +2359,17 @@ export const TilingManager = GObject.registerClass({
         this._windowingManager = null;
     }
 });
+
+function transitionToMiniature(window, workArea, ext) {
+    if (!ext?.miniatureManager) return false;
+    const computedSlot = { x: workArea.x, y: workArea.y, width: workArea.width, height: workArea.height };
+    return ext.miniatureManager.createMiniature(window, computedSlot);
+}
+
+function transitionFromMiniature(window, _slot, ext) {
+    if (!ext?.miniatureManager) return false;
+    return ext.miniatureManager.restoreMiniature(window, null);
+}
 
 class WindowDescriptor {
     constructor(meta_window, index) {
