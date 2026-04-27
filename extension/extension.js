@@ -28,6 +28,9 @@ import { TimeoutRegistry, afterAnimations } from './timing.js';
 import { WindowHandler } from './windowHandler.js';
 import { DragHandler } from './dragHandler.js';
 import { ResizeHandler } from './resizeHandler.js';
+import { MiniatureManager } from './miniature.js';
+import * as WindowState from './windowState.js';
+import { IS_MINIATURE } from './windowState.js';
 import { MosaicIndicator } from './quickSettings.js';
 
 // Module-level accessor for TilingManager (used by overviewLayout.js for on-demand cache)
@@ -66,6 +69,12 @@ export default class WindowMosaicExtension extends Extension {
         this.windowHandler = null;
         this.dragHandler = null;
         this.resizeHandler = null;
+
+        this.miniatureManager    = null;
+        this._miniatureCascadeIds  = null;
+        this._lastFocusedWindowId  = null;
+        this._focusWindowChangedId = 0;
+        this._miniatureRestoredId  = 0;
 
         this._injectionManager = null;
 
@@ -216,6 +225,18 @@ export default class WindowMosaicExtension extends Extension {
         this.dragHandler = new DragHandler(this);
         this.resizeHandler = new ResizeHandler(this);
 
+        this.miniatureManager = new MiniatureManager();
+        this._miniatureCascadeIds = new Set();
+        this._lastFocusedWindowId = null;
+
+        // Expose on global for module-level helpers in tiling.js
+        global.MosaicExtension = this;
+
+        this._miniatureRestoredId = this.miniatureManager.connect('miniature-restored',
+            (_, window) => this._onMiniatureRestored(window));
+        this._focusWindowChangedId = global.display.connect('notify::focus-window',
+            () => this._onFocusWindowChanged());
+
         // Apply slide-in animation patch
         this.windowHandler.patchMapWindow();
 
@@ -350,6 +371,14 @@ export default class WindowMosaicExtension extends Extension {
         }, 'startupTile');
     }
 
+    _onFocusWindowChanged() {
+        // Stub — full implementation in Task 8
+    }
+
+    _onMiniatureRestored(_window) {
+        // Stub — full implementation in Task 9
+    }
+
     _setupKeybindings() {
         const settings = this.getSettings('org.gnome.shell.extensions.mosaic-wm');
 
@@ -482,6 +511,24 @@ export default class WindowMosaicExtension extends Extension {
             this._mosaicIndicator.destroy();
             this._mosaicIndicator = null;
         }
+
+        if (this._focusWindowChangedId) {
+            global.display.disconnect(this._focusWindowChangedId);
+            this._focusWindowChangedId = 0;
+        }
+
+        if (this.miniatureManager) {
+            if (this._miniatureRestoredId)
+                this.miniatureManager.disconnect(this._miniatureRestoredId);
+            this._miniatureRestoredId = 0;
+            this.miniatureManager.run_dispose();
+            this.miniatureManager = null;
+        }
+
+        this._miniatureCascadeIds = null;
+        this._lastFocusedWindowId = null;
+
+        delete global.MosaicExtension;
 
         if (this._tileTimeout && this._timeoutRegistry) {
             this._timeoutRegistry.remove(this._tileTimeout);
