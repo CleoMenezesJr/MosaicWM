@@ -1234,7 +1234,9 @@ export const TilingManager = GObject.registerClass({
                         
                         const window = meta_windows.find(w => w.get_id() === windowDesc.id);
                         if (window) {
-                            if (windowDesc.id === resizingWindowId) {
+                            if (WindowState.get(window, IS_MINIATURE)) {
+                                window.move_frame(false, x, y + y_offset);
+                            } else if (windowDesc.id === resizingWindowId) {
                                 window.move_frame(false, x, y + y_offset);
                             } else {
                                 windowLayouts.push({
@@ -1264,7 +1266,9 @@ export const TilingManager = GObject.registerClass({
                         
                         const window = meta_windows.find(w => w.get_id() === windowDesc.id);
                         if (window) {
-                            if (windowDesc.id === resizingWindowId) {
+                            if (WindowState.get(window, IS_MINIATURE)) {
+                                window.move_frame(false, targetX, targetY);
+                            } else if (windowDesc.id === resizingWindowId) {
                                 window.move_frame(false, targetX, targetY);
                             } else {
                                 windowLayouts.push({
