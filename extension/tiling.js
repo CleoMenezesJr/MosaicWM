@@ -17,8 +17,11 @@ import {
     MINIATURE_EXT_TOP,
     MINIATURE_OVERLAY,
     ANIMATING_MINIATURE,
+    PRE_MINIATURE_CENTER,
 } from './windowState.js';
 import { getMiniatureSize, applyMiniatureActorState, animateMiniatureToTarget } from './miniature.js';
+
+const PROXIMITY_WEIGHT = 0.05;
 
 export const ComputedLayouts = new WeakMap();
 
@@ -589,7 +592,30 @@ export const TilingManager = GObject.registerClass({
         const sizeEfficiency = 1 - (bboxArea / (workArea.width * workArea.height));
         
         // Weighted score (compactness is most important)
-        return compactness * 50 + centralization * 30 + sizeEfficiency * 20;
+        let score = compactness * 50 + centralization * 30 + sizeEfficiency * 20;
+
+        // Proximity bonus: prefer permutations where the miniature stays close
+        // to its original position (before it was miniaturized)
+        const miniatureWindow = tileResult.levels
+            .flatMap(l => l.windows)
+            .find(w => WindowState.get(w, IS_MINIATURE));
+
+        if (miniatureWindow) {
+            const preCenter = WindowState.get(miniatureWindow, PRE_MINIATURE_CENTER);
+            if (preCenter) {
+                const slot = tileResult.levels.find(l => l.windows.includes(miniatureWindow));
+                if (slot) {
+                    const slotCenterX = slot.x + slot.width / 2;
+                    const slotCenterY = slot.y + slot.height / 2;
+                    const distance = Math.hypot(slotCenterX - preCenter.x, slotCenterY - preCenter.y);
+                    const maxExpectedDistance = 500; // px, ~half screen
+                    const normalizedBonus = Math.max(0, 1 - distance / maxExpectedDistance);
+                    score += normalizedBonus * PROXIMITY_WEIGHT;
+                }
+            }
+        }
+
+        return score;
     }
 
     // Find optimal ordering via permutations (with stability bonus for current order)

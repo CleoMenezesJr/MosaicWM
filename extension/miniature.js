@@ -258,6 +258,10 @@ export const MiniatureManager = GObject.registerClass({
         WindowState.set(window, IS_MINIATURE, true);
         WindowState.set(window, MINIATURE_SCALE, scale);
         WindowState.set(window, PRE_MINIATURE_SIZE, { width: preSize.width, height: preSize.height });
+        WindowState.set(window, 'preMiniatureCenter', {
+            x: preSize.x + preSize.width / 2,
+            y: preSize.y + preSize.height / 2,
+        });
         WindowState.set(window, MINIATURE_TARGET_POS, { x: targetX, y: targetY });
         WindowState.set(window, MINIATURE_EXT_LEFT, extLeft);
         WindowState.set(window, MINIATURE_EXT_TOP, extTop);
@@ -386,6 +390,7 @@ export const MiniatureManager = GObject.registerClass({
         if (timeoutId) GLib.source_remove(timeoutId);
         WindowState.remove(window, 'miniatureJustMiniaturizedTimeoutId');
         WindowState.remove(window, 'justMiniaturized');
+        WindowState.remove(window, 'preMiniatureCenter');
 
         this._miniatureWindows.delete(window.get_id());
         this.emit('miniature-restored', window);
@@ -419,6 +424,7 @@ export const MiniatureManager = GObject.registerClass({
         if (timeoutId) GLib.source_remove(timeoutId);
         WindowState.remove(window, 'miniatureJustMiniaturizedTimeoutId');
         WindowState.remove(window, 'justMiniaturized');
+        WindowState.remove(window, 'preMiniatureCenter');
 
         this._miniatureWindows.delete(window.get_id());
         Logger.log(`[MINIATURE] Destroyed miniature ${window.get_id()} (window closed)`);

@@ -49,3 +49,4 @@ export const MINIATURE_EXT_TOP = 'miniatureExtTop';
 export const ANIMATING_MINIATURE = 'animatingMiniature';
 export const MINIATURE_OVERLAY = 'miniatureOverlay';
 export const MINIATURE_ANIM_KIND = 'miniatureAnimKind';
+export const PRE_MINIATURE_CENTER = 'preMiniatureCenter';
