@@ -1991,6 +1991,33 @@ export const TilingManager = GObject.registerClass({
         return WindowState.get(window, 'preferredSize') || null;
     }
 
+    // Check if restoring `candidateMini` to its preferred size would still let
+    // every remaining window fit naturally (other miniatures kept mini, non-mini
+    // windows at preferred size). Used by the close path to decide whether to
+    // auto-restore the oldest miniature when a sibling closes.
+    canRestoreMiniature(candidateMini, remainingWindows, workArea) {
+        const sim = remainingWindows.map(w => {
+            const wid = w.get_id();
+            const frame = w.get_frame_rect();
+            if (w === candidateMini) {
+                const pref = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'openingSize');
+                if (pref) return { id: wid, width: pref.width, height: pref.height };
+                return { id: wid, width: frame.width, height: frame.height };
+            }
+            if (WindowState.get(w, IS_MINIATURE)) {
+                const ms = getMiniatureSize(w);
+                if (ms) return { id: wid, width: ms.width, height: ms.height };
+                return { id: wid, width: frame.width, height: frame.height };
+            }
+            const pref = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'openingSize');
+            if (pref) return { id: wid, width: pref.width, height: pref.height };
+            return { id: wid, width: frame.width, height: frame.height };
+        });
+        const result = this._tile(sim, workArea, true);
+        Logger.log(`canRestoreMiniature: candidate=${candidateMini.get_id()}, sim=${sim.map(s => `${s.id}:${s.width}x${s.height}`).join(', ')}, overflow=${result.overflow}`);
+        return !result.overflow;
+    }
+
     tryRestoreWindowSizes(windows, workArea, freedWidth, _freedHeight, _workspace, _monitor) {
         
         // Find windows that were shrunk (current size < preferred size)

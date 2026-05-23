@@ -571,12 +571,14 @@ export const WindowHandler = GObject.registerClass({
 
             afterWindowClose(() => {
                 afterAnimations(this._ext.animationsManager, () => {
-                    // Try to restore/reverse smart resize constrained windows with freed space
+                    // Try to restore/reverse smart resize constrained windows with freed space.
+                    // Miniatures are excluded — they keep their fixed slot.
                     const remainingWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
                         .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
+                    const restorableWindows = remainingWindows.filter(w => !WindowState.get(w, IS_MINIATURE));
 
-                    // Check if ANY remaining window was smart-resized (constrained)
-                    const hasConstrainedWindows = remainingWindows.some(w => {
+                    // Check if ANY restorable window was smart-resized (constrained)
+                    const hasConstrainedWindows = restorableWindows.some(w => {
                         const hasTarget = WindowState.get(w, 'targetSmartResizeSize') !== null;
                         const isConstrained = WindowState.get(w, 'isConstrainedByMosaic') === true;
                         return hasTarget || isConstrained;
@@ -585,7 +587,7 @@ export const WindowHandler = GObject.registerClass({
                     if (hasConstrainedWindows && (freedWidth > 0 || freedHeight > 0)) {
                         Logger.log(`[SMART RESIZE] Window closed - attempting reverse smart resize with freed ${freedWidth}x${freedHeight}`);
                         const workArea = this._ext.tilingManager.getUsableWorkArea(workspace, monitor);
-                        this._ext.tilingManager.tryRestoreWindowSizes(remainingWindows, workArea, freedWidth, freedHeight, workspace, monitor);
+                        this._ext.tilingManager.tryRestoreWindowSizes(restorableWindows, workArea, freedWidth, freedHeight, workspace, monitor);
                     }
 
                     this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
@@ -1167,6 +1169,8 @@ export const WindowHandler = GObject.registerClass({
             }
 
             // Auto-restore oldest miniature when space is freed (not an overflow move)
+            // Only restore if remaining layout would still fit naturally after restore —
+            // otherwise the miniaturization decided by the open path would be undone wrongly.
             if (this._ext.miniatureManager) {
                 const miniatureWindows = remainingWindows
                     .filter(w => WindowState.get(w, IS_MINIATURE))
@@ -1174,25 +1178,31 @@ export const WindowHandler = GObject.registerClass({
 
                 if (miniatureWindows.length > 0 && !wasMovedByOverflow) {
                     const candidate = miniatureWindows[0];
-                    this._ext._miniatureCascadeIds?.delete(candidate.get_id());
-                    this._ext.miniatureManager.restoreMiniature(candidate, null);
-                    this._ext._onMiniatureRestored(candidate);
-                    return GLib.SOURCE_REMOVE;
+                    const workArea = this._ext.tilingManager.getUsableWorkArea(WORKSPACE, MONITOR);
+                    if (this._ext.tilingManager.canRestoreMiniature(candidate, remainingWindows, workArea)) {
+                        this._ext._miniatureCascadeIds?.delete(candidate.get_id());
+                        this._ext.miniatureManager.restoreMiniature(candidate, null);
+                        this._ext._onMiniatureRestored(candidate);
+                        return GLib.SOURCE_REMOVE;
+                    }
+                    Logger.log(`_windowRemoved: keeping mini ${candidate.get_id()} - would overflow if restored`);
                 }
             }
 
             // Try to restore window sizes with freed space (Reverse Smart Resize)
+            // Miniatures are excluded — their slot is fixed and shouldn't be grown to preferred.
             if (remainingWindows.length > 0) {
-                if (freedWidth > 0 && freedHeight > 0) {
+                const restorableWindows = remainingWindows.filter(w => !WindowState.get(w, IS_MINIATURE));
+                if (freedWidth > 0 && freedHeight > 0 && restorableWindows.length > 0) {
                     const workArea = this._ext.tilingManager.getUsableWorkArea(WORKSPACE, MONITOR);
                     // PASS null to force recalculation of real incremental available space
-                    const restored = this._ext.tilingManager.tryRestoreWindowSizes(remainingWindows, workArea, null, null, WORKSPACE, MONITOR);
+                    const restored = this._ext.tilingManager.tryRestoreWindowSizes(restorableWindows, workArea, null, null, WORKSPACE, MONITOR);
 
                     if (restored) {
                         this._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
                             Logger.log('Retiling after restore delay');
                             // Ensure flags are cleared after settlement
-                            for (const w of remainingWindows) {
+                            for (const w of restorableWindows) {
                                 WindowState.remove(w, 'isReverseSmartResizing');
                             }
                             this._ext.tilingManager.tileWorkspaceWindows(WORKSPACE, null, MONITOR, true);
