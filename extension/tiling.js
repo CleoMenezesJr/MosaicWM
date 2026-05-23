@@ -2188,7 +2188,7 @@ export const TilingManager = GObject.registerClass({
         this._drawTile(tile_info, work_area, meta_windows, true);
     }
 
-    tryFitWithResize(newWindow, windows, workArea) {
+    tryFitWithResize(newWindow, windows, workArea, focusedWindowOverride = null) {
         if (this._isSmartResizingBlocked) {
             Logger.log('[SMART RESIZE] tryFitWithResize BLOCKED by _isSmartResizingBlocked');
             return { success: false };
@@ -2301,7 +2301,11 @@ export const TilingManager = GObject.registerClass({
             // Step 4a: Iterative miniaturization (before applying final sizes)
             const ext = global.MosaicExtension;
             if (ext?.miniatureManager) {
-                const focusedId   = global.display.focus_window?.get_id();
+                // focusedWindowOverride lets callers (e.g. mini-restore) treat a
+                // specific window as the user-active one when Mutter's focus hasn't
+                // shifted yet. Without it, restoring a miniature while focus sits on
+                // the other window would exclude both — leaving no miniaturization candidate.
+                const focusedId   = (focusedWindowOverride ?? global.display.focus_window)?.get_id();
                 const newWindowId = newWindow.get_id();
 
                 const getMiniatureThreshold = (w) => {

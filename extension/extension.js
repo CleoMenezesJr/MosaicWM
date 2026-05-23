@@ -498,7 +498,11 @@ export default class WindowMosaicExtension extends Extension {
                 !this.windowingManager.isMaximizedOrFullscreen(w)
             );
 
-        const resizeResult = this.tilingManager.tryFitWithResize(window, existingWindows, workArea);
+        // Treat the restored window as the user-focused one — Mutter's focus
+        // hasn't shifted yet (window.activate runs after the 250ms animation),
+        // so the previously-focused sibling would otherwise be excluded from
+        // miniaturization candidates and nothing would shrink.
+        const resizeResult = this.tilingManager.tryFitWithResize(window, existingWindows, workArea, window);
 
         if (resizeResult?.success) {
             this.tilingManager._isSmartResizingBlocked = true;
