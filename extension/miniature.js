@@ -175,6 +175,18 @@ const MiniatureClickOverlay = GObject.registerClass({
         this._miniatureManager = miniatureManager;
         this._destroyed = false;
 
+        // Mirror the window actor's visibility. Mutter sets the window actor
+        // invisible when the user is on a different workspace; without this
+        // binding the overlay (reactive: true, opacity: 0) would keep being
+        // pickable on every workspace at the same screen position where the
+        // miniature lives on its own workspace, restoring it on stray clicks.
+        const windowActor = window.get_compositor_private();
+        if (windowActor) {
+            windowActor.bind_property('visible',
+                this, 'visible',
+                GObject.BindingFlags.SYNC_CREATE);
+        }
+
         this.connect('button-press-event', () => {
             Logger.log(`[MINIATURE] Click overlay clicked for ${window.get_id()}`);
             this._miniatureManager.restoreMiniature(window, null);
