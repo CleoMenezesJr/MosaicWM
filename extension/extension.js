@@ -10,6 +10,7 @@ import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Workspace from 'resource:///org/gnome/shell/ui/workspace.js';
 import * as WorkspaceAnimation from 'resource:///org/gnome/shell/ui/workspaceAnimation.js';
+import * as WindowPreviewModule from 'resource:///org/gnome/shell/ui/windowPreview.js';
 
 import { WindowingManager } from './windowing.js';
 import * as constants from './constants.js';
@@ -331,6 +332,46 @@ export default class WindowMosaicExtension extends Extension {
             }
         };
 
+        // Patch WindowPreview.boundingBox so the Overview enter/leave animation
+        // uses the miniature's VISUAL bounds (set_scale + MINIATURE_TARGET_POS)
+        // for the state=0 (session) side of Workspace._allocate's lerp.
+        //
+        // Without this patch, WindowPreview.boundingBox returns the meta
+        // window's full frame_rect (computed by Shell.WindowPreviewLayout in C
+        // from meta_window_get_frame_rect, which does NOT know about actor
+        // set_scale). The animation then interpolates from "full size at frame
+        // position" to "miniature-size slot from MosaicLayoutStrategy", making
+        // the miniature visually pop back to full size during the transition.
+        //
+        // TODO: Contribute upstream — Shell.WindowPreviewLayout should propagate
+        // the source actor's scale (and account for actor translation) when
+        // computing its bounding box. Extensions using actor transforms (tiling
+        // WMs, magnifiers, etc.) would then work with the native overview
+        // transition without this patch.
+        this._origWindowPreviewBoundingBoxDesc = Object.getOwnPropertyDescriptor(
+            WindowPreviewModule.WindowPreview.prototype, 'boundingBox');
+        const origBoundingBoxGetter = this._origWindowPreviewBoundingBoxDesc.get;
+        Object.defineProperty(WindowPreviewModule.WindowPreview.prototype, 'boundingBox', {
+            configurable: true,
+            get() {
+                const mw = this.metaWindow;
+                if (mw && WindowState.get(mw, IS_MINIATURE)) {
+                    const tgt = WindowState.get(mw, MINIATURE_TARGET_POS);
+                    const sc = WindowState.get(mw, MINIATURE_SCALE);
+                    if (tgt && sc) {
+                        const f = mw.get_frame_rect();
+                        return {
+                            x: tgt.x,
+                            y: tgt.y,
+                            width: f.width * sc,
+                            height: f.height * sc,
+                        };
+                    }
+                }
+                return origBoundingBoxGetter.call(this);
+            },
+        });
+
         const layoutProto = Workspace.WorkspaceLayout.prototype;
         this._injectionManager.overrideMethod(layoutProto, '_createBestLayout', originalMethod => {
             const extension = this;
@@ -627,6 +668,15 @@ export default class WindowMosaicExtension extends Extension {
         if (this._origMonitorGroupInit) {
             WorkspaceAnimation.MonitorGroup.prototype._init = this._origMonitorGroupInit;
             this._origMonitorGroupInit = null;
+        }
+
+        // Restore WindowPreview.boundingBox prototype patch
+        if (this._origWindowPreviewBoundingBoxDesc) {
+            Object.defineProperty(
+                WindowPreviewModule.WindowPreview.prototype,
+                'boundingBox',
+                this._origWindowPreviewBoundingBoxDesc);
+            this._origWindowPreviewBoundingBoxDesc = null;
         }
 
         // Restore original map animation and cleanup queue
