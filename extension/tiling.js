@@ -397,8 +397,8 @@ export const TilingManager = GObject.registerClass({
         }
     }
 
-    // Queue a window opening operation to prevent race conditions
-    // The callback will be called when it's this window's turn. Supports async callbacks.
+    // Stage a pairwise swap to be applied on the next workspace tile.
+    // No-op if the same pair was just staged in reverse order (toggle protection).
     setTmpSwap(id1, id2) {
         if (id1 === id2 || (this.tmp_swap[0] === id2 && this.tmp_swap[1] === id1))
             return;
@@ -950,7 +950,7 @@ export const TilingManager = GObject.registerClass({
         };
     }
     
-    // Original horizontal shelves layout.
+    // Horizontal shelves layout — windows pack into rows stacked top-to-bottom.
     _horizontalShelves(windows, work_area, spacing) {
         // For 1-2 windows, use simple centered row
         if (windows.length <= 2) {
@@ -1246,7 +1246,6 @@ export const TilingManager = GObject.registerClass({
             let y = _y;
             for(const level of levels) {
                 Logger.log(`Drawing horizontal level at y=${y}, width=${level.width}, height=${level.height}`);
-                // Pass masks, isDragging AND drawingManager AND dryRun
                 level.draw_horizontal(meta_windows, work_area, y, this.masks, this.isDragging, this._drawingManager, dryRun, slotsOut);
                 y += level.height + constants.WINDOW_SPACING;
             }

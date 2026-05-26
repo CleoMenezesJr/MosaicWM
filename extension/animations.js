@@ -25,7 +25,7 @@ export const AnimationsManager = GObject.registerClass({
     _init() {
         super._init();
         this._isDragging = false;
-        this._animatingWindows = new Set(); // Set of Window IDs (kept for efficiency)
+        this._animatingWindows = new Set(); // Window IDs currently animating (fast lookup for shouldAnimateWindow)
         this._justEndedDrag = false;
         this._resizingWindowId = null;
         this._timeoutRegistry = null;
@@ -186,10 +186,11 @@ export const AnimationsManager = GObject.registerClass({
             return;
         }
         
-        // Apply new size/position immediately (logical change)
+        // Apply the new size/position immediately at the logical layer; the actor stays
+        // visually in its old spot via a counter-translation, which we then ease to zero.
         window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
-        
-        // Option 2: Use only translation, no scale (avoids grow-from-bottom effect)
+
+        // Translation-only (no scale) avoids a "grow-from-bottom" artifact during the ease.
         windowActor.set_translation(translateX, translateY, 0);
         
         windowActor.ease({

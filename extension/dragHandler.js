@@ -78,7 +78,6 @@ export const DragHandler = GObject.registerClass({
         this._currentGrabOp = grabpo;
         const isResizeOp = isResizeGrabOp(grabpo);
         if (isResizeOp) {
-            // Resize logic delegation (will be handled by ResizeHandler)
             this._ext.resizeHandler.onResizeBegin(window, grabpo);
         }
         
@@ -154,7 +153,7 @@ export const DragHandler = GObject.registerClass({
                 this._currentZone = TileZone.NONE;
             }
             
-            // Connect signal-based listeners for edge tiling (replaces polling)
+            // Drive edge-tiling detection from Mutter's position-changed signal
             Logger.log('Connecting signal-based edge tiling listeners');
             this._dragPositionChangedId = this._draggedWindow.connect('position-changed', this._onDragPositionChanged.bind(this));
         }

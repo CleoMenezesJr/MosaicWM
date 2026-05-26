@@ -33,7 +33,6 @@ export class SettingsOverrider {
             }
         }
 
-        // Apply override
         settings.set_value(key, value);
         Logger.log(`Overriding ${schemaId}.${key}`);
     }

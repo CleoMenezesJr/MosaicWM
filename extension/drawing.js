@@ -28,8 +28,7 @@ export const DrawingManager = GObject.registerClass({
     }
 
     rect(x, y, w, h) {
-        // Managed by Extension.js
-        
+        // Reuse a pooled box when available; otherwise create a new one in the UI group
         let box;
         if (this._boxPool.length > 0) {
             box = this._boxPool.pop();

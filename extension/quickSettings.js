@@ -34,11 +34,9 @@ const MosaicMenuToggle = GObject.registerClass(
         
             this._extension = extension;
             this._workspaceItems = [];
-        
-            // Set initial state
+
             this.checked = true;
-        
-            // Connect toggle to global enable/disable
+
             this.connect('clicked', () => {
                 this._onGlobalToggle();
             });
@@ -64,8 +62,7 @@ const MosaicMenuToggle = GObject.registerClass(
             const enabled = this.checked;
             const nWorkspaces = this._workspaceManager.get_n_workspaces();
             Logger.log(`Quick Settings: Global toggle ${enabled ? 'ON' : 'OFF'}`);
-        
-            // Update icon
+
             this.gicon = _getIcon(this._extension, enabled ? 'mosaic-on-symbolic' : 'mosaic-off-symbolic');
         
             if (enabled) {
@@ -101,7 +98,6 @@ const MosaicMenuToggle = GObject.registerClass(
         }
     
         _rebuildWorkspaceList() {
-        // Clear existing items
             this._workspacesSection.removeAll();
             this._workspaceItems = [];
         

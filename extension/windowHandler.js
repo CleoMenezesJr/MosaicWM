@@ -28,8 +28,8 @@ export const WindowHandler = GObject.registerClass({
         this._evaluationQueue = [];
         this._isEvaluatingQueue = false;
 
-        this._overflowInProgress = false; // Moved from extension.js
-        this._windowSignals = new WeakMap(); // Store signal IDs for cleanup using WeakMap for memory safety
+        this._overflowInProgress = false;
+        this._windowSignals = new WeakMap(); // WeakMap so signal IDs are released when the window is GC'd
         this._origShouldAnimateActor = null; 
     }
 
@@ -1055,8 +1055,6 @@ export const WindowHandler = GObject.registerClass({
         // Capture natural size immediately upon arrival to a workspace
         this._ext.tilingManager.savePreferredSize(window);
 
-        // Smart resize is synchronous — no active iterator to abort
-
         // Mark window as newly added for overflow protection logic
         WindowState.set(window, 'addedTime', Date.now());
 
@@ -1077,7 +1075,8 @@ export const WindowHandler = GObject.registerClass({
                 const hasValidDimensions = frame.width > 0 && frame.height > 0;
 
                 if (hasValidDimensions) {
-                    // we use this lock for prevent the window to get stuck in the middle
+                    // Detect a DnD across workspaces: window was just removed from a different
+                    // workspace within SAFETY_TIMEOUT_BUFFER_MS, so this add is the drop side.
                     const previousWorkspaceIndex = WindowState.get(WINDOW, 'previousWorkspace');
                     const removedTimestamp = WindowState.get(WINDOW, 'removedTimestamp');
                     const timeSinceRemoved = removedTimestamp ? Date.now() - removedTimestamp : Infinity;
@@ -1166,12 +1165,11 @@ export const WindowHandler = GObject.registerClass({
 
             Logger.log(`_windowRemoved: ${remainingWindows.length} remaining windows, freed ${freedWidth}x${freedHeight}, wasOverflowMove=${wasMovedByOverflow}`);
 
-            // FASE 5: Cleanup transient Smart Resize flags
+            // Release smart-resize state on remaining windows before attempting
+            // reverse smart-resize / restoration below. preferredSize is preserved.
             Logger.log('[SMART RESIZE] Cleaning up transient flags for remaining windows');
             for (const w of remainingWindows) {
-                // Ensure all windows are released from smart-resize state before we try to restore them
                 WindowState.set(w, 'isSmartResizing', false);
-                // Preserve preferredSize for restoration
             }
 
             // Auto-restore oldest miniature when space is freed (not an overflow move)

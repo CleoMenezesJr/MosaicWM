@@ -17,7 +17,6 @@ import * as constants from './constants.js';
 
 import { SettingsOverrider } from './settingsOverrider.js';
 
-// Import new Managers
 import { EdgeTilingManager } from './edgeTiling.js';
 import { TileZone } from './constants.js';
 import { TilingManager } from './tiling.js';
@@ -168,7 +167,6 @@ export default class WindowMosaicExtension extends Extension {
         Logger.info('Starting Mosaic layout manager.');
 
         this._timeoutRegistry = new TimeoutRegistry();
-        // Get workspace manager reference
         this._workspaceManager = global.workspace_manager;
 
         // Initialize mutter settings + failsafe: Ensure attach-modal-dialogs is enabled
@@ -463,7 +461,6 @@ export default class WindowMosaicExtension extends Extension {
 
         this._setupKeybindings();
 
-        // Use TimeoutRegistry for better GJS integration and safe lifecycle
         this._tileTimeout = this._timeoutRegistry.add(constants.STARTUP_TILE_DELAY_MS, () => {
             this._tileAllWorkspaces();
             this._tileTimeout = null;

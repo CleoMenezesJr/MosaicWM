@@ -151,10 +151,10 @@ export function afterAnimations(animationsManager, callback, registry, maxWait =
         callback();
     };
 
-    // 1. Connect to our new deterministic signal
+    // 1. Deterministic signal: fires when all tracked animations finish
     signalId = animationsManager.connect('animations-completed', trigger);
 
-    // 2. Safety fallback
+    // 2. Safety fallback in case the signal never arrives (e.g. animation cancelled mid-flight)
     const adjustedMaxWait = Math.ceil(maxWait * getSlowDownFactor());
     timeoutId = registry.add(adjustedMaxWait, () => {
         Logger.log('afterAnimations: Safety timeout triggered');

@@ -94,8 +94,7 @@ export const WindowingManager = GObject.registerClass({
         for (const window of windows)
             if (window.get_monitor() === monitor && (this.isRelated(window) || allow_unrelated))
                 _windows.push(window);
-        
-        // Store in cache
+
         workspaceCache.set(cacheKey, _windows);
         return _windows;
     }

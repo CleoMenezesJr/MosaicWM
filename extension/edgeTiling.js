@@ -506,10 +506,8 @@ export const EdgeTilingManager = GObject.registerClass({
             }
         }
 
-        // Clean up dependencies
-        // Cleanup dependencies handled by WindowState automatically
-        // or by removeTile logic if explicit cleanup is needed
-
+        // autoTileMaster/autoTileDependents are cleaned up in removeTile;
+        // this path only needs to drop the tiling state itself.
         WindowState.remove(window, 'edgeTilingState');
     }
 
@@ -827,7 +825,6 @@ export const EdgeTilingManager = GObject.registerClass({
                 });
             }
 
-            // Handle mosaic windows that can't fit in remaining space
             // Handle mosaic windows that can't fit in remaining space
             if (!skipOverflowCheck) {
                 const remSpace = this.calculateRemainingSpace(
