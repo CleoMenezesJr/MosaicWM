@@ -78,14 +78,12 @@ export const DragHandler = GObject.registerClass({
         this._currentGrabOp = grabpo;
         const isResizeOp = isResizeGrabOp(grabpo);
         if (isResizeOp) {
+            // Resize logic delegation (will be handled by ResizeHandler)
             this._ext.resizeHandler.onResizeBegin(window, grabpo);
         }
         
         if (isMoveGrabOp(grabpo) && !this.windowingManager.isExcluded(window)) {
-            const workspace = window.get_workspace();
-            if (workspace && this._ext && !this._ext.isMosaicEnabledForWorkspace(workspace))
-                return;
-            Logger.log('Edge tiling: grab begin');
+            Logger.log(`Edge tiling: grab begin`);
             this._draggedWindow = window;
             
             const windowState = this.edgeTilingManager.getWindowState(window);
@@ -105,23 +103,23 @@ export const DragHandler = GObject.registerClass({
                         return GLib.SOURCE_REMOVE;
                     }, 'dragHandler_edgeTileRestoreDelay');
                     
-                    Logger.log('Edge tiling: restoration complete, checking if drag still active');
+                    Logger.log(`Edge tiling: restoration complete, checking if drag still active`);
                     this._skipNextTiling = null;
                     this._currentZone = TileZone.NONE; // Reset so window doesn't get re-tiled on release
                     
                     // Check if button was already released during restoration
-                    const [_x, _y, mods] = global.get_pointer();
+                    const [x, y, mods] = global.get_pointer();
                     const isButtonPressed = (mods & Clutter.ModifierType.BUTTON1_MASK) !== 0;
                     
                     if (!isButtonPressed) {
-                        Logger.log('Edge tiling: button released during restoration, skipping startDrag');
+                        Logger.log(`Edge tiling: button released during restoration, skipping startDrag`);
                         this._draggedWindow = null;
                         
                         // Retile the workspace so the window returns to mosaic position
                         const workspace = window.get_workspace();
                         const monitor = window.get_monitor();
                         if (workspace && monitor !== null) {
-                            Logger.log('Edge tiling: triggering retile after quick release');
+                            Logger.log(`Edge tiling: triggering retile after quick release`);
                             this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
                         }
                         return;
@@ -131,24 +129,24 @@ export const DragHandler = GObject.registerClass({
                         (isMoveGrabOp(grabpo) || grabpo === Meta.GrabOp.KEYBOARD_MOVING) &&
                         window && !this.windowingManager.isMaximizedOrFullscreen(window)
                     ) {
-                        const workspace = window.get_workspace();
-                        const monitor = window.get_monitor();
-                        const fits = this.tilingManager.canFitWindow(window, workspace, monitor, true);
+                         const workspace = window.get_workspace();
+                         const monitor = window.get_monitor();
+                         const fits = this.tilingManager.canFitWindow(window, workspace, monitor, true);
                          
-                        if (!fits) {
-                            Logger.log('Edge tile exit: window doesn\'t fit - applying overflow opacity');
-                            const actor = window.get_compositor_private();
-                            if (actor) {
-                                actor.opacity = 128;
-                            }
-                            this._dragOverflowWindow = window;
-                            this.tilingManager.setExcludedWindow(window);
-                            this.drawingManager.hideTilePreview();
-                            this.drawingManager.removeBoxes();
-                        } else {
-                            Logger.log(`_grabOpBeginHandler: calling startDrag for window ${window.get_id()}`);
-                            this.reorderingManager.startDrag(window);
-                        }
+                         if (!fits) {
+                             Logger.log(`Edge tile exit: window doesn't fit - applying overflow opacity`);
+                             const actor = window.get_compositor_private();
+                             if (actor) {
+                                 actor.opacity = 128;
+                             }
+                             this._dragOverflowWindow = window;
+                             this.tilingManager.setExcludedWindow(window);
+                             this.drawingManager.hideTilePreview();
+                             this.drawingManager.removeBoxes();
+                         } else {
+                             Logger.log(`_grabOpBeginHandler: calling startDrag for window ${window.get_id()}`);
+                             this.reorderingManager.startDrag(window);
+                         }
                     }
                 });
                 return;
@@ -156,8 +154,8 @@ export const DragHandler = GObject.registerClass({
                 this._currentZone = TileZone.NONE;
             }
             
-            // Drive edge-tiling detection from Mutter's position-changed signal
-            Logger.log('Connecting signal-based edge tiling listeners');
+            // Connect signal-based listeners for edge tiling (replaces polling)
+            Logger.log(`Connecting signal-based edge tiling listeners`);
             this._dragPositionChangedId = this._draggedWindow.connect('position-changed', this._onDragPositionChanged.bind(this));
         }
 
@@ -181,7 +179,7 @@ export const DragHandler = GObject.registerClass({
         
         // Handle drag overflow - window that was marked as not fitting
         if (this._dragOverflowWindow && this._dragOverflowWindow === window) {
-            Logger.log('Drag ended with overflow window - moving to new workspace');
+            Logger.log(`Drag ended with overflow window - moving to new workspace`);
             const actor = this._dragOverflowWindow.get_compositor_private();
             if (actor) actor.opacity = 255; // Restore opacity
             
@@ -334,7 +332,7 @@ export const DragHandler = GObject.registerClass({
             return Clutter.EVENT_PROPAGATE;
         }
 
-        Logger.log('Global button release detected - cleaning up drag');
+        Logger.log(`Global button release detected - cleaning up drag`);
         
         if (this._currentZone !== TileZone.NONE) {
             const workspace = this._draggedWindow.get_workspace();
@@ -403,70 +401,70 @@ export const DragHandler = GObject.registerClass({
         this._isPositionProcessing = true;
         
         this._timeoutRegistry.addIdle(() => {
-            if (!this._draggedWindow) {
-                this._isPositionProcessing = false;
-                return GLib.SOURCE_REMOVE;
-            }
+             if (!this._draggedWindow) {
+                 this._isPositionProcessing = false;
+                 return GLib.SOURCE_REMOVE;
+             }
              
-            if (zone !== TileZone.NONE && zone !== this._currentZone) {
-                Logger.log(`Edge tiling: detected zone ${zone}`);
-                this._currentZone = zone;
+             if (zone !== TileZone.NONE && zone !== this._currentZone) {
+                 Logger.log(`Edge tiling: detected zone ${zone}`);
+                 this._currentZone = zone;
 
-                if (this._lastReorderMonitor !== null && monitor !== this._lastReorderMonitor) {
-                    this.tilingManager.setDragRemainingSpace(null);
-                    this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, this._lastReorderMonitor, false, true);
-                }
-                this._lastReorderMonitor = monitor;
-                this.edgeTilingManager.setEdgeTilingActive(true, this._draggedWindow);
-                this.drawingManager.showTilePreview(zone, workArea, this._draggedWindow);
+                 if (this._lastReorderMonitor != null && monitor !== this._lastReorderMonitor) {
+                     this.tilingManager.setDragRemainingSpace(null);
+                     this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, this._lastReorderMonitor, false, true);
+                 }
+                 this._lastReorderMonitor = monitor;
+                 this.edgeTilingManager.setEdgeTilingActive(true, this._draggedWindow);
+                 this.drawingManager.showTilePreview(zone, workArea, this._draggedWindow);
                  
-                const remainingSpace = this.edgeTilingManager.calculateRemainingSpaceForZone(zone, workArea);
-                this.tilingManager.setDragRemainingSpace(remainingSpace);
+                 const remainingSpace = this.edgeTilingManager.calculateRemainingSpaceForZone(zone, workArea);
+                 this.tilingManager.setDragRemainingSpace(remainingSpace);
                  
-                this.clearGhostWindows();
+                 this.clearGhostWindows();
                  
-                const mosaicWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-                    .filter(w => w.get_id() !== this._draggedWindow.get_id() && 
+                 const mosaicWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
+                     .filter(w => w.get_id() !== this._draggedWindow.get_id() && 
                                  !this.edgeTilingManager.isEdgeTiled(w));
                  
-                const result = this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor, false);
+                 const result = this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor, false);
                  
-                if (result?.overflow) {
-                    for (const win of mosaicWindows) {
-                        const actor = win.get_compositor_private();
-                        if (actor) {
-                            actor.opacity = 128;
-                            this._edgeTileGhostWindows.push(win);
-                        }
-                    }
-                }
-            } else if (zone === TileZone.NONE && this._currentZone !== TileZone.NONE) {
-                Logger.log('Edge tiling: exiting zone');
-                this._currentZone = TileZone.NONE;
-                this.edgeTilingManager.setEdgeTilingActive(false, null);
-                this.drawingManager.hideTilePreview();
-                this.tilingManager.setDragRemainingSpace(null);
+                 if (result?.overflow) {
+                     for (const win of mosaicWindows) {
+                         const actor = win.get_compositor_private();
+                         if (actor) {
+                             actor.opacity = 128;
+                             this._edgeTileGhostWindows.push(win);
+                         }
+                     }
+                 }
+             } else if (zone === TileZone.NONE && this._currentZone !== TileZone.NONE) {
+                 Logger.log(`Edge tiling: exiting zone`);
+                 this._currentZone = TileZone.NONE;
+                 this.edgeTilingManager.setEdgeTilingActive(false, null);
+                 this.drawingManager.hideTilePreview();
+                 this.tilingManager.setDragRemainingSpace(null);
 
-                this.clearGhostWindows();
+                 this.clearGhostWindows();
 
-                this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor);
+                 this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor);
 
-                this.reorderingManager.startDrag(this._draggedWindow);
-                this._lastReorderMonitor = monitor;
-            } else if (zone === TileZone.NONE && monitor !== this._lastReorderMonitor) {
-                Logger.log(`Drag monitor changed to ${monitor} (fast drag skipped edge zone), restarting reorder`);
+                 this.reorderingManager.startDrag(this._draggedWindow);
+                 this._lastReorderMonitor = monitor;
+             } else if (zone === TileZone.NONE && monitor !== this._lastReorderMonitor) {
+                 Logger.log(`Drag monitor changed to ${monitor} (fast drag skipped edge zone), restarting reorder`);
 
-                if (this._lastReorderMonitor !== null) {
-                    this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, this._lastReorderMonitor, false, true);
-                }
+                 if (this._lastReorderMonitor != null) {
+                     this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, this._lastReorderMonitor, false, true)
+                 }
 
-                this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor);
-                this.reorderingManager.startDrag(this._draggedWindow);
-                this._lastReorderMonitor = monitor;
-            }
+                 this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor);
+                 this.reorderingManager.startDrag(this._draggedWindow);
+                 this._lastReorderMonitor = monitor;
+             }
              
-            this._isPositionProcessing = false;
-            return GLib.SOURCE_REMOVE;
+             this._isPositionProcessing = false;
+             return GLib.SOURCE_REMOVE;
         });
     }
 

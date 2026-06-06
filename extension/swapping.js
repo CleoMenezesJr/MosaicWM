@@ -94,7 +94,7 @@ export const SwappingManager = GObject.registerClass({
         if (movingToOppositeSide) {
             return this._findOppositeSideNeighbor(window, zone, targetSide, workspace, monitor);
         } else {
-            return this._findSameSideMosaicNeighbor(window, null, null, null, null);
+            return this._findSameSideMosaicNeighbor(window, zone, direction, workspace, monitor);
         }
     }
 
@@ -176,7 +176,7 @@ export const SwappingManager = GObject.registerClass({
         return null;
     }
 
-    _findSameSideMosaicNeighbor(_window, _zone, _direction, _workspace, _monitor) {
+    _findSameSideMosaicNeighbor(window, zone, direction, workspace, monitor) {
         return null;
     }
 
@@ -223,7 +223,7 @@ export const SwappingManager = GObject.registerClass({
         const windowCenterX = windowFrame.x + windowFrame.width / 2;
         const windowCenterY = windowFrame.y + windowFrame.height / 2;
         
-        const candidates = mosaicWindows.filter(w => {
+        let candidates = mosaicWindows.filter(w => {
             if (w.get_id() === window.get_id()) return false;
             
             const frame = w.get_frame_rect();
@@ -285,8 +285,8 @@ export const SwappingManager = GObject.registerClass({
         const lastSwap = WindowState.get(window, 'lastSwapTime');
         const now = GLib.get_monotonic_time() / 1000;
         if (lastSwap && (now - lastSwap) < 500) {
-            Logger.log(`Swap throttled for window ${window.get_id()}`);
-            return false;
+             Logger.log(`Swap throttled for window ${window.get_id()}`);
+             return false;
         }
         
         const neighbor = this.findNeighbor(window, direction, workspace, monitor);

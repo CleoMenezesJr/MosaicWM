@@ -28,14 +28,15 @@ export const DrawingManager = GObject.registerClass({
     }
 
     rect(x, y, w, h) {
-        // Reuse a pooled box when available; otherwise create a new one in the UI group
+        // Managed by Extension.js
+        
         let box;
         if (this._boxPool.length > 0) {
             box = this._boxPool.pop();
             box.show();
         } else {
             box = new St.Widget({ 
-                style_class: 'mosaic-preview',
+                style_class: "mosaic-preview",
                 opacity: 200 // Ensure it's visible
             });
             Main.uiGroup.add_child(box);
@@ -50,7 +51,7 @@ export const DrawingManager = GObject.registerClass({
     removeBoxes() {
         // Recycle boxes instead of destroying
         while(this._boxes.length > 0) {
-            const box = this._boxes.pop();
+            let box = this._boxes.pop();
             box.hide();
             this._boxPool.push(box);
         }
@@ -92,7 +93,7 @@ export const DrawingManager = GObject.registerClass({
 
         // Clean up pool
         while(this._boxPool.length > 0) {
-            const box = this._boxPool.pop();
+            let box = this._boxPool.pop();
             if (box.get_parent())
                 Main.uiGroup.remove_child(box);
             box.destroy();

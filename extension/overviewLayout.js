@@ -23,12 +23,11 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
             return [];
         }
 
-        // Filter out attached dialogs and transient children (visually merged with parent window)
+        // Filter out attached dialogs (visually merged with parent window)
         const filteredClones = clones.filter(clone => {
             const metaWindow = clone.metaWindow || clone.source?.metaWindow;
             if (!metaWindow) return true;
             if (metaWindow.is_attached_dialog()) return false;
-            if (metaWindow.get_transient_for() !== null) return false;
             return true;
         });
         

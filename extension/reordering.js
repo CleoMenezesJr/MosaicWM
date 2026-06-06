@@ -44,8 +44,8 @@ export const ReorderingManager = GObject.registerClass({
     }
 
     _cursorDistance(cursor, rect) {
-        const x = cursor.x - (rect.x + rect.width / 2);
-        const y = cursor.y - (rect.y + rect.height / 2);
+        let x = cursor.x - (rect.x + rect.width / 2);
+        let y = cursor.y - (rect.y + rect.height / 2);
         return Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2));
     }
 
@@ -65,15 +65,15 @@ export const ReorderingManager = GObject.registerClass({
 
         const { meta_window } = this._dragContext;
 
-        const workspace = meta_window.get_workspace();
-        const monitor = global.display.get_current_monitor();
-        const workArea = workspace.get_work_area_for_monitor(monitor);
+        let workspace = meta_window.get_workspace();
+        let monitor = global.display.get_current_monitor();
+        let workArea = workspace.get_work_area_for_monitor(monitor);
 
-        const _cursor = global.get_pointer();
-        const cursor = {
+        let _cursor = global.get_pointer();
+        let cursor = {
             x: _cursor[0],
             y: _cursor[1]
-        };
+        }
 
         // Edge zone — defer to edge tiling handler
         let isOverEdgeZone = false;
@@ -121,8 +121,8 @@ export const ReorderingManager = GObject.registerClass({
         if (!this._tilingManager) return;
 
         Logger.log(`startDrag called for window ${meta_window.get_id()}`);
-        const workspace = meta_window.get_workspace();
-        const monitor = global.display.get_current_monitor();
+        let workspace = meta_window.get_workspace()
+        let monitor = global.display.get_current_monitor();
         let meta_windows = this._windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
 
         // If the dragged window is on a different monitor (cursor crossed before window did),
@@ -147,7 +147,7 @@ export const ReorderingManager = GObject.registerClass({
 
         this._tilingManager.applySwaps(workspace, nonEdgeTiledMetaWindows);
 
-        const descriptors = this._tilingManager.windowsToDescriptors(nonEdgeTiledMetaWindows, monitor, meta_window);
+        let descriptors = this._tilingManager.windowsToDescriptors(nonEdgeTiledMetaWindows, monitor, meta_window);
 
         let remainingSpace = null;
         if (edgeTiledWindows.length > 0 && this._edgeTilingManager) {
@@ -186,7 +186,7 @@ export const ReorderingManager = GObject.registerClass({
         if (!this._tilingManager) return;
 
         Logger.log(`stopDrag called for window ${meta_window.get_id()}, dragStart was: ${this.dragStart}`);
-        const workspace = meta_window.get_workspace();
+        let workspace = meta_window.get_workspace();
         this.dragStart = false;
 
         // Persist chosen layout order
@@ -212,7 +212,7 @@ export const ReorderingManager = GObject.registerClass({
         if (!skip_tiling) {
             this._tilingManager.tileWorkspaceWindows(workspace, null, meta_window.get_monitor());
         } else {
-            Logger.log('stopDrag: Skipping workspace tiling (requested)');
+            Logger.log(`stopDrag: Skipping workspace tiling (requested)`);
         }
     }
 

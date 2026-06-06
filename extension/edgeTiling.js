@@ -57,7 +57,7 @@ export const EdgeTilingManager = GObject.registerClass({
             if (signalId) {
                 try {
                     window.disconnect(signalId);
-                } catch (_e) {
+                } catch (e) {
                     // Ignore if window destroyed
                 }
                 WindowState.remove(window, 'edgeResizeSignalId');
@@ -80,7 +80,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
     // Check for edge-tiled windows on a specific side
     // cachedEdgeTiledIds is ignored in WeakMap implementation
-    _hasEdgeTiledWindowsOnSide(workspace, side, _cachedEdgeTiledIds = null) {
+    _hasEdgeTiledWindowsOnSide(workspace, side, cachedEdgeTiledIds = null) {
         if (!workspace) return false;
 
         // Iterating WeakMap is not possible in GJS, so query workspace windows instead
@@ -108,7 +108,7 @@ export const EdgeTilingManager = GObject.registerClass({
         return false;
     }
 
-    // _cachedEdgeTiledIds: optional array of window IDs to avoid list_windows() call
+    // cachedEdgeTiledIds: optional array of window IDs to avoid list_windows() call
     detectZone(cursorX, cursorY, workArea, workspace, cachedEdgeTiledIds = null) {
         const threshold = constants.EDGE_TILING_THRESHOLD;
         const thirdY = workArea.height / 3;
@@ -236,8 +236,8 @@ export const EdgeTilingManager = GObject.registerClass({
             }
         }
 
-        const halfHeight = Math.floor(workArea.height / 2);
         const halfWidth = Math.floor(workArea.width / 2);
+        const halfHeight = Math.floor(workArea.height / 2);
 
         const workspace = windowToTile?.get_workspace();
         const monitor = windowToTile?.get_monitor();
@@ -404,15 +404,16 @@ export const EdgeTilingManager = GObject.registerClass({
             w.zone === TileZone.TOP_RIGHT || w.zone === TileZone.BOTTOM_RIGHT
         );
 
-        
+        const halfWidth = Math.floor(workArea.width / 2);
+
         if (hasLeftFull || hasLeftQuarters) {
             // Find the rightmost edge of all left-tiled windows
             let maxRight = workArea.x;
             edgeTiledWindows.forEach(w => {
-                if (w.zone === TileZone.LEFT_FULL || w.zone === TileZone.TOP_LEFT || w.zone === TileZone.BOTTOM_LEFT) {
-                    const rect = w.window.get_frame_rect();
-                    maxRight = Math.max(maxRight, rect.x + rect.width);
-                }
+                 if (w.zone === TileZone.LEFT_FULL || w.zone === TileZone.TOP_LEFT || w.zone === TileZone.BOTTOM_LEFT) {
+                     const rect = w.window.get_frame_rect();
+                     maxRight = Math.max(maxRight, rect.x + rect.width);
+                 }
             });
 
             return {
@@ -427,10 +428,10 @@ export const EdgeTilingManager = GObject.registerClass({
             // Find the leftmost edge of all right-tiled windows
             let minLeft = workArea.x + workArea.width;
             edgeTiledWindows.forEach(w => {
-                if (w.zone === TileZone.RIGHT_FULL || w.zone === TileZone.TOP_RIGHT || w.zone === TileZone.BOTTOM_RIGHT) {
-                    const rect = w.window.get_frame_rect();
-                    minLeft = Math.min(minLeft, rect.x);
-                }
+                 if (w.zone === TileZone.RIGHT_FULL || w.zone === TileZone.TOP_RIGHT || w.zone === TileZone.BOTTOM_RIGHT) {
+                     const rect = w.window.get_frame_rect();
+                     minLeft = Math.min(minLeft, rect.x);
+                 }
             });
 
             return {
@@ -446,7 +447,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
     calculateRemainingSpaceForZone(zone, workArea) {
         const halfWidth = Math.floor(workArea.width / 2);
-        
+
         switch (zone) {
             case TileZone.LEFT_FULL:
             case TileZone.TOP_LEFT:
@@ -506,8 +507,10 @@ export const EdgeTilingManager = GObject.registerClass({
             }
         }
 
-        // autoTileMaster/autoTileDependents are cleaned up in removeTile;
-        // this path only needs to drop the tiling state itself.
+        // Clean up dependencies
+        // Cleanup dependencies handled by WindowState automatically
+        // or by removeTile logic if explicit cleanup is needed
+
         WindowState.remove(window, 'edgeTilingState');
     }
 
@@ -545,7 +548,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
         if (leftQuarters.length === 1) {
             const window = leftQuarters[0].window;
-            Logger.log('Single quarter on left - expanding to LEFT_FULL');
+            Logger.log(`Single quarter on left - expanding to LEFT_FULL`);
 
             const state = WindowState.get(window, 'edgeTilingState');
             if (state) state.zone = TileZone.LEFT_FULL;
@@ -567,7 +570,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
         if (rightQuarters.length === 1) {
             const window = rightQuarters[0].window;
-            Logger.log('Single quarter on right - expanding to RIGHT_FULL');
+            Logger.log(`Single quarter on right - expanding to RIGHT_FULL`);
 
             const state = WindowState.get(window, 'edgeTilingState');
             if (state) state.zone = TileZone.RIGHT_FULL;
@@ -621,14 +624,14 @@ export const EdgeTilingManager = GObject.registerClass({
     }
 
     // Check if window can be resized to target dimensions
-    _canResize(window, _targetWidth, _targetHeight) {
+    _canResize(window, targetWidth, targetHeight) {
         if (window.window_type !== 0) { // Meta.WindowType.NORMAL
             Logger.log(`Window type ${window.window_type} is not suitable for edge tiling`);
             return false;
         }
 
         if (window.allows_resize && !window.allows_resize()) {
-            Logger.log('Window does not allow resize');
+            Logger.log(`Window does not allow resize`);
             return false;
         }
         return true;
@@ -691,7 +694,7 @@ export const EdgeTilingManager = GObject.registerClass({
                 const newZone = (zone === TileZone.BOTTOM_LEFT) ? TileZone.TOP_LEFT : TileZone.BOTTOM_LEFT;
                 fullToQuarterConversion = { window: leftFullWindow, newZone };
             } else {
-                Logger.log('No LEFT_FULL window found for conversion');
+                Logger.log(`No LEFT_FULL window found for conversion`);
             }
         } else if (zone === TileZone.BOTTOM_RIGHT || zone === TileZone.TOP_RIGHT) {
             const workspaceWindows = workspace.list_windows().filter(w =>
@@ -783,7 +786,7 @@ export const EdgeTilingManager = GObject.registerClass({
                     this.emit('edge-tiling-changed', fullToQuarterConversion.window, fullToQuarterConversion.newZone);
                 }
 
-                this._timeoutRegistry.add(constants.POLL_INTERVAL_MS, () => {
+            this._timeoutRegistry.add(constants.POLL_INTERVAL_MS, () => {
                     // Safety check: ensure windows are still valid
                     if (!window.get_compositor_private() ||
                         !fullToQuarterConversion.window.get_compositor_private()) {
@@ -827,10 +830,9 @@ export const EdgeTilingManager = GObject.registerClass({
 
             // Handle mosaic windows that can't fit in remaining space
             if (!skipOverflowCheck) {
-                const remSpace = this.calculateRemainingSpace(
-                    window.get_workspace(), window.get_monitor());
-                this._handleMosaicOverflow(window, zone, remSpace);
+                this._handleMosaicOverflow(window, zone);
             }
+
             return GLib.SOURCE_REMOVE;
         });
 
@@ -854,7 +856,9 @@ export const EdgeTilingManager = GObject.registerClass({
 
         const savedWidth = savedState.width;
         const savedHeight = savedState.height;
-        
+        const savedX = savedState.x;
+        const savedY = savedState.y;
+
         Logger.log(`removeTile: Checking dependencies for master=${winId}`);
         const dependents = WindowState.get(window, 'autoTileDependents');
         if (dependents && dependents.size > 0) {
@@ -875,9 +879,9 @@ export const EdgeTilingManager = GObject.registerClass({
         // If this window is a dependent, remove itself from master
         const master = WindowState.get(window, 'autoTileMaster');
         if (master) {
-            const masterDeps = WindowState.get(master, 'autoTileDependents');
-            if (masterDeps) masterDeps.delete(window);
-            WindowState.remove(window, 'autoTileMaster');
+             const masterDeps = WindowState.get(master, 'autoTileDependents');
+             if (masterDeps) masterDeps.delete(window);
+             WindowState.remove(window, 'autoTileMaster');
         }
 
         if (this._isQuarterZone(savedState.zone)) {
@@ -951,7 +955,7 @@ export const EdgeTilingManager = GObject.registerClass({
         }
     }
 
-    _handleMosaicOverflow(tiledWindow, zone, remainingSpace) {
+    _handleMosaicOverflow(tiledWindow, zone) {
         Logger.log(`_handleMosaicOverflow: called for zone=${zone}`);
 
         const workspace = tiledWindow.get_workspace();
@@ -1112,8 +1116,8 @@ export const EdgeTilingManager = GObject.registerClass({
         const adjacentWindow = this._findWindowInZone(adjacentZone, workspace);
         if (!adjacentWindow) return;
 
-        const _resizedId = window.get_id();
-        const _adjacentId = adjacentWindow.get_id();
+        const resizedId = window.get_id();
+        const adjacentId = adjacentWindow.get_id();
         const resizedFrame = window.get_frame_rect();
 
         const previousState = WindowState.get(window, 'edgePreviousSize');
@@ -1166,8 +1170,8 @@ export const EdgeTilingManager = GObject.registerClass({
     }
 
     _resizeTiledPair(resizedWindow, adjacentWindow, workArea, zone) {
-        const _resizedId = resizedWindow.get_id();
-        const _adjacentId = adjacentWindow.get_id();
+        const resizedId = resizedWindow.get_id();
+        const adjacentId = adjacentWindow.get_id();
         const resizedFrame = resizedWindow.get_frame_rect();
 
         const previousState = WindowState.get(resizedWindow, 'edgePreviousSize');
@@ -1221,7 +1225,7 @@ export const EdgeTilingManager = GObject.registerClass({
     _handleResizeWithMosaic(window, workspace, monitor) {
         // Retile mosaic to adapt to the edge tile's new size
         if (this._tilingManager) {
-            Logger.log('Edge-tiled window resizing - retiling mosaic to adapt');
+            Logger.log(`Edge-tiled window resizing - retiling mosaic to adapt`);
             this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
         }
     }
@@ -1321,7 +1325,7 @@ export const EdgeTilingManager = GObject.registerClass({
             const maxWidth = workArea.width - minFreeSpace;
 
             if (edgeFrame.width > maxWidth) {
-                this._isResizing = true;
+                 this._isResizing = true;
                 try {
                     const isLeft = (zone === TileZone.LEFT_FULL);
                     const x = isLeft ? workArea.x : (workArea.x + workArea.width - maxWidth);
@@ -1345,7 +1349,7 @@ export const EdgeTilingManager = GObject.registerClass({
             mosaicMinX = Math.min(mosaicMinX, f.x);
             mosaicMaxX = Math.max(mosaicMaxX, f.x + f.width);
         }
-        const _actualMosaicWidth = mosaicMaxX - mosaicMinX;
+        const actualMosaicWidth = mosaicMaxX - mosaicMinX;
 
         // Edge tile max = workArea - actualMosaicWidth
         // This means edge tile cannot exceed the space NOT occupied by mosaic
@@ -1385,7 +1389,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
         // Always retile mosaic to adapt to new available space
         if (this._tilingManager) {
-            Logger.log('Retiling mosaic after edge tile resize');
+            Logger.log(`Retiling mosaic after edge tile resize`);
             this._timeoutRegistry.add(100, () => {
                 this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
                 return GLib.SOURCE_REMOVE;

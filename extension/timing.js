@@ -151,10 +151,10 @@ export function afterAnimations(animationsManager, callback, registry, maxWait =
         callback();
     };
 
-    // 1. Deterministic signal: fires when all tracked animations finish
+    // 1. Connect to our new deterministic signal
     signalId = animationsManager.connect('animations-completed', trigger);
 
-    // 2. Safety fallback in case the signal never arrives (e.g. animation cancelled mid-flight)
+    // 2. Safety fallback
     const adjustedMaxWait = Math.ceil(maxWait * getSlowDownFactor());
     timeoutId = registry.add(adjustedMaxWait, () => {
         Logger.log('afterAnimations: Safety timeout triggered');
@@ -236,7 +236,7 @@ export function afterOverviewHidden(callback, registry) {
     registry.add(1000, () => {
         if (Main.overview.visible) {
             Logger.log('Overview hide timeout - forcing callback');
-            try { Main.overview.disconnect(hiddenId); } catch(_e) {}
+            try { Main.overview.disconnect(hiddenId); } catch(e) {}
             callback();
         }
         return GLib.SOURCE_REMOVE;

@@ -5,6 +5,5 @@
   "url": "https://github.com/CleoMenezesJr/MosaicWM",
   "shell-version": [
     "50"
-  ],
-  "session-modes": ["user", "unlock-dialog"]
+  ]
 }

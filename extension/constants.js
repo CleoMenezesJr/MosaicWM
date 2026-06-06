@@ -49,7 +49,7 @@ export const RETILE_DELAY_MS = 100;
 export const GEOMETRY_CHECK_DELAY_MS = 10;
 export const SAFETY_TIMEOUT_BUFFER_MS = 100;
 export const EDGE_TILE_RESTORE_DELAY_MS = 300;  // Delay to prevent false overflow during edge tile restoration
-// Allows up to 5 seconds for geometry check during mass spawning
+// Increased from 40 to 100 to allow up to 5 seconds for geometry check during mass spawning
 export const GEOMETRY_WAIT_MAX_ATTEMPTS = 100;   // Max attempts to wait for window geometry (100 * 50ms = 5s)
 export const REVERSE_RESIZE_PROTECTION_MS = 1000; // Protection window for reverse smart resize/unmaximize/overflow
 export const RESIZE_VERIFICATION_DELAY_MS = 1500; // Delay for resize verification checks

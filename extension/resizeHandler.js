@@ -49,7 +49,7 @@ export const ResizeHandler = GObject.registerClass({
 
         this._constraintRebalanceCount = (this._constraintRebalanceCount || 0) + 1;
         if (this._constraintRebalanceCount > 3) {
-            Logger.log('[SMART RESIZE] Max rebalance attempts reached, skipping');
+            Logger.log(`[SMART RESIZE] Max rebalance attempts reached, skipping`);
             return;
         }
 
@@ -118,7 +118,7 @@ export const ResizeHandler = GObject.registerClass({
             const actor = window.get_compositor_private();
             if (actor) actor.opacity = 255;
 
-            const oldWorkspace = window.get_workspace();
+            let oldWorkspace = window.get_workspace();
             this.windowingManager.moveOversizedWindow(window).then(newWorkspace => {
                 if (newWorkspace) {
                     afterAnimations(this.animationsManager, () => {
@@ -141,10 +141,10 @@ export const ResizeHandler = GObject.registerClass({
     }
 
     onSizeChange = (_, win, mode) => {
-        const window = win.meta_window;
+        let window = win.meta_window;
         if (!this.windowingManager.isExcluded(window)) {
-            const workspace = window.get_workspace();
-            const monitor = window.get_monitor();
+            let workspace = window.get_workspace();
+            let monitor = window.get_monitor();
 
             if (mode === Meta.SizeChange.FULLSCREEN || mode === Meta.SizeChange.MAXIMIZE) {
                 // Detect born-maximized: size-change fires BEFORE window-created for new windows.
@@ -201,7 +201,7 @@ export const ResizeHandler = GObject.registerClass({
     };
 
     onSizeChanged = (_, win) => {
-        const window = win.meta_window;
+        let window = win.meta_window;
         if (!this._sizeChanged && !this.windowingManager.isExcluded(window)) {
             if (!this.windowingManager.isRelated(window)) return;
 
@@ -300,15 +300,15 @@ export const ResizeHandler = GObject.registerClass({
             // assume an external or ambient resize and lift the constraint.
             let userForcedResize = isManualResizeAction;
             if (!userForcedResize && isConstrained) {
-                const target = WindowState.get(window, 'targetSmartResizeSize');
-                if (target) {
-                    const wDiff = Math.abs(rect.width - target.width);
-                    const hDiff = Math.abs(rect.height - target.height);
-                    if (wDiff > 10 || hDiff > 10) {
-                        userForcedResize = true;
-                        Logger.log(`Detected ambient/client-side resize for constrained window ${window.get_id()} (delta: ${wDiff}x${hDiff})`);
-                    }
-                }
+                 const target = WindowState.get(window, 'targetSmartResizeSize');
+                 if (target) {
+                     const wDiff = Math.abs(rect.width - target.width);
+                     const hDiff = Math.abs(rect.height - target.height);
+                     if (wDiff > 10 || hDiff > 10) {
+                          userForcedResize = true;
+                          Logger.log(`Detected ambient/client-side resize for constrained window ${window.get_id()} (delta: ${wDiff}x${hDiff})`);
+                     }
+                 }
             }
             
             if (userForcedResize) {
@@ -337,9 +337,9 @@ export const ResizeHandler = GObject.registerClass({
                             Logger.log(`Preferred size updated (ambient): ${window.get_id()} = ${rect.width}x${rect.height}`);
                         }
                     } else if (WindowState.get(window, 'geometryReady')) {
-                        // First time seeing a size for this window
-                        WindowState.set(window, 'preferredSize', { width: rect.width, height: rect.height });
-                        Logger.log(`Initial preferred size saved: ${window.get_id()} = ${rect.width}x${rect.height}`);
+                         // First time seeing a size for this window
+                         WindowState.set(window, 'preferredSize', { width: rect.width, height: rect.height });
+                         Logger.log(`Initial preferred size saved: ${window.get_id()} = ${rect.width}x${rect.height}`);
                     }
                 }
             }
@@ -349,13 +349,13 @@ export const ResizeHandler = GObject.registerClass({
             
             if (this._skipNextTiling === window.get_id()) return;
 
-            const tileState = this.edgeTilingManager.getWindowState(window);
-            const isEdgeTiled = tileState && tileState.zone !== TileZone.NONE;
+            let tileState = this.edgeTilingManager.getWindowState(window);
+            let isEdgeTiled = tileState && tileState.zone !== TileZone.NONE;
             if (isEdgeTiled) return;
 
             this._sizeChanged = true;
-            const workspace = window.get_workspace();
-            const monitor = window.get_monitor();
+            let workspace = window.get_workspace();
+            let monitor = window.get_monitor();
             
             if (WindowState.get(window, 'movedByOverflow')) {
                 this._sizeChanged = false;
@@ -384,7 +384,7 @@ export const ResizeHandler = GObject.registerClass({
                         this._resizeDebounceTimeout = null;
                     }
 
-                    const canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
+                    let canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
                     const mosaicWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
                         .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
                     const isSolo = mosaicWindows.length <= 1;
@@ -426,7 +426,7 @@ export const ResizeHandler = GObject.registerClass({
                     return;
                 }
                 
-                const canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
+                let canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
                 const now = GLib.get_monotonic_time() / 1000;
                 if (this._resizeGracePeriod && (now - this._resizeGracePeriod) < constants.REVERSE_RESIZE_PROTECTION_MS) {
                     this._sizeChanged = false;
@@ -461,7 +461,7 @@ export const ResizeHandler = GObject.registerClass({
                         }
 
                         this._resizeOverflowWindow = window;
-                        const oldWorkspace = workspace;
+                        let oldWorkspace = workspace;
                         this.windowingManager.moveOversizedWindow(window).then(newWorkspace => {
                             if (newWorkspace) {
                                 this.tilingManager.tileWorkspaceWindows(oldWorkspace, false, monitor, false);
@@ -479,8 +479,8 @@ export const ResizeHandler = GObject.registerClass({
                 // However, we throttle it slightly to avoid excessive calculations during smooth resizing
                 if (canFit) {
                     if (this._lastTileTime && (now - this._lastTileTime < 30)) {
-                        this._sizeChanged = false;
-                        return; 
+                         this._sizeChanged = false;
+                         return; 
                     }
                     this._lastTileTime = now;
                 }

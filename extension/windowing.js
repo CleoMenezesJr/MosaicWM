@@ -3,15 +3,15 @@
 // Window management utilities and workspace operations
 
 import * as Logger from './logger.js';
+import * as constants from './constants.js';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as WorkspaceSwitcherPopup from 'resource:///org/gnome/shell/ui/workspaceSwitcherPopup.js';
-import { afterWorkspaceSwitch } from './timing.js';
+import { afterWorkspaceSwitch, waitForGeometry } from './timing.js';
 
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
-import { isWindowAlive } from './liveness.js';
 
 const BLACKLISTED_WM_CLASSES = [
     'org.gnome.Screenshot',
@@ -90,23 +90,24 @@ export const WindowingManager = GObject.registerClass({
             return workspaceCache.get(cacheKey);
         }
         
-        const _windows = [];
-        const windows = workspace.list_windows();
-        for (const window of windows)
+        let _windows = [];
+        let windows = workspace.list_windows();
+        for (let window of windows)
             if (window.get_monitor() === monitor && (this.isRelated(window) || allow_unrelated))
                 _windows.push(window);
-
+        
+        // Store in cache
         workspaceCache.set(cacheKey, _windows);
         return _windows;
     }
 
     moveBackWindow(window) {
-        const workspace = window.get_workspace();
+        let workspace = window.get_workspace();
         const active = global.workspace_manager.get_active_workspace() === workspace;
-        const previous_workspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
+        let previous_workspace = workspace.get_neighbor(Meta.MotionDirection.LEFT);
 
         if (!previous_workspace) {
-            Logger.error('There is no workspace to the left.');
+            Logger.error("There is no workspace to the left.");
             return;
         }
         
@@ -206,7 +207,7 @@ export const WindowingManager = GObject.registerClass({
         const totalWorkspaces = workspaceManager.get_n_workspaces();
         const nextWorkspace = nextIndex < totalWorkspaces ? workspaceManager.get_workspace_by_index(nextIndex) : null;
         
-        let targetWorkspace;
+        let targetWorkspace = null;
         if (nextWorkspace && nextWorkspace.list_windows().length === 0) {
             Logger.log(`[WORKSPACE] Reusing existing empty workspace at WS-${nextIndex}`);
             targetWorkspace = nextWorkspace;
@@ -234,39 +235,39 @@ export const WindowingManager = GObject.registerClass({
             // Flag window as overflow-moved to prevent tiling errors
             WindowState.set(window, 'movedByOverflow', true);
         
-            // Use current workspace as origin to prevent overflow target loops.
-            const currentIndex = window.get_workspace().index();
+        // Use current workspace as origin to prevent overflow target loops.
+        const currentIndex = window.get_workspace().index();
         
-            Logger.log(`moveOversizedWindow: origin=${currentIndex}`);
+        Logger.log(`moveOversizedWindow: origin=${currentIndex}`);
         
-            const isSacred = this.isMaximizedOrFullscreen(window);
-            const nextIndex = currentIndex + 1;
-            const totalWorkspaces = workspaceManager.get_n_workspaces();
-            let target_workspace = null;
+        const isSacred = this.isMaximizedOrFullscreen(window);
+        const nextIndex = currentIndex + 1;
+        const totalWorkspaces = workspaceManager.get_n_workspaces();
+        let target_workspace = null;
         
-            // GNOME's dynamic workspaces might not have a workspace at nextIndex yet
-            const nextWorkspace = nextIndex < totalWorkspaces ? workspaceManager.get_workspace_by_index(nextIndex) : null;
+        // GNOME's dynamic workspaces might not have a workspace at nextIndex yet
+        const nextWorkspace = nextIndex < totalWorkspaces ? workspaceManager.get_workspace_by_index(nextIndex) : null;
         
-            if (isSacred) {
-                Logger.log(`[PLACEMENT] Sacred window detected - targeting strictly WS-${nextIndex} for isolation`);
-                target_workspace = this.createOrReuseAdjacentWorkspace(workspaceManager.get_workspace_by_index(currentIndex));
+        if (isSacred) {
+            Logger.log(`[PLACEMENT] Sacred window detected - targeting strictly WS-${nextIndex} for isolation`);
+            target_workspace = this.createOrReuseAdjacentWorkspace(workspaceManager.get_workspace_by_index(currentIndex));
+        } else {
+            Logger.log(`[PLACEMENT] Overflow window detected - targeting strictly WS-${nextIndex}`);
+            if (nextWorkspace && this._tilingManager && this._tilingManager.canFitWindow(window, nextWorkspace, monitor)) {
+                Logger.log(`[PLACEMENT] Window fits in existing adjacent WS-${nextIndex}`);
+                target_workspace = nextWorkspace;
             } else {
-                Logger.log(`[PLACEMENT] Overflow window detected - targeting strictly WS-${nextIndex}`);
-                if (nextWorkspace && this._tilingManager && this._tilingManager.canFitWindow(window, nextWorkspace, monitor)) {
-                    Logger.log(`[PLACEMENT] Window fits in existing adjacent WS-${nextIndex}`);
-                    target_workspace = nextWorkspace;
-                } else {
-                    Logger.log(`[PLACEMENT] Adjacent WS-${nextIndex} is full or missing - creating new workspace`);
-                    target_workspace = this.createOrReuseAdjacentWorkspace(workspaceManager.get_workspace_by_index(currentIndex));
-                }
+                Logger.log(`[PLACEMENT] Adjacent WS-${nextIndex} is full or missing - creating new workspace`);
+                target_workspace = this.createOrReuseAdjacentWorkspace(workspaceManager.get_workspace_by_index(currentIndex));
             }
+        }
         
-            const previous_workspace = window.get_workspace();
-            const switchFocusRequested = options.switchFocus !== false;
+        const previous_workspace = window.get_workspace();
+        const switchFocusRequested = options.switchFocus !== false;
 
-            window.change_workspace(target_workspace);
+        window.change_workspace(target_workspace);
 
-            // Defer activation to next idle (no artificial delay)
+        // Defer activation to next idle (no artificial delay)
             this._timeoutRegistry.addIdle(() => {
                 const workspaceIndex = target_workspace.index();
                 if (workspaceIndex < 0 || workspaceIndex >= workspaceManager.get_n_workspaces()) {
@@ -287,7 +288,7 @@ export const WindowingManager = GObject.registerClass({
                 
                 // Re-tile after window has settled
                 if (this._tilingManager) {
-                    Logger.log('moveOversizedWindow: workspace switch done, retiling immediately and then waiting for animations');
+                    Logger.log(`moveOversizedWindow: workspace switch done, retiling immediately and then waiting for animations`);
                     
                     // First, repair any aborted smart-resize corruption in the origin workspace before the window was ejected
                     if (previous_workspace.index() !== target_workspace.index()) {
@@ -305,7 +306,7 @@ export const WindowingManager = GObject.registerClass({
                             // Check position after tiling
                             this._timeoutRegistry.addIdle(() => {
                                 try {
-                                    if (!isWindowAlive(window)) {
+                                    if (!window || !window.get_compositor_private()) {
                                         return;
                                     }
                                     const finalFrame = window.get_frame_rect();
@@ -365,18 +366,17 @@ export const WindowingManager = GObject.registerClass({
         if (meta_window.is_above()) {
             return true;
         }
-
+        
+        // Sticky / on all workspaces ("sempre na area de trabalho visivel")
+        if (meta_window.is_on_all_workspaces()) {
+            return true;
+        }
+        
         const wmClass = meta_window.get_wm_class();
         if (wmClass && BLACKLISTED_WM_CLASSES.includes(wmClass)) {
             return true;
         }
-
-        // 1×1 XWayland utility windows (clipboard helpers) must not enter the layout.
-        const frame = meta_window.get_frame_rect();
-        if (frame.width <= 1 && frame.height <= 1) {
-            return true;
-        }
-
+        
         return false;
     }
 
@@ -508,10 +508,10 @@ export const WindowingManager = GObject.registerClass({
             
             // Ensure destruction cleanup
             if (!WindowState.get(Main.wm._workspaceSwitcherPopup, 'destroyConnected')) {
-                Main.wm._workspaceSwitcherPopup.connect('destroy', () => {
-                    Main.wm._workspaceSwitcherPopup = null;
-                });
-                WindowState.set(Main.wm._workspaceSwitcherPopup, 'destroyConnected', true);
+                 Main.wm._workspaceSwitcherPopup.connect('destroy', () => {
+                     Main.wm._workspaceSwitcherPopup = null;
+                 });
+                 WindowState.set(Main.wm._workspaceSwitcherPopup, 'destroyConnected', true);
             }
 
             Main.wm._workspaceSwitcherPopup.display(index);
