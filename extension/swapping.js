@@ -359,7 +359,7 @@ export const SwappingManager = GObject.registerClass({
         this._tilingManager.setTmpSwap(id1, id2);
         this._tilingManager.applyTmpSwap(workspace);
         this._tilingManager.clearTmpSwap();
-        
+        this._tilingManager.invalidateLayoutCache();
         this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
         WindowState.set(window1, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
         WindowState.set(window2, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
