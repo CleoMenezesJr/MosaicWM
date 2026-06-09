@@ -671,10 +671,6 @@ export default class WindowMosaicExtension extends Extension {
             this._timeoutRegistry.clearAll();
         }
 
-        if (this._resizeDebounceTimeout) {
-            this._timeoutRegistry.remove(this._resizeDebounceTimeout);
-            this._resizeDebounceTimeout = null;
-        }
         Logger.info('Disabling Mosaic layout manager.');
 
         if (this._settingsOverrider) {
@@ -772,11 +768,6 @@ export default class WindowMosaicExtension extends Extension {
         allWindows.forEach(w => {
             if (this.windowHandler) this.windowHandler.disconnectWindowSignals(w);
         });
-
-        if (this._workspaceChangeTimeout) {
-            this._timeoutRegistry.remove(this._workspaceChangeTimeout);
-            this._workspaceChangeTimeout = null;
-        }
 
         this._wmEventIds = [];
         this._displayEventIds = [];
