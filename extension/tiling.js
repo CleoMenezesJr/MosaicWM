@@ -70,6 +70,10 @@ export const TilingManager = GObject.registerClass({
         // Layout cache to avoid redundant O(n!) permutation calculations
         this._lastLayoutHash = null;
         this._cachedTileResult = null;
+
+        // Swap/reorder operations per workspace — keyed by Meta.Workspace via WeakMap
+        // to avoid monkey-patching native GObjects (the same reason windowState.js exists).
+        this._workspaceSwaps = new WeakMap();
     }
 
     setEdgeTilingManager(manager) {
@@ -417,17 +421,18 @@ export const TilingManager = GObject.registerClass({
     }
 
     applyTmpSwap(workspace) {
-        if(!workspace.swaps)
-            workspace.swaps = [];
-        
-        if(this.tmp_swap.length !== 0)
-            workspace.swaps.push(this.tmp_swap);
+        if (!this._workspaceSwaps.has(workspace))
+            this._workspaceSwaps.set(workspace, []);
+
+        if (this.tmp_swap.length !== 0)
+            this._workspaceSwaps.get(workspace).push(this.tmp_swap);
     }
 
     applySwaps(workspace, array) {
-        if(workspace.swaps) {
+        const swaps = this._workspaceSwaps.get(workspace);
+        if (swaps) {
             const getId = w => w.id !== undefined ? w.id : w.get_id();
-            for(const op of workspace.swaps) {
+            for (const op of swaps) {
                 if (Array.isArray(op) && op[0] === 'move') {
                     this._moveElement(array, op[1], op[2]);
                 } else if (Array.isArray(op) && op[0] === 'order') {
@@ -462,10 +467,20 @@ export const TilingManager = GObject.registerClass({
     }
 
     applyTmpReorder(workspace) {
-        if (!workspace.swaps) workspace.swaps = [];
+        if (!this._workspaceSwaps.has(workspace))
+            this._workspaceSwaps.set(workspace, []);
         if (this.tmp_reorder) {
-            workspace.swaps.push(['move', this.tmp_reorder.draggedId, this.tmp_reorder.targetId]);
+            this._workspaceSwaps.get(workspace).push(['move', this.tmp_reorder.draggedId, this.tmp_reorder.targetId]);
         }
+    }
+
+    applyOrderOp(workspace, permOrder) {
+        if (!this._workspaceSwaps.has(workspace))
+            this._workspaceSwaps.set(workspace, []);
+        const swaps = this._workspaceSwaps.get(workspace);
+        const filtered = swaps.filter(op => !(Array.isArray(op) && op[0] === 'order'));
+        filtered.push(['order', permOrder]);
+        this._workspaceSwaps.set(workspace, filtered);
     }
 
     _moveElement(array, draggedId, targetId) {
@@ -2768,6 +2783,7 @@ export const TilingManager = GObject.registerClass({
         this.destroyMasks();
         this._isSmartResizingBlocked = false;
         this._restoringWindowId = null;
+        this._workspaceSwaps = null;
         this._edgeTilingManager = null;
         this._drawingManager = null;
         this._animationsManager = null;

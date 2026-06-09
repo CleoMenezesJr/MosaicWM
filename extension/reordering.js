@@ -190,10 +190,8 @@ export const ReorderingManager = GObject.registerClass({
         this.dragStart = false;
 
         // Persist chosen layout order
-        if (!skip_apply && this._chosenLayout) {
-            if (!workspace.swaps) workspace.swaps = [];
-            workspace.swaps = workspace.swaps.filter(op => !(Array.isArray(op) && op[0] === 'order'));
-            workspace.swaps.push(['order', this._chosenLayout.permOrder]);
+        if (!skip_apply && this._chosenLayout && this._tilingManager) {
+            this._tilingManager.applyOrderOp(workspace, this._chosenLayout.permOrder);
         }
 
         this._dragLayouts = null;
