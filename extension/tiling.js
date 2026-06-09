@@ -2791,6 +2791,7 @@ export const TilingManager = GObject.registerClass({
     destroy() {
         this.destroyMasks();
         this._isSmartResizingBlocked = false;
+        this._restoringWindowId = null;
         this._edgeTilingManager = null;
         this._drawingManager = null;
         this._animationsManager = null;
