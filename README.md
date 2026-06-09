@@ -32,10 +32,15 @@ This aligns with GNOME's philosophy of reducing cognitive load and letting users
 - 📐 **Edge Tiling (Snap Zones)**: Drag windows to screen edges for half/quarter tiling - remaining windows adapt to the available space
 - 🔀 **Window Swapping**: Drag a window onto another to swap their positions
 
-### Overflow & Workspaces  
-- 🚀 **Intelligent Overflow**: Windows that don't fit are moved to existing workspaces when possible, or create new ones
+### Miniature Windows
+- 🪟 **Miniature Overflow**: When too many windows share a workspace, the oldest ones shrink into small interactive thumbnails. They stay visible and clickable without cluttering the layout
+- 👆 **One-click Restore**: Click any miniature to bring it back to full size. The previously focused window becomes the new miniature seamlessly
+- 🔍 **Overview Integration**: Miniatures maintain their scale and position when entering or leaving the GNOME Overview
+
+### Overflow & Workspaces
+- 🚀 **Intelligent Overflow**: Windows that can't be miniaturized (e.g. they hit minimum size) are moved to existing workspaces when possible, or create new ones
 - 🖥️ **Fullscreen Support**: Fullscreen and maximized windows automatically get dedicated workspaces
-- 🔙 **Reverse Smart Resize**: When windows leave, remaining windows expand back to their original sizes
+- 🔙 **Reverse Smart Resize**: When windows close or are miniaturized, remaining windows expand back toward their preferred sizes
 
 ### Animations & Polish
 - ✨ **Directional Momentum**: Windows slide in from the direction they came from, with a bouncy animation
@@ -83,7 +88,7 @@ Once enabled, the extension works automatically:
 - **Drag windows**: Click and drag to reorder
 - **Maximize/Fullscreen**: Window moves to its own workspace
 - **Minimize**: Window is excluded from tiling
-- **Too many windows**: Overflow windows move to new workspace
+- **Too many windows**: Extra windows shrink into small thumbnails. Click one to bring it back to focus
 
 ### Prerequisites
 
@@ -151,7 +156,7 @@ For more information on GNOME Shell extension development:
 - 🧪 **Testing**: Try the extension and explore edge cases
 - 🐛 **Bug Reports**: Open issues with detailed reproduction steps
 - 💡 **Feature Ideas**: Share suggestions in GitHub Issues
-- ✍️ **Documentation**: Always add comments explaining what the code is doing (it helps the maintainer follow the logic!)
+- ✍️ **Documentation**: Add comments explaining the **WHY**: constraints, invariants, and non-obvious behavior. Well-named code already explains the what.
 - 🏛️ **Compliance**: All contributions must follow the [GNOME Shell Extensions Review Guidelines](https://gjs.guide/extensions/review-guidelines.html).
 
 > [!IMPORTANT]
@@ -169,9 +174,6 @@ This project is licensed under the GNU General Public License v2.0 or later - se
 - Contributors and testers
 
 ## 🐛 Known Issues
-
-> [!CAUTION]
-> The interaction between mosaic layout and edge tiling (snap zones) is experimental.
 
 **Current limitations:**
 
