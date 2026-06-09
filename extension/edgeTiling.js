@@ -589,6 +589,10 @@ export const EdgeTilingManager = GObject.registerClass({
                zone === TileZone.TOP_RIGHT || zone === TileZone.BOTTOM_RIGHT;
     }
 
+    isQuarterZone(zone) {
+        return this._isQuarterZone(zone);
+    }
+
     _getAdjacentQuarterZone(zone) {
         switch (zone) {
             case TileZone.TOP_LEFT: return TileZone.BOTTOM_LEFT;
