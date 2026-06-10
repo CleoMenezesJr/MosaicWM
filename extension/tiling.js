@@ -643,7 +643,7 @@ export const TilingManager = GObject.registerClass({
             }
             if (count > 0) {
                 const maxDiag = Math.hypot(workArea.width, workArea.height);
-                const normalized = totalDisp / (count * maxDiag);
+                const normalized = Math.min(1, totalDisp / (count * maxDiag));
                 score += (1 - normalized) * POSITION_STABILITY_WEIGHT;
             }
         }
