@@ -737,11 +737,13 @@ export const TilingManager = GObject.registerClass({
         // Select tiling function based on orientation
         const tilingFn = useVerticalShelves ? this._verticalShelves : this._horizontalShelves;
 
-        // Try current order first; only permute on overflow
         const currentResult = tilingFn.call(this, windows, work_area, spacing);
         let result;
 
-        if (!currentResult.overflow) {
+        // Simulations (binary-search in tryFitWithResize) skip stability scoring for performance.
+        const shouldOptimize = currentResult.overflow || (this._positionSnapshot && !isSimulation);
+
+        if (!shouldOptimize) {
             result = currentResult;
             Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, stable order`);
         } else if (this.isDragging && !isSimulation) {
@@ -750,7 +752,7 @@ export const TilingManager = GObject.registerClass({
         } else {
             const optimalWindows = this._findOptimalOrder(windows, work_area, tilingFn);
             result = tilingFn.call(this, optimalWindows, work_area, spacing);
-            Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, reordered (overflow fallback)`);
+            Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, ${currentResult.overflow ? 'reordered (overflow fallback)' : 'stability-checked'}`);
         }
 
         // Don't cache during drag or simulation
