@@ -215,6 +215,11 @@ export const ReorderingManager = GObject.registerClass({
         }
     }
 
+    resetDragTileState() {
+        this._lastTileState = null;
+        this._chosenLayout = null;
+    }
+
     destroy() {
         this.dragStart = false;
         this._dragLayouts = null;

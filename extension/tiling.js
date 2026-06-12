@@ -353,6 +353,54 @@ export const TilingManager = GObject.registerClass({
         return layouts;
     }
 
+    // Compute which windows would be miniaturized and at what slot positions
+    // when the remaining space triggers overflow. Used to preview the mini layout.
+    // Returns [{win, slot, scale}] for the windows that must be miniaturized.
+    computePreviewMiniSlots(mosaicWindows, remainingSpace) {
+        if (!mosaicWindows.length || !remainingSpace) return [];
+
+        const miniTarget = constants.MINIATURE_TARGET_SIZE_PX;
+        const sorted = [...mosaicWindows].sort((a, b) => {
+            const fa = a.get_frame_rect();
+            const fb = b.get_frame_rect();
+            return (fa.width * fa.height) - (fb.width * fb.height);
+        });
+
+        const miniIds = new Set();
+        let lastTileResult = null;
+
+        for (const candidate of sorted) {
+            miniIds.add(candidate.get_id());
+
+            const descriptors = mosaicWindows.map((w, i) => {
+                if (miniIds.has(w.get_id())) {
+                    const f = w.get_frame_rect();
+                    const s = miniTarget / Math.max(f.width, f.height);
+                    return { index: i, id: w.get_id(), width: Math.round(f.width * s), height: Math.round(f.height * s) };
+                }
+                const f = w.get_frame_rect();
+                return { index: i, id: w.get_id(), width: f.width, height: f.height };
+            });
+
+            lastTileResult = this._tile(descriptors, remainingSpace, true);
+            if (!lastTileResult.overflow) break;
+        }
+
+        if (!lastTileResult) return [];
+
+        const allPositions = this._extractLayoutPositions(lastTileResult, remainingSpace);
+        return allPositions
+            .filter(pos => miniIds.has(pos.id))
+            .map(pos => {
+                const win = mosaicWindows.find(w => w.get_id() === pos.id);
+                if (!win) return null;
+                const f = win.get_frame_rect();
+                const scale = miniTarget / Math.max(f.width, f.height);
+                return { win, slot: pos, scale };
+            })
+            .filter(Boolean);
+    }
+
     // Apply a pre-computed layout during drag
     applyDragLayout(positions, workspace, monitor) {
         const meta_windows = this._windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
@@ -2866,26 +2914,61 @@ class WindowDescriptor {
                         }
                     } else {
                         const currentRect = window.get_frame_rect();
-                        const positionChanged = Math.abs(currentRect.x - x) > 5 || Math.abs(currentRect.y - y) > 5;
-                        const sizeChanged = Math.abs(currentRect.width - this.width) > 5 || Math.abs(currentRect.height - this.height) > 5;
+                        const windowActor = window.get_compositor_private();
+                        const currentScale = (windowActor && !windowActor.is_destroyed()) ? windowActor.scale_x : 1;
+                        const hasPreviewTransforms = Math.abs(currentScale - 1.0) > 0.01;
 
-                        Logger.log(`draw (drag): id=${this.id}, target=(${x},${y}), current=(${currentRect.x},${currentRect.y}), posChanged=${positionChanged}`);
+                        Logger.log(`draw (drag): id=${this.id}, target=(${x},${y}), current=(${currentRect.x},${currentRect.y}), scale=${currentScale.toFixed(3)}`);
 
-                        if (positionChanged || sizeChanged) {
+                        if (hasPreviewTransforms && windowActor && !windowActor.is_destroyed()) {
+                            // actor.x changes after move_resize_frame; read all state first.
+                            const extLeft = currentRect.x - windowActor.x;
+                            const extTop = currentRect.y - windowActor.y;
+                            const [actorW, actorH] = windowActor.get_size();
+                            const [cpx, cpy] = windowActor.get_pivot_point();
+                            const visualX = windowActor.x + cpx * actorW * (1 - currentScale) + windowActor.translation_x + extLeft * currentScale;
+                            const visualY = windowActor.y + cpy * actorH * (1 - currentScale) + windowActor.translation_y + extTop * currentScale;
                             WindowState.set(window, 'isConstrainedByMosaic', true);
                             window.move_resize_frame(false, x, y, this.width, this.height);
-                            const windowActor = window.get_compositor_private();
-                            if (windowActor && !windowActor.is_destroyed()) {
-                                const translateX = currentRect.x - x;
-                                const translateY = currentRect.y - y;
-                                windowActor.set_translation(translateX, translateY, 0);
-                                windowActor.ease({
-                                    translation_x: 0,
-                                    translation_y: 0,
-                                    opacity: 255,
-                                    duration: constants.ANIMATION_DURATION_MS,
-                                    mode: Clutter.AnimationMode.EASE_OUT_QUAD
-                                });
+                            const actor_x_new = x - extLeft;
+                            const actor_y_new = y - extTop;
+                            const dw = actorW * (1 - currentScale);
+                            const dh = actorH * (1 - currentScale);
+                            const px = dw > 0 ? Math.max(0, Math.min(1, (visualX - actor_x_new - extLeft * currentScale) / dw)) : 0;
+                            const py = dh > 0 ? Math.max(0, Math.min(1, (visualY - actor_y_new - extTop * currentScale) / dh)) : 0;
+                            const startTx = visualX - actor_x_new - px * dw - extLeft * currentScale;
+                            const startTy = visualY - actor_y_new - py * dh - extTop * currentScale;
+                            windowActor.set_pivot_point(px, py);
+                            windowActor.remove_all_transitions();
+                            windowActor.set_scale(currentScale, currentScale);
+                            windowActor.set_translation(startTx, startTy, 0);
+                            windowActor.ease({
+                                scale_x: 1,
+                                scale_y: 1,
+                                translation_x: 0,
+                                translation_y: 0,
+                                opacity: 255,
+                                duration: constants.ANIMATION_DURATION_MS,
+                                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                            });
+                        } else {
+                            const positionChanged = Math.abs(currentRect.x - x) > 5 || Math.abs(currentRect.y - y) > 5;
+                            const sizeChanged = Math.abs(currentRect.width - this.width) > 5 || Math.abs(currentRect.height - this.height) > 5;
+                            if (positionChanged || sizeChanged) {
+                                WindowState.set(window, 'isConstrainedByMosaic', true);
+                                window.move_resize_frame(false, x, y, this.width, this.height);
+                                if (windowActor && !windowActor.is_destroyed()) {
+                                    const translateX = currentRect.x - x;
+                                    const translateY = currentRect.y - y;
+                                    windowActor.set_translation(translateX, translateY, 0);
+                                    windowActor.ease({
+                                        translation_x: 0,
+                                        translation_y: 0,
+                                        opacity: 255,
+                                        duration: constants.ANIMATION_DURATION_MS,
+                                        mode: Clutter.AnimationMode.EASE_OUT_QUAD
+                                    });
+                                }
                             }
                         }
                     }

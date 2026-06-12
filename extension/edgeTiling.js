@@ -1048,22 +1048,13 @@ export const EdgeTilingManager = GObject.registerClass({
         Logger.log(`_handleMosaicOverflow: Checking ${mosaicWindows.length} windows in ${remainingSpace.width}x${remainingSpace.height}. Overflow: ${testTileInfo.overflow}`);
 
         if (testTileInfo.overflow) {
-            Logger.log(`Mosaic overflow detected - moving entire mosaic pack (${mosaicWindows.length} windows) to new workspace`);
-            const newWorkspace = this._windowingManager.createOrReuseAdjacentWorkspace(workspace);
-
-            for (const mosaicWindow of mosaicWindows) {
-                mosaicWindow.change_workspace(newWorkspace);
-            }
-
+            Logger.log(`Mosaic overflow - scheduling miniaturization for ${mosaicWindows.length} windows`);
             this._timeoutRegistry.add(constants.REVERSE_RESIZE_PROTECTION_MS, () => {
                 if (this._tilingManager) {
                     this._tilingManager.tileWorkspaceWindows(workspace, null, monitor);
                 }
                 return GLib.SOURCE_REMOVE;
             }, 'edgeTiling_overflowRetile');
-
-            newWorkspace.activate(global.get_current_time());
-            this._windowingManager.showWorkspaceSwitcher(newWorkspace, monitor);
         }
     }
 

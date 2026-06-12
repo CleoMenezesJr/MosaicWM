@@ -10,6 +10,8 @@ import { TileZone } from './constants.js';
 import { isResizeGrabOp, isMoveGrabOp } from './grabOps.js';
 import * as constants from './constants.js';
 import { afterAnimations } from './timing.js';
+import * as WindowState from './windowState.js';
+import { MINIATURE_ANIM_KIND } from './windowState.js';
 
 import GObject from 'gi://GObject';
 
@@ -23,6 +25,7 @@ export const DragHandler = GObject.registerClass({
         // Drag state
         this._draggedWindow = null;
         this._edgeTileGhostWindows = [];
+        this._previewMiniaturizedWindows = [];
         this._dragMonitorId = null;
         this._currentZone = TileZone.NONE;
         this._dragPositionChangedId = 0;
@@ -44,33 +47,21 @@ export const DragHandler = GObject.registerClass({
     get swappingManager() { return this._ext.swappingManager; }
     get _timeoutRegistry() { return this._ext._timeoutRegistry; }
 
-    // Restore opacity of ghost windows when exiting edge zone or drag ends
     clearGhostWindows() {
-        if (!this._edgeTileGhostWindows) return;
+        this._previewMiniaturizedWindows = [];
         for (const win of this._edgeTileGhostWindows) {
             const actor = win.get_compositor_private();
-            if (actor) {
-                actor.opacity = 255;
-            }
+            if (actor) actor.opacity = 255;
         }
         this._edgeTileGhostWindows = [];
     }
 
-    // Move ghost windows to overflow workspace when edge tile is confirmed
-    moveGhostWindowsToOverflow() {
-        if (!this._edgeTileGhostWindows || this._edgeTileGhostWindows.length === 0) return;
-        
-        Logger.log(`Moving ${this._edgeTileGhostWindows.length} ghost windows to overflow`);
-        
-        for (const win of this._edgeTileGhostWindows) {
-            const actor = win.get_compositor_private();
-            if (actor) actor.opacity = 255;
-            
-            this.windowingManager.moveOversizedWindow(win).catch(e =>
-                Logger.error(`Ghost window overflow failed: ${e}`));
+    // 'restore' causes createMiniature to animate from current actor state, skipping the snap-to-natural step.
+    _commitPreviewMini() {
+        for (const win of this._previewMiniaturizedWindows) {
+            WindowState.set(win, MINIATURE_ANIM_KIND, 'restore');
         }
-
-        this._edgeTileGhostWindows = [];
+        this._previewMiniaturizedWindows = [];
     }
 
     _grabOpBeginHandler = (_display, window, grabpo) => {
@@ -259,10 +250,9 @@ export const DragHandler = GObject.registerClass({
                     Logger.log(`Edge tiling: apply result = ${success}`);
 
                     if (success) {
-                        // Move ghost windows to overflow after edge tile is applied
-                        if (this._edgeTileGhostWindows.length > 0) {
-                            Logger.log(`Edge tile confirmed - moving ${this._edgeTileGhostWindows.length} ghost windows to overflow`);
-                            this.moveGhostWindowsToOverflow();
+                        if (this._previewMiniaturizedWindows.length > 0) {
+                            Logger.log(`Edge tile confirmed - committing ${this._previewMiniaturizedWindows.length} preview miniatures`);
+                            this._commitPreviewMini();
                         }
 
                         this._timeoutRegistry.add(constants.RETILE_DELAY_MS, () => {
@@ -328,10 +318,11 @@ export const DragHandler = GObject.registerClass({
         const zone = this.edgeTilingManager.detectZone(x, y, workArea, workspace);
         const isInZone = zone !== TileZone.NONE;
         
-        // Delegate reordering if we are NOT in an edge zone
+        // _currentZone is updated one idle after zone detection; without the guard the synchronous
+        // path would draw a reordering rect over the tile-preview overlay on zone entry.
         if (this.reorderingManager) {
             this.reorderingManager.setPaused(isInZone);
-            if (!isInZone) {
+            if (!isInZone && this._currentZone === TileZone.NONE) {
                 this.reorderingManager._onPositionChanged();
             }
         }
@@ -368,14 +359,37 @@ export const DragHandler = GObject.registerClass({
                                  !this.edgeTilingManager.isEdgeTiled(w));
                  
                 const result = this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor, false);
-                 
+
                 if (result?.overflow) {
-                    for (const win of mosaicWindows) {
+                    const miniSlots = this.tilingManager.computePreviewMiniSlots(mosaicWindows, remainingSpace);
+                    for (const { win, slot, scale } of miniSlots) {
                         const actor = win.get_compositor_private();
-                        if (actor) {
-                            actor.opacity = 128;
-                            this._edgeTileGhostWindows.push(win);
-                        }
+                        if (!actor || actor.is_destroyed()) continue;
+                        const frame = win.get_frame_rect();
+                        const actorX = actor.x;
+                        const actorY = actor.y;
+                        const extLeft = frame.x - actorX;
+                        const extTop = frame.y - actorY;
+                        const actorW = actor.width;
+                        const actorH = actor.height;
+                        const dw = actorW * (1 - scale);
+                        const dh = actorH * (1 - scale);
+                        const px = dw > 0 ? Math.max(0, Math.min(1, (slot.x - actorX - extLeft * scale) / dw)) : 0;
+                        const py = dh > 0 ? Math.max(0, Math.min(1, (slot.y - actorY - extTop * scale) / dh)) : 0;
+                        const endTx = slot.x - actorX - px * dw - extLeft * scale;
+                        const endTy = slot.y - actorY - py * dh - extTop * scale;
+                        actor.set_pivot_point(px, py);
+                        actor.remove_all_transitions();
+                        // No set_translation reset: preserves draw()'s compensation offset to avoid a visual jump.
+                        actor.ease({
+                            scale_x: scale,
+                            scale_y: scale,
+                            translation_x: endTx,
+                            translation_y: endTy,
+                            duration: constants.ANIMATION_DURATION_MS,
+                            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                        });
+                        this._previewMiniaturizedWindows.push(win);
                     }
                 }
             } else if (zone === TileZone.NONE && this._currentZone !== TileZone.NONE) {
@@ -389,7 +403,7 @@ export const DragHandler = GObject.registerClass({
 
                 this.tilingManager.tileWorkspaceWindows(workspace, this._draggedWindow, monitor);
 
-                this.reorderingManager.startDrag(this._draggedWindow);
+                this.reorderingManager.resetDragTileState();
                 this._lastReorderMonitor = monitor;
             } else if (zone === TileZone.NONE && monitor !== this._lastReorderMonitor) {
                 Logger.log(`Drag monitor changed to ${monitor} (fast drag skipped edge zone), restarting reorder`);
@@ -418,6 +432,14 @@ export const DragHandler = GObject.registerClass({
             this._dragPositionChangedId = 0;
         }
 
+        for (const win of this._previewMiniaturizedWindows) {
+            const actor = win.get_compositor_private();
+            if (actor && !actor.is_destroyed()) {
+                actor.remove_all_transitions();
+                actor.set_scale(1, 1);
+                actor.set_translation(0, 0, 0);
+            }
+        }
         this.clearGhostWindows();
         this._skipNextTiling = null;
         this._draggedWindow = null;
