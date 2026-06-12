@@ -8,6 +8,8 @@ import Meta from 'gi://Meta';
 import * as constants from './constants.js';
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
+import { IS_MINIATURE } from './windowState.js';
+import { getMiniatureSize } from './miniature.js';
 
 import GObject from 'gi://GObject';
 
@@ -24,6 +26,8 @@ export const EdgeTilingManager = GObject.registerClass({
         this._activeEdgeTilingWindow = null;
         this._isResizing = false;
         this._animationsManager = null;
+        this._tilingManager = null;
+        this._windowingManager = null;
         this._timeoutRegistry = null;
     }
 
@@ -76,6 +80,9 @@ export const EdgeTilingManager = GObject.registerClass({
     destroy() {
         this.clearAllStates();
         this._animationsManager = null;
+        this._tilingManager = null;
+        this._windowingManager = null;
+        this._timeoutRegistry = null;
     }
 
     // Check for edge-tiled windows on a specific side
@@ -624,6 +631,10 @@ export const EdgeTilingManager = GObject.registerClass({
         this._tilingManager = tilingManager;
     }
 
+    setWindowingManager(windowingManager) {
+        this._windowingManager = windowingManager;
+    }
+
     // Check if window can be resized to target dimensions
     _canResize(window, _targetWidth, _targetHeight) {
         if (window.window_type !== 0) { // Meta.WindowType.NORMAL
@@ -1021,13 +1032,16 @@ export const EdgeTilingManager = GObject.registerClass({
         // Use tiling manager to check if mosaic windows fit in remaining space
         if (!this._tilingManager) return;
 
-        // Try to tile and check for overflow
+        // Use miniature display size for miniaturized windows — get_frame_rect returns original full size.
         const testTileInfo = this._tilingManager._tile(
-            mosaicWindows.map((w, i) => ({
-                index: i,
-                width: w.get_frame_rect().width,
-                height: w.get_frame_rect().height
-            })),
+            mosaicWindows.map((w, i) => {
+                if (WindowState.get(w, IS_MINIATURE)) {
+                    const ms = getMiniatureSize(w);
+                    if (ms) return { index: i, width: ms.width, height: ms.height };
+                }
+                const f = w.get_frame_rect();
+                return { index: i, width: f.width, height: f.height };
+            }),
             remainingSpace
         );
 
@@ -1116,8 +1130,6 @@ export const EdgeTilingManager = GObject.registerClass({
         const adjacentWindow = this._findWindowInZone(adjacentZone, workspace);
         if (!adjacentWindow) return;
 
-        const _resizedId = window.get_id();
-        const _adjacentId = adjacentWindow.get_id();
         const resizedFrame = window.get_frame_rect();
 
         const previousState = WindowState.get(window, 'edgePreviousSize');
@@ -1170,8 +1182,6 @@ export const EdgeTilingManager = GObject.registerClass({
     }
 
     _resizeTiledPair(resizedWindow, adjacentWindow, workArea, zone) {
-        const _resizedId = resizedWindow.get_id();
-        const _adjacentId = adjacentWindow.get_id();
         const resizedFrame = resizedWindow.get_frame_rect();
 
         const previousState = WindowState.get(resizedWindow, 'edgePreviousSize');
@@ -1183,7 +1193,7 @@ export const EdgeTilingManager = GObject.registerClass({
             return;
         }
 
-        const minWidth = 400;
+        const minWidth = constants.MIN_WINDOW_WIDTH;
         const maxResizedWidth = workArea.width - minWidth;
 
         if (resizedFrame.width > maxResizedWidth) return;
@@ -1222,7 +1232,7 @@ export const EdgeTilingManager = GObject.registerClass({
         }
     }
 
-    _handleResizeWithMosaic(window, workspace, monitor) {
+    _handleResizeWithMosaic(_window, workspace, monitor) {
         // Retile mosaic to adapt to the edge tile's new size
         if (this._tilingManager) {
             Logger.log('Edge-tiled window resizing - retiling mosaic to adapt');
@@ -1247,7 +1257,7 @@ export const EdgeTilingManager = GObject.registerClass({
         if (!adjacentWindow) return;
 
         const resizedFrame = resizedWindow.get_frame_rect();
-        const minWidth = 400;
+        const minWidth = constants.MIN_WINDOW_WIDTH;
         const impliedAdjacentWidth = workArea.width - resizedFrame.width;
 
         if (impliedAdjacentWidth < minWidth) {
@@ -1320,8 +1330,8 @@ export const EdgeTilingManager = GObject.registerClass({
         // Get mosaic windows that need space
         const mosaicWindows = this.getNonEdgeTiledWindows(workspace, monitor);
         if (mosaicWindows.length === 0) {
-            // No mosaic windows - MUST leave 400px free
-            const minFreeSpace = 400;
+            // No mosaic windows - MUST leave room for at least one minimum-width window
+            const minFreeSpace = constants.MIN_WINDOW_WIDTH;
             const maxWidth = workArea.width - minFreeSpace;
 
             if (edgeFrame.width > maxWidth) {
@@ -1349,7 +1359,6 @@ export const EdgeTilingManager = GObject.registerClass({
             mosaicMinX = Math.min(mosaicMinX, f.x);
             mosaicMaxX = Math.max(mosaicMaxX, f.x + f.width);
         }
-        const _actualMosaicWidth = mosaicMaxX - mosaicMinX;
 
         // Edge tile max = workArea - actualMosaicWidth
         // This means edge tile cannot exceed the space NOT occupied by mosaic
@@ -1364,9 +1373,9 @@ export const EdgeTilingManager = GObject.registerClass({
             maxEdgeWidth = (workArea.x + workArea.width) - mosaicMaxX;
         }
 
-        // Use 400px as fallback if mosaic width is somehow 0
+        // Fallback if mosaic width is somehow 0
         if (maxEdgeWidth <= 0) {
-            maxEdgeWidth = workArea.width - 400;
+            maxEdgeWidth = workArea.width - constants.MIN_WINDOW_WIDTH;
         }
 
         if (edgeFrame.width > maxEdgeWidth) {
