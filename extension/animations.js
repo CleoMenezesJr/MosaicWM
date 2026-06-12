@@ -13,7 +13,6 @@ import GObject from 'gi://GObject';
 // Animation configuration
 const ANIMATION_DURATION = constants.ANIMATION_DURATION_MS;
 const ANIMATION_MODE = Clutter.AnimationMode.EASE_OUT_BACK;
-const ANIMATION_MODE_MOMENTUM = Clutter.AnimationMode.EASE_OUT_BACK;
 const ANIMATION_MODE_SUBTLE = Clutter.AnimationMode.EASE_OUT_QUAD;
 
 export const AnimationsManager = GObject.registerClass({
@@ -65,24 +64,6 @@ export const AnimationsManager = GObject.registerClass({
             }, 'animations_dragEndDebounce');
         }
         this._isDragging = dragging;
-    }
-
-    saveInitialPosition(window) {
-        const rect = window.get_frame_rect();
-        WindowState.set(window, 'initialPosition', {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height
-        });
-    }
-
-    getAndClearInitialPosition(window) {
-        const pos = WindowState.get(window, 'initialPosition');
-        if (pos) {
-            WindowState.remove(window, 'initialPosition');
-        }
-        return pos;
     }
 
     shouldAnimateWindow(window, draggedWindow = null) {
@@ -204,96 +185,6 @@ export const AnimationsManager = GObject.registerClass({
                 this._animatingWindows.delete(window.get_id());
                 this._checkAllAnimationsComplete();
                 if (onComplete && isFinished) onComplete();
-            }
-        });
-    }
-
-    animateWindowOpen(window, targetRect) {
-        const windowActor = window.get_compositor_private();
-        if (!windowActor) {
-            window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
-            return;
-        }
-        
-        this._animatingWindows.add(window.get_id());
-        
-        window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
-        
-        windowActor.set_pivot_point(0.5, 0.5);
-        windowActor.set_scale(0.9, 0.9);
-        windowActor.set_opacity(0);
-        
-        windowActor.ease({
-            scale_x: 1.0,
-            scale_y: 1.0,
-            opacity: 255,
-            duration: ANIMATION_DURATION,
-            mode: ANIMATION_MODE,
-            onComplete: () => {
-                windowActor.set_scale(1.0, 1.0);
-                windowActor.set_opacity(255);
-                this._animatingWindows.delete(window.get_id());
-                this._checkAllAnimationsComplete();
-            }
-        });
-    }
-
-    animateWindowClose(window, onComplete) {
-        const windowActor = window.get_compositor_private();
-        if (!windowActor) {
-            if (onComplete) onComplete();
-            return;
-        }
-        
-        this._animatingWindows.add(window.get_id());
-        
-        windowActor.set_pivot_point(0.5, 0.5);
-        
-        windowActor.ease({
-            scale_x: 0.9,
-            scale_y: 0.9,
-            opacity: 0,
-            duration: ANIMATION_DURATION,
-            mode: ANIMATION_MODE,
-            onComplete: () => {
-                this._animatingWindows.delete(window.get_id());
-                this._checkAllAnimationsComplete();
-                if (onComplete) onComplete();
-            }
-        });
-    }
-
-    animateWindowMove(window, fromRect, toRect, options = {}) {
-        const {
-            duration = ANIMATION_DURATION,
-            mode = ANIMATION_MODE_MOMENTUM,
-            onComplete = null
-        } = options;
-        
-        const windowActor = window.get_compositor_private();
-        if (!windowActor) {
-            if (onComplete) onComplete();
-            return;
-        }
-        
-        this._animatingWindows.add(window.get_id());
-        
-        const translateX = fromRect.x - toRect.x;
-        const translateY = fromRect.y - toRect.y;
-        
-        windowActor.set_pivot_point(0, 0);
-        windowActor.set_translation(translateX, translateY, 0);
-        
-        windowActor.ease({
-            translation_x: 0,
-            translation_y: 0,
-            duration: duration,
-            mode: mode,
-            onComplete: () => {
-                windowActor.set_translation(0, 0, 0);
-                this._animatingWindows.delete(window.get_id());
-                this._checkAllAnimationsComplete();
-                if (onComplete) onComplete();
             }
         });
     }
