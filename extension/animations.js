@@ -11,7 +11,6 @@ import { getAnimationsEnabled, getSlowDownFactor } from './timing.js';
 
 import GObject from 'gi://GObject';
 
-// Animation configuration
 const ANIMATION_DURATION = constants.ANIMATION_DURATION_MS;
 const ANIMATION_MODE = Clutter.AnimationMode.EASE_OUT_BACK;
 const ANIMATION_MODE_SUBTLE = Clutter.AnimationMode.EASE_OUT_QUAD;
@@ -25,7 +24,7 @@ export const AnimationsManager = GObject.registerClass({
     _init() {
         super._init();
         this._isDragging = false;
-        this._animatingWindows = new Set(); // Window IDs currently animating (fast lookup for shouldAnimateWindow)
+        this._animatingWindows = new Set(); // Window IDs currently animating (drives animations-completed signal)
         this._justEndedDrag = false;
         this._resizingWindowId = null;
         this._timeoutRegistry = null;
@@ -43,7 +42,6 @@ export const AnimationsManager = GObject.registerClass({
         return this._resizingWindowId;
     }
 
-    // Returns true if any windows are currently animating
     // Used by async utilities to wait for animations to complete
     hasActiveAnimations() {
         return this._animatingWindows.size > 0;
@@ -81,16 +79,11 @@ export const AnimationsManager = GObject.registerClass({
 
         // Skip for windows created during overview - already positioned correctly
         if (WindowState.get(window, 'createdDuringOverview')) {
-            WindowState.remove(window, 'createdDuringOverview'); // Clear after first use
+            WindowState.remove(window, 'createdDuringOverview');
             return false;
         }
 
-        // Don't animate the window being dragged
         if (draggedWindow && window.get_id() === draggedWindow.get_id()) {
-            return false;
-        }
-
-        if (this._animatingWindows.has(window.get_id())) {
             return false;
         }
 
@@ -105,16 +98,14 @@ export const AnimationsManager = GObject.registerClass({
             draggedWindow = null,
             subtle = false,
             userOp = false,
-            startRect = null
         } = options;
-        
+
         if (!this.shouldAnimateWindow(window, draggedWindow)) {
-            // Apply position immediately without animation
             window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
             if (onComplete) onComplete();
             return;
         }
-        
+
         const windowActor = window.get_compositor_private();
         if (!windowActor) {
             Logger.log(`No actor for window ${window.get_id()}, skipping animation`);
@@ -122,72 +113,49 @@ export const AnimationsManager = GObject.registerClass({
             if (onComplete) onComplete();
             return;
         }
-        
+
+        // Must read translation BEFORE remove_all_transitions() - it resets to 0 after.
+        const currentFrame = window.get_frame_rect();
+        const currentTx = windowActor.translation_x;
+        const currentTy = windowActor.translation_y;
+
+        // remove_all_transitions fires old onStopped(isFinished=false);
+        // the guard at the ease callback returns early without double cleanup.
+        windowActor.remove_all_transitions();
+
         this._animatingWindows.add(window.get_id());
 
         const effectiveDuration = Math.ceil(duration * getSlowDownFactor());
-        const currentRect = startRect || window.get_frame_rect();
-        
-        // Choose animation mode based on context
+
         let animationMode;
         if (mode !== null) {
             animationMode = mode;
-        } else if (subtle) {
-            animationMode = ANIMATION_MODE_SUBTLE;
-        } else if (this._justEndedDrag) {
+        } else if (subtle || this._justEndedDrag) {
             animationMode = ANIMATION_MODE_SUBTLE;
         } else {
             animationMode = ANIMATION_MODE;
         }
-        
-        // Calculate scale and translation for smooth animation
-        const scaleX = currentRect.width / targetRect.width;
-        const scaleY = currentRect.height / targetRect.height;
-        
-        const translateX = currentRect.x - targetRect.x;
-        const translateY = currentRect.y - targetRect.y;
-        
-        const hasValidDimensions = currentRect.width > 0 && currentRect.height > 0 && 
-                                    targetRect.width > 0 && targetRect.height > 0 &&
-                                    !isNaN(scaleX) && !isNaN(scaleY);
-        
-        if (!hasValidDimensions) {
-            window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
-            windowActor.set_translation(translateX, translateY, 0);
-            windowActor.ease({
-                translation_x: 0,
-                translation_y: 0,
-                duration: effectiveDuration,
-                mode: animationMode,
-                onComplete: () => {
-                    if (windowActor && !windowActor.is_destroyed())
-                        windowActor.set_translation(0, 0, 0);
-                    this._animatingWindows.delete(window.get_id());
-                    this._checkAllAnimationsComplete();
-                    if (onComplete) onComplete();
-                }
-            });
-            return;
-        }
-        
-        // Apply the new size/position immediately at the logical layer; the actor stays
-        // visually in its old spot via a counter-translation, which we then ease to zero.
-        window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
 
-        // Translation-only (no scale) avoids a "grow-from-bottom" artifact during the ease.
-        windowActor.set_translation(translateX, translateY, 0);
-        
+        // idle  (currentTx=0): initialTx = frameX - targetX
+        // moving (currentTx!=0): initialTx = (frameX + currentTx) - targetX  (no jump)
+        const initialTx = currentFrame.x + currentTx - targetRect.x;
+        const initialTy = currentFrame.y + currentTy - targetRect.y;
+
+        window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        windowActor.set_translation(initialTx, initialTy, 0);
+
         windowActor.ease({
             translation_x: 0,
             translation_y: 0,
             duration: effectiveDuration,
             mode: animationMode,
             onStopped: (isFinished) => {
+                if (!isFinished) return; // redirect in progress; new animation owns cleanup
                 if (windowActor && !windowActor.is_destroyed())
                     windowActor.set_translation(0, 0, 0);
                 this._animatingWindows.delete(window.get_id());
                 this._checkAllAnimationsComplete();
-                if (onComplete && isFinished) onComplete();
+                if (onComplete) onComplete();
             }
         });
     }
@@ -197,19 +165,17 @@ export const AnimationsManager = GObject.registerClass({
             const { window, rect } = windowLayouts[0];
             const currentRect = window.get_frame_rect();
             
-            const needsMove = Math.abs(currentRect.x - rect.x) > constants.ANIMATION_DIFF_THRESHOLD || 
+            const needsMove = Math.abs(currentRect.x - rect.x) > constants.ANIMATION_DIFF_THRESHOLD ||
                              Math.abs(currentRect.y - rect.y) > constants.ANIMATION_DIFF_THRESHOLD ||
                              Math.abs(currentRect.width - rect.width) > constants.ANIMATION_DIFF_THRESHOLD ||
                              Math.abs(currentRect.height - rect.height) > constants.ANIMATION_DIFF_THRESHOLD;
-            
-            Logger.log(`animateReTiling: single window, current=(${currentRect.x},${currentRect.y}), target=(${rect.x},${rect.y}), needsMove=${needsMove}`);
-            
+
             if (!needsMove) {
                 window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
                 return;
             }
         }
-        
+
         for (const {window, rect} of windowLayouts) {
             this.animateWindow(window, rect, { draggedWindow });
         }
