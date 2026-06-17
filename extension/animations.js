@@ -25,6 +25,7 @@ export const AnimationsManager = GObject.registerClass({
         super._init();
         this._isDragging = false;
         this._animatingWindows = new Set(); // Window IDs currently animating (drives animations-completed signal)
+        this._animatingTargets = new Map(); // Window ID -> last targetRect, to detect redundant retile calls
         this._justEndedDrag = false;
         this._resizingWindowId = null;
         this._timeoutRegistry = null;
@@ -120,6 +121,19 @@ export const AnimationsManager = GObject.registerClass({
             return;
         }
 
+        // Redundant retile to the same destination already in flight (e.g. the
+        // window-open queue re-evaluates the same window ~100ms later) — restarting
+        // the ease here would cut the original transition off before its EASE_OUT_BACK
+        // overshoot plays, replacing a full bounce with an imperceptible one. Let the
+        // existing ease run to completion instead.
+        const lastTarget = this._animatingTargets.get(window.get_id());
+        if (this._animatingWindows.has(window.get_id()) && lastTarget &&
+            lastTarget.x === targetRect.x && lastTarget.y === targetRect.y &&
+            lastTarget.width === targetRect.width && lastTarget.height === targetRect.height) {
+            if (onComplete) onComplete();
+            return;
+        }
+
         // Must read translation BEFORE remove_all_transitions() - it resets to 0 after.
         const currentFrame = window.get_frame_rect();
         const currentTx = windowActor.translation_x;
@@ -130,6 +144,7 @@ export const AnimationsManager = GObject.registerClass({
         windowActor.remove_all_transitions();
 
         this._animatingWindows.add(window.get_id());
+        this._animatingTargets.set(window.get_id(), targetRect);
 
         const effectiveDuration = Math.ceil(duration * getSlowDownFactor());
 
@@ -160,6 +175,7 @@ export const AnimationsManager = GObject.registerClass({
                 if (windowActor && !windowActor.is_destroyed())
                     windowActor.set_translation(0, 0, 0);
                 this._animatingWindows.delete(window.get_id());
+                this._animatingTargets.delete(window.get_id());
                 this._checkAllAnimationsComplete();
                 if (onComplete) onComplete();
             }
@@ -188,6 +204,7 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     removeAnimatingWindow(windowId) {
+        this._animatingTargets.delete(windowId);
         if (this._animatingWindows.delete(windowId)) {
             this._checkAllAnimationsComplete();
         }
@@ -195,6 +212,7 @@ export const AnimationsManager = GObject.registerClass({
 
     cleanup() {
         this._animatingWindows.clear();
+        this._animatingTargets.clear();
         this._checkAllAnimationsComplete();
         this._isDragging = false;
     }

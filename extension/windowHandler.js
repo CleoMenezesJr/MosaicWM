@@ -44,9 +44,9 @@ export const WindowHandler = GObject.registerClass({
         Main.wm._shouldAnimateActor = function(actor, types) {
             // First, call the original to see if GNOME thinks we should animate
             const shouldAnimate = self._origShouldAnimateActor.call(this, actor, types);
-            
+
             if (!shouldAnimate) return false;
-            
+
             const win = actor.meta_window;
             if (!win) return true;
 
