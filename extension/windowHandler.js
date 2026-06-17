@@ -289,7 +289,7 @@ export const WindowHandler = GObject.registerClass({
                             const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
 
                             if (workspaceWindows.length > 1) {
-                                Logger.log(`Window ${win.get_id()} maximized in occupied workspace - isolating (SACRED)`);
+                                Logger.log(`[SACRED-A-ENTER] Window ${win.get_id()} maximized in occupied workspace - isolating`);
                                 WindowState.set(win, 'sacredOriginWorkspace', workspace.index());
                                 this.windowingManager.moveOversizedWindow(win).catch(e =>
                                     Logger.error(`Sacred maximize isolation failed: ${e}`));
@@ -306,7 +306,7 @@ export const WindowHandler = GObject.registerClass({
                             const mon = win.get_monitor();
                             if (ws) this.tilingManager.tileWorkspaceWindows(ws, win, mon);
                         } else {
-                            Logger.log(`Window ${win.get_id()} exited a sacred state (Unmaximized) - starting state machine`);
+                            Logger.log(`[SACRED-A-EXIT] Window ${win.get_id()} exited a sacred state (Unmaximized) - starting state machine`);
                             this.handleSacredExit(win);
                         }
                     }
@@ -330,7 +330,7 @@ export const WindowHandler = GObject.registerClass({
                     const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
 
                     if (workspaceWindows.length > 1) {
-                        Logger.log(`Window ${win.get_id()} entered FULLSCREEN in occupied workspace - isolating (SACRED)`);
+                        Logger.log(`[SACRED-A-ENTER] Window ${win.get_id()} entered FULLSCREEN in occupied workspace - isolating`);
                         // Save origin for restoration later
                         WindowState.set(win, 'sacredOriginWorkspace', workspace.index());
                         this.windowingManager.moveOversizedWindow(win).catch(e =>
@@ -347,7 +347,7 @@ export const WindowHandler = GObject.registerClass({
                     const mon = win.get_monitor();
                     if (ws) this.tilingManager.tileWorkspaceWindows(ws, win, mon);
                 } else {
-                    Logger.log(`Window ${win.get_id()} exited fullscreen - starting state machine`);
+                    Logger.log(`[SACRED-A-EXIT] Window ${win.get_id()} exited fullscreen - starting state machine`);
                     this.handleSacredExit(win);
                 }
             }
@@ -409,7 +409,7 @@ export const WindowHandler = GObject.registerClass({
     handleSacredExit(window) {
         // Idempotency: skip if already processing this sacred exit
         if (WindowState.get(window, 'isRestoringSacred') !== undefined) {
-            Logger.log(`handleSacredExit: Already restoring ${window.get_id()} - skipping duplicate`);
+            Logger.log(`[SACRED-A-DEDUP] handleSacredExit: Already restoring ${window.get_id()} - skipping duplicate`);
             return;
         }
 
@@ -424,8 +424,9 @@ export const WindowHandler = GObject.registerClass({
         }
 
         if (originIndex !== undefined) {
-            Logger.log(`Sacred exit detected for ${window.get_id()}. Flagging for deferred move to WS ${originIndex}.`);
+            Logger.log(`[SACRED-A-DEFER] Sacred exit detected for ${window.get_id()}. Flagging for deferred move to WS ${originIndex}.`);
             WindowState.set(window, 'isRestoringSacred', originIndex);
+            this._ext.resizeHandler.scheduleSacredRestoreSafety(window, originIndex);
 
             // Re-tile the current workspace immediately (it's leaving this spot)
             const workspace = window.get_workspace();
