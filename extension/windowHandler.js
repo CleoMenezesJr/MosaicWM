@@ -42,38 +42,39 @@ export const WindowHandler = GObject.registerClass({
         
         const self = this;
         Main.wm._shouldAnimateActor = function(actor, types) {
-            // First, call the original to see if GNOME thinks we should animate
-            const shouldAnimate = self._origShouldAnimateActor.call(this, actor, types);
-
-            if (!shouldAnimate) return false;
-
             const win = actor.meta_window;
-            if (!win) return true;
-
-            const frame = win.get_frame_rect();
-            Logger.log(`[PATCH SIZE CHECK] _shouldAnimateActor intercepted window ${win.get_id()} with size ${frame.width}x${frame.height}`);
-
             const stack = (new Error()).stack;
-            if (!stack.includes('_mapWindow@') && !stack.includes('mapWindow') && !stack.includes('size_change')) return true;
+            const isMapCall = win && stack.includes('_mapWindow@');
 
-            const isRelated = self._ext && self._ext.windowingManager.isRelated(win);
-            if (!isRelated) return true;
+            if (isMapCall) {
+                const isRelated = self._ext && self._ext.windowingManager.isRelated(win);
+                const skipSlideIn = WindowState.get(win, 'movedByOverflow') || (self._ext && self._ext._overflowInProgress);
 
-            // Skip slide-in for windows moved by overflow or during active switch (protects clones).
-            if (WindowState.get(win, 'movedByOverflow') || (self._ext && self._ext._overflowInProgress)) {
-                Logger.log(`[PATCH SIZE CHECK] Skipping slide-in for window ${win.get_id()} - overflow active or window moved`);
-                return true;
+                if (isRelated && !skipSlideIn) {
+                    // Reimplements the original's gates minus actor.get_texture(): Mutter
+                    // can emit 'map' before the window's first frame is committed to the
+                    // compositor, which fails that check and silently skips the open
+                    // animation - natively-installed apps race this far more often than
+                    // Flatpak ones, whose sandbox/portal startup latency gives the
+                    // compositor time to receive the first frame first. Skipping the check
+                    // is safe: Clutter can ease opacity/scale/translation before a texture
+                    // exists, it simply appears mid-transition once ready.
+                    if (this._skippedActors.delete(actor)) return false;
+                    if (!this._shouldAnimate()) return false;
+                    if (!types.includes(this._getAnimationWindowType(actor))) return false;
+
+                    const { offsetX, offsetY, animationMode } = self._evaluateSlideIn(win);
+
+                    if (offsetX !== 0 || offsetY !== 0) {
+                        Logger.log(`MAPPED SLIDE-IN (ease intercepted): Applying offset (${offsetX}, ${offsetY}) to window ${win.get_id()} Mode: ${animationMode}`);
+                        self._applySlideInAnimation(actor, offsetX, offsetY, animationMode);
+                    }
+
+                    return true;
+                }
             }
 
-            // Evaluate if we should slide in, natively calculating JIT neighbors
-            const { offsetX, offsetY, animationMode } = self._evaluateSlideIn(win);
-
-            if (offsetX !== 0 || offsetY !== 0) {
-                Logger.log(`MAPPED SLIDE-IN (ease intercepted): Applying offset (${offsetX}, ${offsetY}) to window ${win.get_id()} Mode: ${animationMode}`);
-                self._applySlideInAnimation(actor, offsetX, offsetY, animationMode);
-            }
-
-            return true;
+            return self._origShouldAnimateActor.call(this, actor, types);
         };
     }
 
