@@ -108,7 +108,9 @@ export const AnimationsManager = GObject.registerClass({
         } = options;
 
         if (!this.shouldAnimateWindow(window, draggedWindow)) {
+            WindowState.set(window, 'isMosaicResizing', true);
             window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+            this._clearMosaicResizingSoon(window);
             if (onComplete) onComplete();
             return;
         }
@@ -116,7 +118,9 @@ export const AnimationsManager = GObject.registerClass({
         const windowActor = window.get_compositor_private();
         if (!windowActor) {
             Logger.log(`No actor for window ${window.get_id()}, skipping animation`);
+            WindowState.set(window, 'isMosaicResizing', true);
             window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+            this._clearMosaicResizingSoon(window);
             if (onComplete) onComplete();
             return;
         }
@@ -162,6 +166,7 @@ export const AnimationsManager = GObject.registerClass({
         const initialTx = currentFrame.x + currentTx - targetRect.x;
         const initialTy = currentFrame.y + currentTy - targetRect.y;
 
+        WindowState.set(window, 'isMosaicResizing', true);
         window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
         windowActor.set_translation(initialTx, initialTy, 0);
 
@@ -177,6 +182,7 @@ export const AnimationsManager = GObject.registerClass({
                 this._animatingWindows.delete(window.get_id());
                 this._animatingTargets.delete(window.get_id());
                 this._checkAllAnimationsComplete();
+                WindowState.set(window, 'isMosaicResizing', false);
                 if (onComplete) onComplete();
             }
         });
@@ -208,6 +214,15 @@ export const AnimationsManager = GObject.registerClass({
         if (this._animatingWindows.delete(windowId)) {
             this._checkAllAnimationsComplete();
         }
+    }
+
+    // No ease here means no onStopped to clear the flag, so give Mutter a
+    // moment to actually fire size-changed before we drop it.
+    _clearMosaicResizingSoon(window) {
+        this._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
+            WindowState.set(window, 'isMosaicResizing', false);
+            return GLib.SOURCE_REMOVE;
+        }, 'animations_clearMosaicResizing');
     }
 
     cleanup() {

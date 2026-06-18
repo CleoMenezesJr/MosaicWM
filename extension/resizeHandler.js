@@ -307,7 +307,8 @@ export const ResizeHandler = GObject.registerClass({
                 if (WindowState.get(window, 'isEnteringSacred') ||
                     WindowState.get(window, 'unmaximizing') ||
                     WindowState.get(window, 'isRestoringSacred') ||
-                    WindowState.get(window, 'openedMaximized')) {
+                    WindowState.get(window, 'openedMaximized') ||
+                    WindowState.get(window, 'isMosaicResizing')) {
                     Logger.log(`onSizeChanged: Save blocked by transition flag for ${window.get_id()}`);
                 } else {
                     const currentPreferredSize = WindowState.get(window, 'preferredSize');
