@@ -146,6 +146,14 @@ For more information on GNOME Shell extension development:
 - [GJS Extension Development Guide](https://gjs.guide/extensions/development/debugging.html)
 - [GNOME Shell Extensions Documentation](https://gjs.guide/extensions/)
 
+## 💖 Support
+
+If Mosaic WM has been useful to you, consider supporting its development. :)
+
+[<img src="https://raw.githubusercontent.com/CleoMenezesJr/flatline/1e3b5252c5955d8918a7751aea854a830616d696/other/promotion/badges/donate_paypal.svg" height=29px alt="Paypal donation">](https://www.paypal.com/donate/?hosted_button_id=7KDCH44AMMCS2)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/cleomenezesjr)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/CleoMenezesJr?logo=githubsponsors&label=Sponsor)](https://github.com/sponsors/CleoMenezesJr)
+
 ## 🤝 Contributing
 
 > [!NOTE]
@@ -153,7 +161,7 @@ For more information on GNOME Shell extension development:
 
 **Best ways to contribute right now:**
 
-- 🧪 **Testing**: Try the extension and explore edge cases
+- 🧪 **Testing**: Try the extension and explore edge cases. Join the testers room on Matrix: [#mosaicwm:matrix.org](https://matrix.to/#/%23mosaicwm:matrix.org)
 - 🐛 **Bug Reports**: Open issues with detailed reproduction steps
 - 💡 **Feature Ideas**: Share suggestions in GitHub Issues
 - ✍️ **Documentation**: Add comments explaining the **WHY**: constraints, invariants, and non-obvious behavior. Well-named code already explains the what.
