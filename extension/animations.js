@@ -58,7 +58,7 @@ export const AnimationsManager = GObject.registerClass({
             let stale;
             try {
                 stale = !actor || actor.is_destroyed() || !actor.get_transition('translation_x');
-            } catch (e) {
+            } catch (_e) {
                 // Actor's underlying GObject was fully disposed (e.g. window destroyed
                 // mid-animation), not merely Clutter-destroyed, so any method call
                 // on it throws instead of returning a clean false/null.
@@ -184,7 +184,7 @@ export const AnimationsManager = GObject.registerClass({
         // A miniature restore animates scale on this same actor and owns recovery
         // if we cut it off below (see continueScaleUp in miniature.js), so piling our
         // own scale ease on top would fight it for the same property.
-        const skipScale = WindowState.get(window, MINIATURE_ANIM_KIND) != null;
+        const skipScale = WindowState.get(window, MINIATURE_ANIM_KIND) !== undefined;
 
         // remove_all_transitions fires old onStopped(isFinished=false);
         // the guard at the ease callback returns early without double cleanup.
