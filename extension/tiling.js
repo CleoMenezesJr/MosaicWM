@@ -72,7 +72,7 @@ export const TilingManager = GObject.registerClass({
         this._lastLayoutHash = null;
         this._cachedTileResult = null;
         this._lastTiledOrder = null;
-        // windowId -> levelIndex from the last committed tile pass, read by _scoreLayout
+        // windowId -> levelIndex from the last committed tile pass
         this._lastGroupAssignment = null;
         this._skipStabilityForNextTile = false;
 
