@@ -24,6 +24,9 @@ import { isWindowAlive } from './liveness.js';
 import { getSlowDownFactor } from './timing.js';
 
 const POSITION_STABILITY_WEIGHT = 40;
+// High enough to beat the other terms combined (they max out at 140), so
+// keeping a window's column/shelf wins unless that option would overflow.
+const GROUP_STABILITY_WEIGHT = 150;
 
 // Keyed by window ID internally to survive GI reference churn; API mirrors WeakMap
 const _computedLayouts = new Map();
@@ -69,6 +72,8 @@ export const TilingManager = GObject.registerClass({
         this._lastLayoutHash = null;
         this._cachedTileResult = null;
         this._lastTiledOrder = null;
+        // windowId -> levelIndex from the last committed tile pass, read by _scoreLayout
+        this._lastGroupAssignment = null;
         this._skipStabilityForNextTile = false;
 
         // Swap/reorder operations live per workspace, keyed by Meta.Workspace via WeakMap
@@ -707,6 +712,24 @@ export const TilingManager = GObject.registerClass({
                 const maxDiag = Math.hypot(workArea.width, workArea.height);
                 const normalized = Math.min(1, totalDisp / (count * maxDiag));
                 score += (1 - normalized) * POSITION_STABILITY_WEIGHT;
+            }
+        }
+
+        // Grouping stability: prefer permutations where windows stay in the same column/shelf as last time
+        if (this._lastGroupAssignment) {
+            let regrouped = 0;
+            let trackedCount = 0;
+            for (let levelIdx = 0; levelIdx < tileResult.levels.length; levelIdx++) {
+                for (const w of tileResult.levels[levelIdx].windows) {
+                    const prevLevelIdx = this._lastGroupAssignment.get(w.id);
+                    if (prevLevelIdx === undefined) continue;
+                    trackedCount++;
+                    if (prevLevelIdx !== levelIdx) regrouped++;
+                }
+            }
+            if (trackedCount > 0) {
+                const regroupedFraction = regrouped / trackedCount;
+                score += (1 - regroupedFraction) * GROUP_STABILITY_WEIGHT;
             }
         }
 
@@ -1907,6 +1930,12 @@ export const TilingManager = GObject.registerClass({
         this._positionSnapshot = null;
         if (tile_info?.levels?.length > 0) {
             this._lastTiledOrder = tile_info.levels.flatMap(l => l.windows).map(w => w.id);
+            const newGroupAssignment = new Map();
+            tile_info.levels.forEach((level, levelIdx) => {
+                for (const w of level.windows) newGroupAssignment.set(w.id, levelIdx);
+            });
+            this._lastGroupAssignment = newGroupAssignment;
+            Logger.log(`[GROUP STABILITY] Recorded assignment: ${[...newGroupAssignment].map(([id, idx]) => `${id}->col${idx}`).join(', ')}`);
         }
         Logger.log(`Drawing tiles - isDragging: ${this.isDragging}, using tileArea: x=${tileArea.x}, y=${tileArea.y}`);
         
