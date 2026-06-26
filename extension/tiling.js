@@ -1773,6 +1773,19 @@ export const TilingManager = GObject.registerClass({
             this._pendingMiniatureWindows = [];
         }
 
+        // Pre-apply mini sizes so the initial _tile sees the correct footprint.
+        // Without this, pendingMiniature windows still have their full frame size,
+        // which causes spurious overflow and fires the no-ref overflow block as a
+        // second independent miniaturizer alongside tryFitWithResize.
+        for (const pm of this._pendingMiniatureWindows) {
+            if (!pm.miniSize) continue;
+            const desc = windows.find(d => d.id === pm.window.get_id());
+            if (desc) {
+                desc.width = pm.miniSize.width;
+                desc.height = pm.miniSize.height;
+            }
+        }
+
         // Computed slots from this pass, returned to the caller so it can find
         // miniature positions without depending on the ComputedLayouts side-channel.
         const computedSlots = new Map();
