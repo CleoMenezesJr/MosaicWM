@@ -1,6 +1,6 @@
 // Copyright 2025-2026 Cleo Menezes Jr.
 // SPDX-License-Identifier: GPL-3.0-or-later
-// WindowHandler - Manages window lifecycle signals and state transitions.
+// WindowHandler manages window lifecycle signals and state transitions.
 
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
@@ -111,7 +111,7 @@ export const WindowHandler = GObject.registerClass({
 
                     // Entering/exiting sacred state is owned by resizeHandler, normally
                     // driven by the WM size-change signal. This property notify is a
-                    // backup for apps where that signal doesn't fire reliably - calling
+                    // backup for apps where that signal doesn't fire reliably; calling
                     // these twice for the same transition is safe (see resizeHandler.js).
                     if (this.windowingManager.isMaximizedOrFullscreen(win)) {
                         if (!WindowState.get(win, 'openedMaximized')) {
@@ -148,7 +148,7 @@ export const WindowHandler = GObject.registerClass({
             }));
         });
 
-        // Detect Fullscreen changes - same backup pattern as maximize above.
+        // Detect Fullscreen changes, same backup pattern as maximize above.
         ids.push(window.connect('notify::fullscreen', (win) => {
             if (this.windowingManager.isMaximizedOrFullscreen(win)) {
                 if (!WindowState.get(win, 'openedMaximized')) {
@@ -269,7 +269,6 @@ export const WindowHandler = GObject.registerClass({
         }
 
         if (isNowExcluded) {
-            // Window became excluded - retile remaining windows
             Logger.log(`Window ${windowId} became excluded - retiling without it`);
 
             const frame = window.get_frame_rect();
@@ -301,7 +300,6 @@ export const WindowHandler = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             }, 'windowHandler_excludeRetile');
         } else {
-            // Window became included - treat like new window arrival with smart resize
             Logger.log(`Window ${windowId} became included - treating as new window arrival`);
 
             this._timeoutRegistry.add(constants.RETILE_DELAY_MS, () => {
@@ -369,7 +367,7 @@ export const WindowHandler = GObject.registerClass({
         this._ext._miniatureCascadeIds?.delete(candidate.get_id());
         this._ext.miniatureManager.restoreMiniature(candidate, null, { activate: false });
         // 'miniature-restored' signal fires synchronously, _onMiniatureRestored already
-        // ran by the time restoreMiniature returns - calling it again here used to double
+        // ran by the time restoreMiniature returns; calling it again here used to double
         // the whole Smart Resize + retile pass for one restore.
         return true;
     }
@@ -413,7 +411,7 @@ export const WindowHandler = GObject.registerClass({
 
         // When the caller doesn't trust its own freedWidth/freedHeight enough to pass
         // them through (passFreedDimsToRestore: false), gating the attempt on those same
-        // values is pointless - e.g. 'unmanaged' fires early enough that the closed
+        // values is pointless; e.g. 'unmanaged' fires early enough that the closed
         // window's frame already reads 0x0, which used to block the attempt outright
         // even though tryRestoreWindowSizes would have computed available space itself.
         const hasFreedSpace = !passFreedDimsToRestore || (requireBothFreedDims
@@ -442,7 +440,7 @@ export const WindowHandler = GObject.registerClass({
 
         // Resettling because a window just left, so bounce it like an entrance.
         if (restored) {
-            // move_resize_frame above hasn't settled yet - retiling now would read
+            // move_resize_frame above hasn't settled yet; retiling now would read
             // get_frame_rect() before the client acks the new size, hit the layout
             // cache with the stale dimensions, and redraw right back over the restore.
             this._ext._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
@@ -464,9 +462,13 @@ export const WindowHandler = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             }, settleTimeoutName);
         } else {
-            this.animationsManager.setMembershipChangeBounce(true);
-            this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
-            this.animationsManager.setMembershipChangeBounce(false);
+            if (Main.overview.visible) {
+                this._pendingRestoreRetiles.push({ workspace, monitor, windows: [] });
+            } else {
+                this.animationsManager.setMembershipChangeBounce(true);
+                this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
+                this.animationsManager.setMembershipChangeBounce(false);
+            }
         }
     }
 
@@ -522,9 +524,9 @@ export const WindowHandler = GObject.registerClass({
             const managedWindows = windows.filter(w => !this.windowingManager.isExcluded(w));
 
             if (managedWindows.length === 0) {
-                // Skip if overflow is in progress - window is being moved and will arrive soon
+                // Skip if overflow is in progress; window is being moved and will arrive soon
                 if (this._overflowInProgress) {
-                    Logger.log('Workspace is empty but overflow in progress - skipping navigation');
+                    Logger.log('Workspace is empty but overflow in progress; skipping navigation');
                     return;
                 }
 
@@ -718,7 +720,7 @@ export const WindowHandler = GObject.registerClass({
             return workspace;
         }
 
-        // Path 1: Sacred Isolation - Symmetric isolation enforcement.
+        // Path 1: Sacred Isolation (symmetric isolation enforcement).
         const isIncomingSacred = this.windowingManager.isMaximizedOrFullscreen(window);
         const hasExistingSacred = this.windowingManager.hasSacredWindow(workspace, monitor, window.get_id());
         const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
@@ -1155,7 +1157,7 @@ export const WindowHandler = GObject.registerClass({
                             WORKSPACE.activate(global.get_current_time());
                             this._ext.windowingManager.showWorkspaceSwitcher(WORKSPACE, MONITOR);
 
-                            // Mark as DnD arrival - will trigger expansion after tiling
+                            // Mark as DnD arrival; triggers expansion after tiling
                             WindowState.set(WINDOW, 'arrivedFromDnD', true);
 
                             // Wait for overview to fully close before tiling
@@ -1164,14 +1166,14 @@ export const WindowHandler = GObject.registerClass({
                                 Main.overview.hide();
                             }
 
-                            // Clear DnD tracking - normal flow will handle window
+                            // Clear DnD tracking; normal flow handles the window
                             WindowState.remove(WINDOW, 'previousWorkspace');
                             WindowState.remove(WINDOW, 'removedTimestamp');
                             WindowState.remove(WINDOW, 'manualWorkspaceMove');
                         }
                     }
 
-                    // Mark window as waiting for geometry - prevents premature overflow
+                    // Mark window as waiting for geometry; prevents premature overflow
                     WindowState.set(WINDOW, 'waitingForGeometry', true);
 
                     // Repoll while waitForGeometry returns SOURCE_CONTINUE, bounded
