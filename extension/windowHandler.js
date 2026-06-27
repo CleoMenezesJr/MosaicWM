@@ -30,6 +30,7 @@ export const WindowHandler = GObject.registerClass({
 
         this._overflowInProgress = false;
         this._windowSignals = new WeakMap(); // WeakMap so signal IDs are released when the window is GC'd
+        this._pendingRestoreRetiles = [];
     }
 
     destroy() {
@@ -37,6 +38,7 @@ export const WindowHandler = GObject.registerClass({
             WindowState.remove(entry.window, 'pendingInQueue');
         this._evaluationQueue = [];
         this._isEvaluatingQueue = false;
+        this._pendingRestoreRetiles = [];
     }
 
     // Lock a workspace to prevent recursive or conflicting tiling triggers.
@@ -448,9 +450,17 @@ export const WindowHandler = GObject.registerClass({
                 for (const w of restorableWindows) {
                     WindowState.remove(w, 'isReverseSmartResizing');
                 }
+                if (Main.overview.visible) {
+                    // animateWindow does nothing while the overview is open, so defer the tile and cleanup to onOverviewHidden.
+                    this._pendingRestoreRetiles.push({ workspace, monitor, windows: restorableWindows });
+                    return GLib.SOURCE_REMOVE;
+                }
                 this.animationsManager.setMembershipChangeBounce(true);
                 this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
                 this.animationsManager.setMembershipChangeBounce(false);
+                for (const w of restorableWindows) {
+                    WindowState.remove(w, 'targetRestoredSize');
+                }
                 return GLib.SOURCE_REMOVE;
             }, settleTimeoutName);
         } else {
@@ -532,6 +542,19 @@ export const WindowHandler = GObject.registerClass({
                 WindowState.remove(win, 'deferTilingUntilOverviewHidden');
                 this.enqueueWindowForEvaluation(win, workspace, win.get_monitor());
             }
+        }
+
+        if (this._pendingRestoreRetiles.length > 0) {
+            for (const { workspace: ws, monitor: mon, windows } of this._pendingRestoreRetiles) {
+                Logger.log(`Retiling after restore delay (deferred: overview was open)`);
+                this.animationsManager.setMembershipChangeBounce(true);
+                this._ext.tilingManager.tileWorkspaceWindows(ws, null, mon, true);
+                this.animationsManager.setMembershipChangeBounce(false);
+                for (const w of windows) {
+                    WindowState.remove(w, 'targetRestoredSize');
+                }
+            }
+            this._pendingRestoreRetiles = [];
         }
     }
 

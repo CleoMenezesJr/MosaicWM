@@ -2451,6 +2451,8 @@ export const TilingManager = GObject.registerClass({
 
                     const frame = w.get_frame_rect();
                     this._animateResize(w, frame, sim.width, sim.height);
+                    // Wayland hasn't acked the resize yet when the settle retile runs, so stash the target here.
+                    WindowState.set(w, 'targetRestoredSize', { width: sim.width, height: sim.height });
 
                     const shrunk = shrunkWindows.find(sw => sw.id === w.get_id());
                     if (shrunk) {
