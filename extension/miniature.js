@@ -257,7 +257,7 @@ export const MiniatureManager = GObject.registerClass({
 }, class MiniatureManager extends GObject.Object {
     _init() {
         super._init();
-        this._miniatureWindows = new Set();
+        this._miniatureWindows = new Map();
         this._timeoutRegistry = null;
         this._animationsManager = null;
     }
@@ -428,7 +428,7 @@ export const MiniatureManager = GObject.registerClass({
             WindowState.set(window, 'miniatureJustMiniaturizedTimeoutId', timeoutId);
         }
 
-        this._miniatureWindows.add(window.get_id());
+        this._miniatureWindows.set(window.get_id(), window);
         this.emit('miniature-created', window);
 
         // Add click-capture overlay above the miniature
@@ -676,13 +676,8 @@ export const MiniatureManager = GObject.registerClass({
     }
 
     destroy() {
-        if (this._miniatureWindows.size > 0) {
-            const windows = global.display.get_tab_list(Meta.TabList.NORMAL, null);
-            for (const window of windows) {
-                if (this._miniatureWindows.has(window.get_id()))
-                    this.destroyMiniature(window);
-            }
-        }
+        for (const window of this._miniatureWindows.values())
+            this.destroyMiniature(window);
         this._miniatureWindows.clear();
         this._timeoutRegistry = null;
     }
@@ -693,9 +688,7 @@ export const MiniatureManager = GObject.registerClass({
 
     findMiniatureAtPoint(x, y) {
         if (this._miniatureWindows.size === 0) return null;
-        const windows = global.display.get_tab_list(Meta.TabList.NORMAL, global.workspace_manager.get_active_workspace());
-        for (const window of windows) {
-            if (!this._miniatureWindows.has(window.get_id())) continue;
+        for (const window of this._miniatureWindows.values()) {
             const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
             const scale = WindowState.get(window, MINIATURE_SCALE);
             const preSize = WindowState.get(window, PRE_MINIATURE_SIZE);

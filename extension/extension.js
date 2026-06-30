@@ -27,7 +27,7 @@ import { SwappingManager } from './swapping.js';
 import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
 import { MosaicLayoutStrategy } from './overviewLayout.js';
-import { TimeoutRegistry, afterAnimations, afterOverviewHidden } from './timing.js';
+import { TimeoutRegistry, createDebounced, afterAnimations, afterOverviewHidden } from './timing.js';
 import { WindowHandler } from './windowHandler.js';
 import { DragHandler } from './dragHandler.js';
 import { ResizeHandler } from './resizeHandler.js';
@@ -77,7 +77,7 @@ export default class WindowMosaicExtension extends Extension {
         this._dndPositionId = 0;
         this._dndLeaveId = 0;
         this._dndActive = false;
-        this._dndRestoreTimer = null;
+        this._dndScheduleRestore = null;
         this._dndPendingWindowId = null;
 
         this._injectionManager = null;
@@ -262,6 +262,15 @@ export default class WindowMosaicExtension extends Extension {
 
         this._dnd = global.backend?.get_dnd() ?? null;
         if (this._dnd) {
+            this._dndScheduleRestore = createDebounced(
+                (window) => {
+                    this._dndPendingWindowId = null;
+                    if (isWindowAlive(window) && WindowState.get(window, WindowState.IS_MINIATURE))
+                        this.miniatureManager?.restoreMiniature(window, null);
+                },
+                constants.DND_MINIATURE_RESTORE_DELAY_MS,
+                this._timeoutRegistry
+            );
             this._dndEnterId = this._dnd.connect('dnd-enter', this._onDndEnter.bind(this));
             this._dndPositionId = this._dnd.connect('dnd-position-change', this._onDndPositionChange.bind(this));
             this._dndLeaveId = this._dnd.connect('dnd-leave', this._onDndLeave.bind(this));
@@ -575,10 +584,7 @@ export default class WindowMosaicExtension extends Extension {
 
     _onMiniatureRestored(window) {
         if (this._dndPendingWindowId === window.get_id()) {
-            if (this._dndRestoreTimer !== null) {
-                this._timeoutRegistry.remove(this._dndRestoreTimer);
-                this._dndRestoreTimer = null;
-            }
+            this._dndScheduleRestore?.cancel();
             this._dndPendingWindowId = null;
         }
         Logger.log(`[FOCUS] _onMiniatureRestored ${window.get_id()} (${window.get_wm_class?.() ?? '?'}): running smart resize`);
@@ -659,35 +665,17 @@ export default class WindowMosaicExtension extends Extension {
         const window = this.miniatureManager.findMiniatureAtPoint(x, y);
         if (window) {
             if (this._dndPendingWindowId === window.get_id()) return;
-            if (this._dndRestoreTimer !== null) {
-                this._timeoutRegistry.remove(this._dndRestoreTimer);
-                this._dndRestoreTimer = null;
-            }
             this._dndPendingWindowId = window.get_id();
-            this._dndRestoreTimer = this._timeoutRegistry.add(
-                constants.DND_MINIATURE_RESTORE_DELAY_MS,
-                () => {
-                    this._dndRestoreTimer = null;
-                    this._dndPendingWindowId = null;
-                    if (isWindowAlive(window) && WindowState.get(window, WindowState.IS_MINIATURE))
-                        this.miniatureManager?.restoreMiniature(window, null);
-                    return GLib.SOURCE_REMOVE;
-                },
-                'extension_dndMiniatureRestore'
-            );
-        } else if (this._dndRestoreTimer !== null) {
-            this._timeoutRegistry.remove(this._dndRestoreTimer);
-            this._dndRestoreTimer = null;
+            this._dndScheduleRestore(window);
+        } else {
+            this._dndScheduleRestore.cancel();
             this._dndPendingWindowId = null;
         }
     }
 
     _onDndLeave() {
         this._dndActive = false;
-        if (this._dndRestoreTimer !== null) {
-            this._timeoutRegistry?.remove(this._dndRestoreTimer);
-            this._dndRestoreTimer = null;
-        }
+        this._dndScheduleRestore?.cancel();
         this._dndPendingWindowId = null;
     }
 
@@ -847,10 +835,8 @@ export default class WindowMosaicExtension extends Extension {
             this._dndLeaveId = 0;
             this._dnd = null;
         }
-        if (this._dndRestoreTimer !== null) {
-            this._timeoutRegistry?.remove(this._dndRestoreTimer);
-            this._dndRestoreTimer = null;
-        }
+        this._dndScheduleRestore?.cancel();
+        this._dndScheduleRestore = null;
         this._dndActive = false;
         this._dndPendingWindowId = null;
 
