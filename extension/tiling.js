@@ -1884,11 +1884,13 @@ export const TilingManager = GObject.registerClass({
         // No reference window means nothing to eject, so try miniaturizing candidates to reclaim space.
         if (overflow && !reference_meta_window && !this.isDragging && this._extension?.miniatureManager) {
             const focusedId = global.display.focus_window?.get_id();
+            const resizingId = this._animationsManager?.getResizingWindowId();
 
             const overflowCandidates = meta_windows
                 .filter(w =>
                     !WindowState.get(w, IS_MINIATURE) &&
                     w.get_id() !== focusedId &&
+                    w.get_id() !== resizingId &&
                     w.get_id() !== (this._restoringWindowId ?? null) &&
                     !this._windowingManager.isMaximizedOrFullscreen(w)
                 )
@@ -2556,6 +2558,9 @@ export const TilingManager = GObject.registerClass({
         // Reset rebalance counter for this new smart resize cycle
         this._extension?.resizeHandler?.resetConstraintRebalanceCount();
 
+        // Also exclude the window under an active manual resize grab, since focusedWindowOverride can point elsewhere.
+        const resizingWindowId = this._animationsManager?.getResizingWindowId();
+
         try {
             const allResizable = [];
             const allWindows = [];
@@ -2657,7 +2662,7 @@ export const TilingManager = GObject.registerClass({
                     for (const w of orderedWindows0) {
                         const d = windowData.get(w.get_id());
                         if (!d || d.pendingMiniature) continue;
-                        if (w.get_id() === focusedId0 || this._isRecentlyAdded(w)) continue;
+                        if (w.get_id() === focusedId0 || w.get_id() === resizingWindowId || this._isRecentlyAdded(w)) continue;
                         if (WindowState.get(w, IS_MINIATURE)) continue;
                         if (this._windowingManager.isMaximizedOrFullscreen(w)) continue;
                         if (!d.isResizable) continue;
@@ -2722,7 +2727,7 @@ export const TilingManager = GObject.registerClass({
                         const d = windowData.get(sim.id);
                         if (!d) return false;
                         if (d.pendingMiniature) return false;
-                        if (sim.id === focusedId || this._isRecentlyAdded(d.window)) return false;
+                        if (sim.id === focusedId || sim.id === resizingWindowId || this._isRecentlyAdded(d.window)) return false;
                         if (WindowState.get(d.window, IS_MINIATURE)) return false;
                         if (this._windowingManager.isMaximizedOrFullscreen(d.window)) return false;
                         const { thresholdW, thresholdH } = getMiniatureThreshold(d.window);

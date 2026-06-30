@@ -65,6 +65,12 @@ export const DragHandler = GObject.registerClass({
     }
 
     _grabOpBeginHandler = (_display, window, grabpo) => {
+        // Keyboard-driven grabs (Alt+F8 resize, Alt+Tab+move) bypass the click overlay
+        // entirely, so a miniature would otherwise be manipulable without ever restoring.
+        if (WindowState.get(window, WindowState.IS_MINIATURE)) {
+            this._ext.miniatureManager?.restoreMiniature(window, null);
+        }
+
         this._currentGrabOp = grabpo;
         const isResizeOp = isResizeGrabOp(grabpo);
         if (isResizeOp) {
