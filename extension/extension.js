@@ -574,6 +574,13 @@ export default class WindowMosaicExtension extends Extension {
     }
 
     _onMiniatureRestored(window) {
+        if (this._dndPendingWindowId === window.get_id()) {
+            if (this._dndRestoreTimer !== null) {
+                this._timeoutRegistry.remove(this._dndRestoreTimer);
+                this._dndRestoreTimer = null;
+            }
+            this._dndPendingWindowId = null;
+        }
         Logger.log(`[FOCUS] _onMiniatureRestored ${window.get_id()} (${window.get_wm_class?.() ?? '?'}): running smart resize`);
         WindowState.remove(window, 'restoringFromMiniature');
         this.tilingManager._isSmartResizingBlocked = false;
@@ -662,7 +669,8 @@ export default class WindowMosaicExtension extends Extension {
                 () => {
                     this._dndRestoreTimer = null;
                     this._dndPendingWindowId = null;
-                    this.miniatureManager?.restoreMiniature(window, null);
+                    if (isWindowAlive(window) && WindowState.get(window, WindowState.IS_MINIATURE))
+                        this.miniatureManager?.restoreMiniature(window, null);
                     return GLib.SOURCE_REMOVE;
                 },
                 'extension_dndMiniatureRestore'

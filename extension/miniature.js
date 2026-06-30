@@ -441,6 +441,8 @@ export const MiniatureManager = GObject.registerClass({
     }
 
     restoreMiniature(window, _newSlot, { activate = true } = {}) {
+        if (!WindowState.get(window, IS_MINIATURE)) return false;
+
         const windowActor = window.get_compositor_private();
 
         const frame = window.get_frame_rect();
@@ -691,7 +693,7 @@ export const MiniatureManager = GObject.registerClass({
 
     findMiniatureAtPoint(x, y) {
         if (this._miniatureWindows.size === 0) return null;
-        const windows = global.display.get_tab_list(Meta.TabList.NORMAL, null);
+        const windows = global.display.get_tab_list(Meta.TabList.NORMAL, global.workspace_manager.get_active_workspace());
         for (const window of windows) {
             if (!this._miniatureWindows.has(window.get_id())) continue;
             const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
