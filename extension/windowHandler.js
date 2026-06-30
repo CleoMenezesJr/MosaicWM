@@ -269,7 +269,7 @@ export const WindowHandler = GObject.registerClass({
         }
 
         if (isNowExcluded) {
-            Logger.log(`Window ${windowId} became excluded - retiling without it`);
+            Logger.log(`Window ${windowId} became excluded; retiling without it`);
 
             const frame = window.get_frame_rect();
             const freedWidth = frame.width;
@@ -300,7 +300,7 @@ export const WindowHandler = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             }, 'windowHandler_excludeRetile');
         } else {
-            Logger.log(`Window ${windowId} became included - treating as new window arrival`);
+            Logger.log(`Window ${windowId} became included; treating as new window arrival`);
 
             this._timeoutRegistry.add(constants.RETILE_DELAY_MS, () => {
                 const workArea = this.edgeTilingManager.calculateRemainingSpace(workspace, monitor);
