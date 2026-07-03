@@ -201,6 +201,28 @@ export const WindowingManager = GObject.registerClass({
         return targetWorkspace;
     }
 
+    // Workspace to the left of the origin for displaced windows.
+    createOrReuseLeftWorkspace(originWorkspace) {
+        const workspaceManager = global.workspace_manager;
+        const currentIndex = originWorkspace.index();
+        const prevIndex = currentIndex - 1;
+
+        if (prevIndex >= 0) {
+            const prevWorkspace = workspaceManager.get_workspace_by_index(prevIndex);
+            if (prevWorkspace && prevWorkspace.list_windows().length === 0) {
+                Logger.log(`[WORKSPACE] Reusing existing empty workspace at WS-${prevIndex}`);
+                return prevWorkspace;
+            }
+        }
+
+        // Insert at currentIndex so the new workspace lands immediately to the
+        // left of the origin, even when prevIndex is occupied or doesn't exist.
+        Logger.log(`[WORKSPACE] Creating new workspace and inserting at WS-${currentIndex}`);
+        const targetWorkspace = workspaceManager.append_new_workspace(false, this.getTimestamp());
+        workspaceManager.reorder_workspace(targetWorkspace, currentIndex);
+        return targetWorkspace;
+    }
+
     // Moves a window that doesn't fit into another workspace.
     // Returns a Promise that resolves with the target_workspace when the move and retiling are complete.
     moveOversizedWindow(window, options = { switchFocus: true }) {

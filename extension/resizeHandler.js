@@ -167,11 +167,9 @@ export const ResizeHandler = GObject.registerClass({
         }
     };
 
-    // Isolates a maximized/fullscreen window to its own workspace, after a short
-    // debounce so a quick toggle back never even starts the move. Some apps'
-    // fullscreen doesn't reliably trigger window_manager's size-change signal, so
-    // this is also called from windowHandler's notify::fullscreen as a backup -
-    // the pending flag below makes calling it twice for the same transition safe.
+    // Debounced so a quick toggle back never even starts the displace. Also called
+    // from windowHandler's notify::fullscreen as a backup (some apps' fullscreen
+    // doesn't reliably fire size-change); sacredEnterPending makes duplicate calls safe.
     tryEnterSacred(window) {
         // Detect born-maximized: size-change fires BEFORE window-created for new windows.
         // A window with no preferredSize/openingSize hasn't been through onWindowCreated yet.
@@ -205,7 +203,7 @@ export const ResizeHandler = GObject.registerClass({
             return;
         }
 
-        Logger.log('[SACRED-ENTER] User entering sacred state - debouncing before moving to new workspace');
+        Logger.log('[SACRED-ENTER] User entering sacred state - debouncing before displacing other windows');
         WindowState.set(window, 'sacredEnterPending', true);
         const preMaxSize = WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize');
 
@@ -224,20 +222,50 @@ export const ResizeHandler = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             }
 
-            Logger.log('[SACRED-ENTER] Still in sacred state after debounce - moving to new workspace');
+            Logger.log('[SACRED-ENTER] Still in sacred state after debounce - displacing other windows');
+
+            const preInsertionIndex = currentWorkspace.index();
+            const targetWorkspace = this.windowingManager.createOrReuseLeftWorkspace(currentWorkspace);
+
+            // Capture original workspace index AFTER workspace insertion, since
+            // createOrReuseLeftWorkspace may reorder and shift the current workspace.
             const originalWorkspaceIndex = currentWorkspace.index();
 
-            this.windowingManager.moveOversizedWindow(window).then((newWorkspace) => {
-                if (newWorkspace) {
-                    WindowState.set(window, 'maximizedUndoInfo', {
-                        originalWorkspace: originalWorkspaceIndex,
-                        currentWorkspace: newWorkspace.index(),
-                        monitor: currentMonitor,
-                        preMaxSize: preMaxSize
-                    });
-                    this.tilingManager.tileWorkspaceWindows(currentWorkspace, null, currentMonitor, false);
+            // Keep the maximized window in place so expand doesn't fight a lateral slide.
+            const otherWindows = this.windowingManager.getMonitorWorkspaceWindows(currentWorkspace, currentMonitor)
+                .filter(w => w !== window && !this.windowingManager.isExcluded(w));
+
+            if (otherWindows.length === 0) {
+                Logger.log(`[SACRED-ENTER] Window ${window.get_id()} has no other windows to displace`);
+                return GLib.SOURCE_REMOVE;
+            }
+
+            for (const w of otherWindows) {
+                WindowState.set(w, 'movedByOverflow', true);
+                w.change_workspace(targetWorkspace);
+            }
+
+            WindowState.set(window, 'maximizedUndoInfo', {
+                originalWorkspace: originalWorkspaceIndex,
+                displacedWorkspace: targetWorkspace.index(),
+                monitor: currentMonitor,
+                preMaxSize: preMaxSize,
+                osdWorkspace: preInsertionIndex
+            });
+
+            this.tilingManager.tileWorkspaceWindows(targetWorkspace, null, currentMonitor);
+
+            // OSD on the current workspace
+            this.windowingManager.showWorkspaceSwitcher(currentWorkspace, currentMonitor);
+
+            // Clear overflow flags after a settling delay
+            this._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
+                for (const w of otherWindows) {
+                    WindowState.remove(w, 'movedByOverflow');
                 }
-            }).catch(e => Logger.error(`Sacred isolation failed: ${e}`));
+                return GLib.SOURCE_REMOVE;
+            }, 'resizeHandler_sacredDisplaceSettle');
+
             return GLib.SOURCE_REMOVE;
         }, 'resizeHandler_sacredEnterDebounce');
     }
@@ -627,50 +655,41 @@ export const ResizeHandler = GObject.registerClass({
     completeSacredReturn(window, originWorkspaceIndex) {
         if (WindowState.get(window, 'isRestoringSacred') !== originWorkspaceIndex) return;
 
-        Logger.log(`[SACRED-MOVE] Window ${window.get_id()} finished in-place resize. Moving to origin workspace ${originWorkspaceIndex}.`);
+        Logger.log(`[SACRED-RETURN] Window ${window.get_id()} finished unmaximize. Tiling on WS ${originWorkspaceIndex}.`);
 
         const workspaceManager = global.workspace_manager;
         if (originWorkspaceIndex < 0 || originWorkspaceIndex >= workspaceManager.get_n_workspaces()) {
             WindowState.remove(window, 'isRestoringSacred');
-            WindowState.remove(window, 'sacredFitConfirmed');
-            WindowState.remove(window, 'pendingMiniaturesForReturn');
+            WindowState.remove(window, 'sacredDisplacedWorkspace');
             return;
         }
 
         const originWS = workspaceManager.get_workspace_by_index(originWorkspaceIndex);
         const monitor = window.get_monitor();
-        const oldWorkspace = window.get_workspace();
-        // handleUnmaximizeUndo sets this once it already checked the window
-        // fits, so the tile pass below doesn't second-guess it as overflow.
-        const fitConfirmed = WindowState.get(window, 'sacredFitConfirmed') === true;
-        const pendingMiniatures = WindowState.get(window, 'pendingMiniaturesForReturn') || [];
-
-        // MOVE ATOMICALLY
-        window.change_workspace(originWS);
-        originWS.activate(global.get_current_time());
-        this.windowingManager.showWorkspaceSwitcher(originWS, monitor);
+        const displacedIndex = WindowState.get(window, 'sacredDisplacedWorkspace');
 
         // CLEAR FLAGS IMMEDIATELY to prevent double-move
         WindowState.remove(window, 'isRestoringSacred');
-        WindowState.remove(window, 'sacredFitConfirmed');
-        WindowState.remove(window, 'pendingMiniaturesForReturn');
+        WindowState.remove(window, 'sacredDisplacedWorkspace');
 
-        // TILE IN DESTINATION
         afterWorkspaceSwitch(() => {
-            Logger.log(`Triggering tiling in destination workspace ${originWorkspaceIndex}`);
+            Logger.log(`Triggering tiling in workspace ${originWorkspaceIndex}`);
+
             this.tilingManager._isSmartResizingBlocked = true;
             try {
-                this.tilingManager._pendingMiniatureWindows = pendingMiniatures;
-                this.tilingManager.tileWorkspaceWindows(originWS, window, monitor, fitConfirmed);
+                this.tilingManager.tileWorkspaceWindows(originWS, window, monitor, true);
             } finally {
                 this.tilingManager._isSmartResizingBlocked = false;
             }
-            if (isWorkspaceAlive(oldWorkspace, workspaceManager)) {
-                this.tilingManager.tileWorkspaceWindows(oldWorkspace, null, monitor, true);
+
+            // Tile displaced workspace if it still has windows
+            if (displacedIndex !== undefined && displacedIndex >= 0 && displacedIndex < workspaceManager.get_n_workspaces()) {
+                const displacedWS = workspaceManager.get_workspace_by_index(displacedIndex);
+                if (displacedWS && isWorkspaceAlive(displacedWS, workspaceManager)) {
+                    this.tilingManager.tileWorkspaceWindows(displacedWS, null, monitor, true);
+                }
             }
 
-            // Same clamp protection as above, so this window doesn't get
-            // rebalanced right after it just landed.
             this._resizeGracePeriod = GLib.get_monotonic_time() / 1000;
 
             // Clear unmaximizing flags after a settle period
@@ -685,91 +704,64 @@ export const ResizeHandler = GObject.registerClass({
     }
 
     async handleUnmaximizeUndo(window, maxInfo) {
-        const { originalWorkspace: origIndex, monitor, preMaxSize } = maxInfo;
-        const currentWorkspace = window.get_workspace();
+        const { originalWorkspace: origIndex, preMaxSize, displacedWorkspace, osdWorkspace } = maxInfo;
         const workspaceManager = global.workspace_manager;
         const windowId = window.get_id();
 
         if (preMaxSize) {
             WindowState.set(window, 'openingSize', preMaxSize);
-        }
-
-        if (origIndex >= workspaceManager.get_n_workspaces()) {
-            this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor);
-            return;
-        }
-
-        const targetWorkspace = workspaceManager.get_workspace_by_index(origIndex);
-        if (currentWorkspace.index() === origIndex) {
-            Logger.log(`handleUnmaximizeUndo: Window ${windowId} unmaximized on SAME workspace - tiling immediately`);
-            WindowState.set(window, 'unmaximizing', true);
-            if (preMaxSize) {
-                WindowState.set(window, 'targetRestoredSize', preMaxSize);
-            }
-
-            this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor, true);
-
-            this._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS + 100, () => {
-                WindowState.remove(window, 'unmaximizing');
-                WindowState.remove(window, 'targetRestoredSize');
-                return GLib.SOURCE_REMOVE;
-            }, 'resizeHandler_settleUnmaximizeSame');
-            return;
-        }
-
-        if (preMaxSize) {
             WindowState.set(window, 'preferredSize', preMaxSize);
+            WindowState.set(window, 'targetRestoredSize', preMaxSize);
         }
 
-        // SMART FIT: Try to fit without resize first, then attempt to fit WITH resize
-        const existingWindows = targetWorkspace.list_windows().filter(w => !this.windowingManager.isExcluded(w));
-        let canFit = this.tilingManager.canFitWindow(window, targetWorkspace, monitor, true, preMaxSize);
-        let resizeNeeded = false;
-        let pendingMiniatures = [];
+        // completeSacredReturn reads this to tile the displaced workspace
+        if (displacedWorkspace !== undefined) {
+            WindowState.set(window, 'sacredDisplacedWorkspace', displacedWorkspace);
+        }
 
-        if (!canFit) {
-            Logger.log(`handleUnmaximizeUndo: Window ${windowId} doesn't fit normally - attempting Smart Resize fit`);
-            // Pass window as focused override: preMaxSize is its ceiling, so it won't be miniaturized.
-            const fitResult = this.tilingManager.tryFitWithResize(window, existingWindows, this.tilingManager.getUsableWorkArea(targetWorkspace, monitor), window);
-            canFit = fitResult?.success ?? false;
-            resizeNeeded = canFit;
-            // Pending minis MUST reach the tile pass, since skipping leaves siblings at miniature size with no real miniature.
-            if (canFit) {
-                pendingMiniatures = fitResult.pendingWindows ?? [];
-                // Set early: intermediate tile calls treat these as pending-mini; afterWorkspaceSwitch re-sets before final pass.
-                this.tilingManager._pendingMiniatureWindows = pendingMiniatures;
+        // Move displaced windows back BEFORE unmaximizing so they're visible
+        // during the shrink animation instead of popping in afterward.
+        if (displacedWorkspace !== undefined && displacedWorkspace >= 0 && displacedWorkspace < workspaceManager.get_n_workspaces()) {
+            const displacedWS = workspaceManager.get_workspace_by_index(displacedWorkspace);
+            if (displacedWS && isWorkspaceAlive(displacedWS, workspaceManager)) {
+                const displacedWindows = displacedWS.list_windows()
+                    .filter(w => !this.windowingManager.isExcluded(w));
+                const targetWS = (origIndex >= 0 && origIndex < workspaceManager.get_n_workspaces())
+                    ? workspaceManager.get_workspace_by_index(origIndex)
+                    : null;
+                if (!targetWS) {
+                    Logger.log(`[SACRED] Origin workspace ${origIndex} no longer exists, moving displaced windows to current`);
+                }
+                for (const w of displacedWindows) {
+                    WindowState.set(w, 'movedByOverflow', true);
+                    w.change_workspace(targetWS || window.get_workspace());
+                }
+                // Clear overflow flags after a settling delay
+                this._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
+                    for (const w of displacedWindows) {
+                        WindowState.remove(w, 'movedByOverflow');
+                    }
+                    return GLib.SOURCE_REMOVE;
+                }, 'resizeHandler_sacredReturnSettle');
             }
         }
 
-        if (!canFit) {
-            Logger.log(`[SACRED-STAY] handleUnmaximizeUndo: Window ${windowId} unable to fit even with Smart Resize - staying in current workspace`);
-            this.tilingManager.tileWorkspaceWindows(currentWorkspace, window, monitor);
-            return;
-        }
-
-        if (resizeNeeded) {
-            Logger.log(`handleUnmaximizeUndo: Smart Resize applied successfully for return of ${windowId}`);
-        }
 
         window.unmaximize();
         WindowState.set(window, 'unmaximizing', true);
         WindowState.set(window, 'isConstrainedByMosaic', true);
 
-        if (preMaxSize) {
-            WindowState.set(window, 'targetRestoredSize', preMaxSize);
-            WindowState.set(window, 'openingSize', preMaxSize);
-            WindowState.set(window, 'preferredSize', preMaxSize);
+        // Show workspace OSD at the same visual position as when maximized
+        const osdWS = osdWorkspace !== undefined
+            ? global.workspace_manager.get_workspace_by_index(osdWorkspace)
+            : window.get_workspace();
+        if (osdWS) {
+            this.windowingManager.showWorkspaceSwitcher(osdWS, window.get_monitor());
         }
 
-        // Wait for the real size-changed confirmation instead of guessing with
-        // a timer - a fixed delay could move the window before it's actually
-        // done resizing, and it'd show up at the destination still huge.
+        // Stage 2 (completeSacredReturn) handles final tiling of all windows.
         WindowState.set(window, 'isRestoringSacred', origIndex);
-        WindowState.set(window, 'sacredFitConfirmed', true);
-        if (pendingMiniatures.length > 0) {
-            WindowState.set(window, 'pendingMiniaturesForReturn', pendingMiniatures);
-        }
         this.scheduleSacredRestoreSafety(window, origIndex);
-        Logger.log(`[SACRED-DEFER] Window ${windowId} resizing in place before deferred move to WS ${origIndex}`);
+        Logger.log(`[SACRED-DEFER] Window ${windowId} unmaximizing in place; displaced windows already returned`);
     }
 } );

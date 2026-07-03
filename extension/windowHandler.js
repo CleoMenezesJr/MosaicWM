@@ -489,6 +489,7 @@ export const WindowHandler = GObject.registerClass({
         this.edgeTilingManager.clearWindowState(window);
 
         WindowState.remove(window, 'maximizedUndoInfo');
+        WindowState.remove(window, 'sacredDisplacedWorkspace');
 
         if (this.windowingManager.isExcluded(window)) {
             Logger.log('Excluded window closed - no workspace navigation');
