@@ -49,7 +49,7 @@ export const GEOMETRY_WAIT_MAX_ATTEMPTS = 100;   // Max attempts to wait for win
 export const REVERSE_RESIZE_PROTECTION_MS = 1000; // Protection window for reverse smart resize/unmaximize/overflow
 export const RESIZE_SETTLE_DELAY_MS = 150;       // Delay to let Mutter apply resize before retiling
 export const RESIZE_CLAMP_SETTLE_WINDOW_MS = 1500; // Window age below which a clamp is treated as the client still settling
-export const RESIZE_CLAMP_RETRY_DELAY_MS = 200;  // Delay before retrying a clamped resize once
+export const RESIZE_CLAMP_VERIFY_DELAY_MS = 400; // Quiet time after a deferred clamp before the frame is committed as real
 export const ISRESIZING_FLAG_RESET_MS = 2;
 // Mutter can skip the size-changed confirmation on a fast maximize/unmaximize
 // toggle, so force the move after this long instead of leaving the window stuck.

@@ -1,6 +1,6 @@
 // Copyright 2025-2026 Cleo Menezes Jr.
 // SPDX-License-Identifier: GPL-3.0-or-later
-// ResizeHandler - Manages window resize operations and maximize undo.
+// Window resize operations and maximize undo
 
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -71,19 +71,67 @@ export const ResizeHandler = GObject.registerClass({
         this._constraintRebalanceCount = 0;
     }
 
-    // A clamp seen shortly after window creation might just be the client still
-    // negotiating its own size, not a real minimum, so allow one retry per target.
-    _shouldRetryClamp(window, pendingSmartSize) {
+    // Shared by the size-changed path and the deferred verification: once the
+    // client had its chance, a frame still above target is a genuine minimum.
+    _commitClampedSize(window, pendingSmartSize, rect) {
+        Logger.log(`[SMART RESIZE] Window ${window.get_id()} clamped: target=${pendingSmartSize.width}×${pendingSmartSize.height}, actual=${rect.width}×${rect.height}`);
+        WindowState.set(window, 'targetSmartResizeSize', { width: rect.width, height: rect.height });
+        // Only the axis that stayed above target really clamped; the other reached
+        // target and shouldn't be pinned as a minimum.
+        if (rect.width > pendingSmartSize.width + 2) WindowState.set(window, 'actualMinWidth', rect.width);
+        if (rect.height > pendingSmartSize.height + 2) WindowState.set(window, 'actualMinHeight', rect.height);
+        this._disarmClampVerification(window);
+
+        // A window we just placed can clamp a few px against its own minimum.
+        // Rebalancing right away races the tiling pass that's still settling
+        // it and can kick it right back out, so give it a moment first.
+        const now = GLib.get_monotonic_time() / 1000;
+        if (!this._resizeGracePeriod || (now - this._resizeGracePeriod) >= constants.REVERSE_RESIZE_PROTECTION_MS) {
+            this._queueConstraintRebalance(window);
+        } else {
+            Logger.log(`[SMART RESIZE] Window ${window.get_id()} clamp rebalance skipped; within grace period`);
+        }
+    }
+
+    // A frame above target shortly after window creation might just be the client
+    // still negotiating its own size, not a real minimum, so hold the commit.
+    _shouldDeferClampCommit(window) {
         const addedTime = WindowState.get(window, 'addedTime');
         if (addedTime === undefined) return false;
-        if (Date.now() - addedTime >= constants.RESIZE_CLAMP_SETTLE_WINDOW_MS) return false;
+        return (Date.now() - addedTime) < constants.RESIZE_CLAMP_SETTLE_WINDOW_MS;
+    }
 
-        const retriedTarget = WindowState.get(window, 'clampRetryTarget');
-        const alreadyRetriedThisTarget = retriedTarget
-            && retriedTarget.width === pendingSmartSize.width
-            && retriedTarget.height === pendingSmartSize.height;
+    // Only the tiler sends geometry; this just watches. A silent client gets its
+    // physical frame committed as truth once the over-target signals go quiet.
+    _armClampVerification(window, pendingSmartSize) {
+        this._disarmClampVerification(window);
 
-        return !alreadyRetriedThisTarget;
+        const verifyId = this._timeoutRegistry.add(constants.RESIZE_CLAMP_VERIFY_DELAY_MS, () => {
+            WindowState.remove(window, 'clampVerifyId');
+            if (!isWindowAlive(window)) return GLib.SOURCE_REMOVE;
+
+            // Whatever resolved or replaced this target meanwhile owns the state now.
+            const current = WindowState.get(window, 'targetSmartResizeSize');
+            if (!current || current.width !== pendingSmartSize.width || current.height !== pendingSmartSize.height)
+                return GLib.SOURCE_REMOVE;
+
+            const rect = window.get_frame_rect();
+            if (rect.width > pendingSmartSize.width + 2 || rect.height > pendingSmartSize.height + 2) {
+                Logger.log(`[SMART RESIZE] Window ${window.get_id()} never applied ${pendingSmartSize.width}×${pendingSmartSize.height}; committing frame ${rect.width}×${rect.height}`);
+                this._commitClampedSize(window, pendingSmartSize, rect);
+            } else {
+                WindowState.set(window, 'targetSmartResizeSize', null);
+            }
+            return GLib.SOURCE_REMOVE;
+        }, 'resizeHandler_clampVerify');
+        WindowState.set(window, 'clampVerifyId', verifyId);
+    }
+
+    _disarmClampVerification(window) {
+        const verifyId = WindowState.get(window, 'clampVerifyId');
+        if (verifyId === undefined) return;
+        this._timeoutRegistry.remove(verifyId);
+        WindowState.remove(window, 'clampVerifyId');
     }
 
     onResizeBegin(window, grabpo) {
@@ -182,7 +230,7 @@ export const ResizeHandler = GObject.registerClass({
             Logger.log(`tryEnterSacred: Detected born-maximized window ${window.get_id()} - skipping isolation`);
             return;
         }
-        // Born-maximized guard (from onWindowCreated - for subsequent maximize events)
+        // Born-maximized guard (from onWindowCreated, for subsequent maximize events)
         if (WindowState.get(window, 'openedMaximized')) {
             return;
         }
@@ -245,7 +293,7 @@ export const ResizeHandler = GObject.registerClass({
     // Mirrors tryEnterSacred: also called from windowHandler's notify::fullscreen
     // as a backup, in case the size-change signal didn't fire for this exit either.
     // maximizedUndoInfo gets removed right after use, so calling this twice for the
-    // same exit is safe - the second call just finds nothing left to undo.
+    // same exit is safe; the second call just finds nothing left to undo.
     tryExitSacred(window) {
         // Born-maximized windows: don't set unmaximizing flag or try undo
         if (WindowState.get(window, 'openedMaximized')) {
@@ -259,7 +307,7 @@ export const ResizeHandler = GObject.registerClass({
             WindowState.remove(window, 'maximizedUndoInfo');
         } else {
             // Window was never isolated (it was alone in its workspace), so there's
-            // nothing to undo - just let the transition flags clear after it settles.
+            // nothing to undo; just let the transition flags clear after it settles.
             const preferredSize = WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize');
             if (preferredSize) {
                 WindowState.set(window, 'targetRestoredSize', preferredSize);
@@ -294,46 +342,26 @@ export const ResizeHandler = GObject.registerClass({
             const pendingSmartSize = WindowState.get(window, 'targetSmartResizeSize');
             if (pendingSmartSize) {
                 if (rect.width > pendingSmartSize.width + 2 || rect.height > pendingSmartSize.height + 2) {
-                    if (this._shouldRetryClamp(window, pendingSmartSize)) {
-                        Logger.log(`[SMART RESIZE] Window ${window.get_id()} clamped while still settling: target=${pendingSmartSize.width}×${pendingSmartSize.height}, actual=${rect.width}×${rect.height}; retrying once`);
-                        WindowState.set(window, 'clampRetryTarget', { width: pendingSmartSize.width, height: pendingSmartSize.height });
-                        const retryRect = window.get_frame_rect();
-                        this._timeoutRegistry.add(constants.RESIZE_CLAMP_RETRY_DELAY_MS, () => {
-                            if (isWindowAlive(window)) {
-                                Logger.log(`[SMART RESIZE] Window ${window.get_id()} clamp retry firing: requesting ${pendingSmartSize.width}×${pendingSmartSize.height}`);
-                                window.move_resize_frame(false, retryRect.x, retryRect.y, pendingSmartSize.width, pendingSmartSize.height);
-                            } else {
-                                Logger.log(`[SMART RESIZE] Window ${window.get_id()} clamp retry skipped; window gone`);
-                            }
-                            return GLib.SOURCE_REMOVE;
-                        }, 'resizeHandler_clampRetry');
+                    if (this._shouldDeferClampCommit(window)) {
+                        // A young client often acks a beat late, so this frame is stale
+                        // rather than a real minimum; the verification settles it.
+                        Logger.log(`[SMART RESIZE] Window ${window.get_id()} above target while settling: target=${pendingSmartSize.width}×${pendingSmartSize.height}, actual=${rect.width}×${rect.height}; deferring to verification`);
+                        this._armClampVerification(window, pendingSmartSize);
                         this._sizeChanged = false;
                         return;
                     }
 
-                    // The retry (or the settle window for older ones) already gave the async
-                    // resize its chance, so a frame still above target now is a genuine client
-                    // minimum, not lag. Trust it instead of guessing from how far it shrank.
-                    Logger.log(`[SMART RESIZE] Window ${window.get_id()} clamped: target=${pendingSmartSize.width}×${pendingSmartSize.height}, actual=${rect.width}×${rect.height}`);
-                    WindowState.set(window, 'targetSmartResizeSize', { width: rect.width, height: rect.height });
-                    // Only the axis that stayed above target really clamped; the other reached
-                    // target and shouldn't be pinned as a minimum.
-                    if (rect.width > pendingSmartSize.width + 2) WindowState.set(window, 'actualMinWidth', rect.width);
-                    if (rect.height > pendingSmartSize.height + 2) WindowState.set(window, 'actualMinHeight', rect.height);
-                    WindowState.remove(window, 'clampRetryTarget');
-
-                    // A window we just placed can clamp a few px against its own minimum.
-                    // Rebalancing right away races the tiling pass that's still settling
-                    // it and can kick it right back out, so give it a moment first.
-                    const now = GLib.get_monotonic_time() / 1000;
-                    if (!this._resizeGracePeriod || (now - this._resizeGracePeriod) >= constants.REVERSE_RESIZE_PROTECTION_MS) {
-                        this._queueConstraintRebalance(window);
-                    } else {
-                        Logger.log(`[SMART RESIZE] Window ${window.get_id()} clamp rebalance skipped; within grace period`);
-                    }
+                    this._commitClampedSize(window, pendingSmartSize, rect);
                 } else {
+                    // A frame observed below a recorded minimum disproves it, so drop the pin.
+                    const minW = WindowState.get(window, 'actualMinWidth');
+                    const minH = WindowState.get(window, 'actualMinHeight');
+                    if ((minW && rect.width < minW - 2) || (minH && rect.height < minH - 2)) {
+                        WindowState.remove(window, 'actualMinWidth');
+                        WindowState.remove(window, 'actualMinHeight');
+                    }
                     WindowState.set(window, 'targetSmartResizeSize', null);
-                    WindowState.remove(window, 'clampRetryTarget');
+                    this._disarmClampVerification(window);
                 }
                 this._sizeChanged = false;
                 return;
@@ -762,7 +790,7 @@ export const ResizeHandler = GObject.registerClass({
         }
 
         // Wait for the real size-changed confirmation instead of guessing with
-        // a timer - a fixed delay could move the window before it's actually
+        // a timer; a fixed delay could move the window before it's actually
         // done resizing, and it'd show up at the destination still huge.
         WindowState.set(window, 'isRestoringSacred', origIndex);
         WindowState.set(window, 'sacredFitConfirmed', true);
