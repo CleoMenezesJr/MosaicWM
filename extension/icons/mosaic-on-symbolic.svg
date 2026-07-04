@@ -1,7 +1,10 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg enable-background="new" height="16" width="16" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:svg="http://www.w3.org/2000/svg" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" sodipodi:docname="mosaic-on-idea.svg" inkscape:version="1.4.3 (0d15f75042, 2025-12-25)">
-    <sodipodi:namedview pagecolor="#ffffff" bordercolor="#000000" borderopacity="0.25" inkscape:showpageshadow="2" inkscape:pageopacity="0.0" inkscape:pagecheckerboard="0" inkscape:deskcolor="#d1d1d1" showgrid="true" inkscape:zoom="27.185291" inkscape:cx="1.8024453" inkscape:cy="7.0626429" inkscape:window-width="1920" inkscape:window-height="1011" inkscape:window-x="0" inkscape:window-y="0" inkscape:window-maximized="1" inkscape:current-layer="svg7384">
-        <inkscape:grid units="px" originx="0" originy="0" spacingx="1" spacingy="1" empcolor="#0099e5" empopacity="0.30196078" empspacing="5" enabled="true" visible="true"/>
-    </sodipodi:namedview>
-    <path d="m 2.2851562 0 c -1.2662854 -0 -2.2851562 1.0188706 -2.2851562 2.2851562 v 11.4296878 c -0 1.266285 1.0188706 2.285156 2.2851562 2.285156 h 11.4296878 c 1.266285 0 2.285156 -1.018871 2.285156 -2.285156 v -11.4296878 c 0 -1.2662854 -1.018871 -2.2851562 -2.285156 -2.2851562 z m 0.7148438 2 h 2 c 0.554 0 1 0.446 1 1 v 10 c 0 0.554 -0.446 1 -1 1 h -2 c -0.554 0 -1 -0.446 -1 -1 v -10 c 0 -0.554 0.446 -1 1 -1 z m 6 0 h 4 c 0.554 0 1 0.446 1 1 v 1 c 0 0.554 -0.446 1 -1 1 h -4 c -0.554 0 -1 -0.446 -1 -1 v -1 c 0 -0.554 0.446 -1 1 -1 z m 0 5 h 4 c 0.554 0 1 0.446 1 1 v 5 c 0 0.554 -0.446 1 -1 1 h -4 c -0.554 0 -1 -0.446 -1 -1 v -5 c 0 -0.554 0.446 -1 1 -1 z" stroke-width="1.14286"/>
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_25_21)">
+<path d="M13 0C14.6569 0 16 1.34315 16 3V13C16 14.6569 14.6569 16 13 16H3C1.34315 16 0 14.6569 0 13V3C0 1.34315 1.34315 0 3 0H13ZM3 2C2.44772 2 2 2.44772 2 3V13C2 13.5523 2.44772 14 3 14H5C5.55228 14 6 13.5523 6 13V3C6 2.44772 5.55228 2 5 2H3ZM9 7C8.44772 7 8 7.44772 8 8V13C8 13.5523 8.44772 14 9 14H13C13.5523 14 14 13.5523 14 13V8C14 7.44772 13.5523 7 13 7H9ZM9 2C8.44772 2 8 2.44772 8 3V4C8 4.55228 8.44772 5 9 5H13C13.5523 5 14 4.55228 14 4V3C14 2.44772 13.5523 2 13 2H9Z" fill="#222222"/>
+</g>
+<defs>
+<clipPath id="clip0_25_21">
+<rect width="16" height="16" fill="white"/>
+</clipPath>
+</defs>
 </svg>
