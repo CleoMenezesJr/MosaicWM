@@ -411,6 +411,66 @@ export const WindowHandler = GObject.registerClass({
         }
     }
 
+    onWindowLeftMonitor(monitor, window) {
+        if (!this._windowSignals.has(window)) return;
+
+        // Mutter flips on_all_workspaces (workspaces-only-on-primary) before emitting this,
+        // so the window may already report no workspace of its own.
+        const workspace = window.get_workspace() ?? global.workspace_manager.get_active_workspace();
+        if (!workspace) return;
+
+        Logger.log(`Window ${window.get_id()} left monitor ${monitor}`);
+
+        // onWindowRemoved runs before this signal and can only see the destination
+        // monitor, so leave the source behind for its deferred count to pick up.
+        WindowState.set(window, 'leftMonitor', monitor);
+        WindowState.set(window, 'leftMonitorAt', Date.now());
+
+        this.windowingManager.invalidateWindowsCache();
+
+        // Under a grab the drag passes own the layout; retiling here on top of them feeds
+        // reverse smart resize back into tiling forever. stopDrag retiles the source.
+        if (this._ext.dragHandler._draggedWindow) return;
+
+        // Mutter discards resizes while the overview is open, so an overview drag would
+        // leave the source mosaic half-positioned. Hand it to onOverviewHidden instead.
+        if (Main.overview.visible) {
+            this._pendingRestoreRetiles.push({ workspace, monitor, windows: [] });
+            return;
+        }
+
+        this._timeoutRegistry.add(constants.RETILE_DELAY_MS, () => {
+            this.windowingManager.invalidateWindowsCache();
+            this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
+            return GLib.SOURCE_REMOVE;
+        }, 'windowHandler_leftMonitorRetile');
+    }
+
+    onWindowEnteredMonitor(monitor, window) {
+        if (!this._windowSignals.has(window)) return;
+
+        // A grab drag ends in stopDrag, which tiles the destination itself. Overview
+        // drags, keyboard moves and monitor hotplug have no grab, so this is the only
+        // place that gets the arriving window into the mosaic.
+        if (this._ext.dragHandler._draggedWindow) return;
+
+        // An on-all-workspaces window reports no workspace of its own, but it does show
+        // up in every workspace's list, so the active one is the right context to tile in.
+        const workspace = window.get_workspace() ?? global.workspace_manager.get_active_workspace();
+        if (!workspace || this.windowingManager.isExcluded(window)) return;
+
+        Logger.log(`Window ${window.get_id()} entered monitor ${monitor}; evaluating for mosaic`);
+
+        this.windowingManager.invalidateWindowsCache();
+
+        if (Main.overview.visible) {
+            WindowState.set(window, 'deferTilingUntilOverviewHidden', true);
+            return;
+        }
+
+        this.enqueueWindowForEvaluation(window, workspace, monitor);
+    }
+
     // Tries to bring back the oldest miniature when space frees up. Shared by
     // the close, move and live-resize paths so they don't duplicate the fit check.
     _tryAutoRestoreMiniature(remainingWindows, workspace, monitor) {
@@ -1284,7 +1344,16 @@ export const WindowHandler = GObject.registerClass({
 
         this._timeoutRegistry.add(constants.WINDOW_VALIDITY_CHECK_INTERVAL_MS, () => {
             const WORKSPACE = workspace;
-            const MONITOR = removedMonitor;
+
+            // A window leaving for another monitor already reports the destination here,
+            // which counts the siblings it left behind as zero and reads as an empty
+            // workspace. onWindowLeftMonitor fires right after us with the real source.
+            const leftMonitorAt = WindowState.get(window, 'leftMonitorAt');
+            const cameFromMonitorMove = leftMonitorAt &&
+                Date.now() - leftMonitorAt < constants.SAFETY_TIMEOUT_BUFFER_MS;
+            const MONITOR = cameFromMonitorMove
+                ? WindowState.get(window, 'leftMonitor')
+                : removedMonitor;
 
             if (!WORKSPACE || WORKSPACE.index() < 0) {
                 return GLib.SOURCE_REMOVE;

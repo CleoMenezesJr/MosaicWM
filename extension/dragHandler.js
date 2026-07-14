@@ -91,6 +91,9 @@ export const DragHandler = GObject.registerClass({
             this._draggedWindow = window;
             this.tilingManager.setGrabbedWindow(window);
 
+            // Only monitor crossings from this drag should retile a source at the drop.
+            WindowState.remove(window, 'leftMonitor');
+
             // The edge preview is the only thing that miniaturizes mid-drag, so whatever gets
             // created while the grab is live is ours to hand back if the drop never happens.
             if (!this._miniatureCreatedId && this._ext.miniatureManager) {
@@ -100,7 +103,6 @@ export const DragHandler = GObject.registerClass({
 
             const windowState = this.edgeTilingManager.getWindowState(window);
 
-            // Initialize _currentZone with window's zone if it's already edge-tiled
             if (windowState && windowState.zone !== TileZone.NONE) {
                 this._currentZone = windowState.zone;
                 Logger.log(`Edge tiling: window was in zone ${windowState.zone}, initializing _currentZone`);
@@ -119,7 +121,6 @@ export const DragHandler = GObject.registerClass({
                     this._skipNextTiling = null;
                     this._currentZone = TileZone.NONE; // Reset so window doesn't get re-tiled on release
 
-                    // Check if button was already released during restoration
                     const [_x, _y, mods] = global.get_pointer();
                     const isButtonPressed = (mods & Clutter.ModifierType.BUTTON1_MASK) !== 0;
 
@@ -129,7 +130,6 @@ export const DragHandler = GObject.registerClass({
                         // The retile below can only move the window once nothing claims the cursor holds it.
                         this.tilingManager.setGrabbedWindow(null);
 
-                        // Retile the workspace so the window returns to mosaic position
                         const workspace = window.get_workspace();
                         const monitor = window.get_monitor();
                         if (workspace && monitor !== null) {
@@ -166,7 +166,6 @@ export const DragHandler = GObject.registerClass({
                 this._currentZone = TileZone.NONE;
             }
 
-            // Drive edge-tiling detection from Mutter's position-changed signal
             Logger.log('Connecting signal-based edge tiling listeners');
             this._dragPositionChangedId = this._draggedWindow.connect('position-changed', this._onDragPositionChanged.bind(this));
         }
@@ -276,7 +275,6 @@ export const DragHandler = GObject.registerClass({
 
             this.edgeTilingManager.setEdgeTilingActive(false, null);
 
-            // Failsafe: Always clear ghost windows on drag end
             this.clearGhostWindows();
             // Anything still listed here belongs to a preview that never reached a tile.
             this._restorePreviewMiniatures();
@@ -301,14 +299,26 @@ export const DragHandler = GObject.registerClass({
                 !skipTiling)
             {
                 afterAnimations(this.animationsManager, () => {
-                    this.tilingManager.tileWorkspaceWindows(window.get_workspace(), window, window.get_monitor(), false);
+                    // A window on a secondary monitor under workspaces-only-on-primary has
+                    // no workspace of its own, but it sits in every workspace's list.
+                    const workspace = window.get_workspace() ?? global.workspace_manager.get_active_workspace();
+                    const monitor = window.get_monitor();
+                    this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
+
+                    // The drag crossed monitors; the siblings it left behind still hold its
+                    // slot open. onWindowLeftMonitor leaves the source here instead of
+                    // retiling mid-grab, which would fight the drag passes above.
+                    const sourceMonitor = WindowState.get(window, 'leftMonitor');
+                    if (sourceMonitor !== undefined && sourceMonitor !== monitor) {
+                        WindowState.remove(window, 'leftMonitor');
+                        this.tilingManager.tileWorkspaceWindows(workspace, null, sourceMonitor, false);
+                    }
                 }, this._timeoutRegistry);
             }
         } else {
             this.reorderingManager.stopDrag(window, true);
         }
 
-        // UNCONDITIONAL CLEANUP
         this.clearGhostWindows();
         this.drawingManager.hideTilePreview();
     };
@@ -333,7 +343,6 @@ export const DragHandler = GObject.registerClass({
             }
         }
 
-        // THROTTLED VISUAL UPDATE
         if (this._isPositionProcessing) return;
         this._isPositionProcessing = true;
 
