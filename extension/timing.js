@@ -10,6 +10,13 @@ import * as constants from './constants.js';
 
 const FALLBACK_ANIMATION_MS = 250;
 
+// Milliseconds, matching the constants these get compared against. The wall clock
+// can step backwards on an NTP correction, and a negative delta reads as "just
+// happened" to every dedupe and settle check we have.
+export function monotonicNow() {
+    return GLib.get_monotonic_time() / 1000;
+}
+
 export function getAnimationsEnabled() {
     return St.Settings.get().enable_animations;
 }

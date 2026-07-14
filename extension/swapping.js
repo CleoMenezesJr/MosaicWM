@@ -3,9 +3,9 @@
 // Window swapping logic
 
 import * as Logger from './logger.js';
-import GLib from 'gi://GLib';
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
+import { monotonicNow } from './timing.js';
 
 import GObject from 'gi://GObject';
 
@@ -307,7 +307,7 @@ export const SwappingManager = GObject.registerClass({
 
         // Hysteresis: prevent rapid oscillation of the neighbor swap below.
         const lastSwap = WindowState.get(window, 'lastSwapTime');
-        const now = GLib.get_monotonic_time() / 1000;
+        const now = monotonicNow();
         if (lastSwap && (now - lastSwap) < 500) {
             Logger.log(`Swap throttled for window ${window.get_id()}`);
             return false;
@@ -336,13 +336,13 @@ export const SwappingManager = GObject.registerClass({
                     return false;
                 } else {
                     const success = this._tileToEmptyZone(window, neighbor.zone, workspace, monitor);
-                    if (success) WindowState.set(window, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
+                    if (success) WindowState.set(window, 'lastSwapTime', monotonicNow());
                     return success;
                 }
             case 'empty_tiling_expand':
                 if (isWindowTiled && this._edgeTilingManager.isQuarterZone(windowState.zone)) {
                     const success = this._expandQuarterToFull(window, windowState.zone, neighbor.zone, workspace, monitor);
-                    if (success) WindowState.set(window, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
+                    if (success) WindowState.set(window, 'lastSwapTime', monotonicNow());
                     return success;
                 }
                 return false;
@@ -381,8 +381,8 @@ export const SwappingManager = GObject.registerClass({
         this._tilingManager.clearTmpSwap();
         this._tilingManager.invalidateLayoutCache();
         this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
-        WindowState.set(window1, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
-        WindowState.set(window2, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
+        WindowState.set(window1, 'lastSwapTime', monotonicNow());
+        WindowState.set(window2, 'lastSwapTime', monotonicNow());
         return true;
     }
 
@@ -396,8 +396,8 @@ export const SwappingManager = GObject.registerClass({
         const workArea = workspace.get_work_area_for_monitor(monitor);
         this._edgeTilingManager.applyTile(mosaicWindow, tiledZone, workArea, true);
 
-        WindowState.set(mosaicWindow, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
-        WindowState.set(tiledWindow, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
+        WindowState.set(mosaicWindow, 'lastSwapTime', monotonicNow());
+        WindowState.set(tiledWindow, 'lastSwapTime', monotonicNow());
         return true;
     }
 
@@ -414,8 +414,8 @@ export const SwappingManager = GObject.registerClass({
         this._edgeTilingManager.applyTile(window1, zone2, workArea);
         this._edgeTilingManager.applyTile(window2, zone1, workArea);
 
-        WindowState.set(window1, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
-        WindowState.set(window2, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
+        WindowState.set(window1, 'lastSwapTime', monotonicNow());
+        WindowState.set(window2, 'lastSwapTime', monotonicNow());
 
         return true;
     }
@@ -426,7 +426,7 @@ export const SwappingManager = GObject.registerClass({
         Logger.log(`Tiling window ${window.get_id()} to empty zone ${zone}`);
         const workArea = workspace.get_work_area_for_monitor(monitor);
         this._edgeTilingManager.applyTile(window, zone, workArea);
-        WindowState.set(window, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
+        WindowState.set(window, 'lastSwapTime', monotonicNow());
         return true;
     }
 
@@ -436,7 +436,7 @@ export const SwappingManager = GObject.registerClass({
         Logger.log(`Expanding quarter tile ${window.get_id()} to ${targetZone}`);
         const workArea = workspace.get_work_area_for_monitor(monitor);
         this._edgeTilingManager.applyTile(window, targetZone, workArea);
-        WindowState.set(window, 'lastSwapTime', GLib.get_monotonic_time() / 1000);
+        WindowState.set(window, 'lastSwapTime', monotonicNow());
         return true;
     }
 

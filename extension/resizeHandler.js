@@ -5,7 +5,7 @@
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import * as Logger from './logger.js';
-import { afterWorkspaceSwitch, afterAnimations } from './timing.js';
+import { afterWorkspaceSwitch, afterAnimations, monotonicNow } from './timing.js';
 import * as WindowState from './windowState.js';
 import * as constants from './constants.js';
 import { TileZone } from './constants.js';
@@ -82,7 +82,7 @@ export const ResizeHandler = GObject.registerClass({
         // A window we just placed can clamp a few px against its own minimum.
         // Rebalancing right away races the tiling pass that's still settling
         // it and can kick it right back out, so give it a moment first.
-        const now = GLib.get_monotonic_time() / 1000;
+        const now = monotonicNow();
         if (!this._resizeGracePeriod || (now - this._resizeGracePeriod) >= constants.REVERSE_RESIZE_PROTECTION_MS) {
             this._queueConstraintRebalance(window);
         } else {
@@ -96,11 +96,11 @@ export const ResizeHandler = GObject.registerClass({
         // The frame settles relative to when the target was applied, not when the window was born;
         // an old window handed a fresh target is still mid-shrink, not clamping.
         const setAt = WindowState.get(window, 'targetSmartResizeSetAt');
-        if (setAt !== undefined && (Date.now() - setAt) < constants.RESIZE_CLAMP_SETTLE_WINDOW_MS)
+        if (setAt !== undefined && (monotonicNow() - setAt) < constants.RESIZE_CLAMP_SETTLE_WINDOW_MS)
             return true;
         const addedTime = WindowState.get(window, 'addedTime');
         if (addedTime === undefined) return false;
-        return (Date.now() - addedTime) < constants.RESIZE_CLAMP_SETTLE_WINDOW_MS;
+        return (monotonicNow() - addedTime) < constants.RESIZE_CLAMP_SETTLE_WINDOW_MS;
     }
 
     // Only the tiler sends geometry; a silent client gets its frame committed
@@ -177,7 +177,7 @@ export const ResizeHandler = GObject.registerClass({
             this._resizeDebounceTimeout = null;
         }
 
-        this._resizeGracePeriod = GLib.get_monotonic_time() / 1000;
+        this._resizeGracePeriod = monotonicNow();
 
         if (this._resizeInOverflow || this._resizeOverflowWindow === window) {
             Logger.log('Resize ended with overflow - moving window to new workspace');
@@ -522,7 +522,7 @@ export const ResizeHandler = GObject.registerClass({
             if (!this.windowingManager.isMaximizedOrFullscreen(window)) {
                 const isManualResize = this._currentGrabOp && isResizeGrabOp(this._currentGrabOp);
                 const windowId = window.get_id();
-                const resizeNow = GLib.get_monotonic_time() / 1000;
+                const resizeNow = monotonicNow();
                 const isActiveResize = isManualResize ||
                     (this._lastResizeWindow === windowId && (resizeNow - this._lastResizeTime) < constants.RESIZE_SETTLE_DELAY_MS * 2);
                 this._lastResizeWindow = windowId;
@@ -589,7 +589,7 @@ export const ResizeHandler = GObject.registerClass({
                 }
 
                 const canFit = this.tilingManager.canFitWindow(window, workspace, monitor);
-                const now = GLib.get_monotonic_time() / 1000;
+                const now = monotonicNow();
                 if (this._resizeGracePeriod && (now - this._resizeGracePeriod) < constants.REVERSE_RESIZE_PROTECTION_MS) {
                     this._sizeChanged = false;
                     return;
@@ -745,7 +745,7 @@ export const ResizeHandler = GObject.registerClass({
 
             // Same clamp protection as above, so this window doesn't get
             // rebalanced right after it just landed.
-            this._resizeGracePeriod = GLib.get_monotonic_time() / 1000;
+            this._resizeGracePeriod = monotonicNow();
 
             this._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
                 WindowState.remove(window, 'unmaximizing');

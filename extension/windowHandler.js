@@ -15,7 +15,7 @@ import * as WindowState from './windowState.js';
 import { IS_MINIATURE } from './windowState.js';
 import { ComputedLayouts } from './tiling.js';
 import { isWindowAlive } from './liveness.js';
-import { afterWorkspaceSwitch, afterAnimations, afterWindowClose } from './timing.js';
+import { afterWorkspaceSwitch, afterAnimations, afterWindowClose, monotonicNow } from './timing.js';
 
 export const WindowHandler = GObject.registerClass({
     GTypeName: 'MosaicWindowHandler',
@@ -423,7 +423,7 @@ export const WindowHandler = GObject.registerClass({
         // onWindowRemoved runs before this signal and can only see the destination
         // monitor, so leave the source behind for its deferred count to pick up.
         WindowState.set(window, 'leftMonitor', monitor);
-        WindowState.set(window, 'leftMonitorAt', Date.now());
+        WindowState.set(window, 'leftMonitorAt', monotonicNow());
 
         this.windowingManager.invalidateWindowsCache();
 
@@ -705,8 +705,8 @@ export const WindowHandler = GObject.registerClass({
         // window-created and window-added both land here for a new window, so
         // skip if we just evaluated it.
         const lastEvaluatedAt = WindowState.get(window, 'lastEvaluatedAt');
-        if (lastEvaluatedAt && (Date.now() - lastEvaluatedAt) < constants.DUPLICATE_EVALUATION_WINDOW_MS) {
-            Logger.log(`Skipping re-enqueue for window ${windowId} - evaluated ${Date.now() - lastEvaluatedAt}ms ago`);
+        if (lastEvaluatedAt && (monotonicNow() - lastEvaluatedAt) < constants.DUPLICATE_EVALUATION_WINDOW_MS) {
+            Logger.log(`Skipping re-enqueue for window ${windowId} - evaluated ${Math.round(monotonicNow() - lastEvaluatedAt)}ms ago`);
             return;
         }
         Logger.log(`Enqueueing window ${windowId} for evaluation`);
@@ -738,7 +738,7 @@ export const WindowHandler = GObject.registerClass({
         while (this._evaluationQueue.length > 0) {
             let { window, workspace, monitor } = this._evaluationQueue.shift();
             WindowState.remove(window, 'pendingInQueue');
-            WindowState.set(window, 'lastEvaluatedAt', Date.now());
+            WindowState.set(window, 'lastEvaluatedAt', monotonicNow());
 
             if (!isWindowAlive(window)) {
                 Logger.log('Evaluation queue: window destroyed before evaluation, skipping');
@@ -1202,7 +1202,7 @@ export const WindowHandler = GObject.registerClass({
 
         // addedTime orders miniaturization candidates; arrivalPending shields the
         // window until its arrival evaluation resolves placement.
-        WindowState.set(window, 'addedTime', Date.now());
+        WindowState.set(window, 'addedTime', monotonicNow());
         WindowState.set(window, 'arrivalPending', true);
 
         // Flag the first-ever tiling pass for this window so it slides in instead
@@ -1261,7 +1261,7 @@ export const WindowHandler = GObject.registerClass({
             // workspace within SAFETY_TIMEOUT_BUFFER_MS, so this add is the drop side.
             const previousWorkspaceIndex = WindowState.get(WINDOW, 'previousWorkspace');
             const removedTimestamp = WindowState.get(WINDOW, 'removedTimestamp');
-            const timeSinceRemoved = removedTimestamp ? Date.now() - removedTimestamp : Infinity;
+            const timeSinceRemoved = removedTimestamp ? monotonicNow() - removedTimestamp : Infinity;
 
             if (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index() && timeSinceRemoved < constants.SAFETY_TIMEOUT_BUFFER_MS) {
                 // Skip if this is an overflow move, not a real drag-drop
@@ -1320,7 +1320,7 @@ export const WindowHandler = GObject.registerClass({
         // On destroy, both the 'unmanaged' handler and the workspace
         // 'window-removed' signal land here, so dedupe to keep the retile/restore
         // pipeline (and miniature auto-restore) from running twice.
-        const now = Date.now();
+        const now = monotonicNow();
         const lastHandled = WindowState.get(window, 'removalHandledAt');
         if (lastHandled && now - lastHandled < constants.SAFETY_TIMEOUT_BUFFER_MS) {
             Logger.log(`onWindowRemoved: duplicate removal event for ${window.get_id()} - skipping`);
@@ -1357,7 +1357,7 @@ export const WindowHandler = GObject.registerClass({
             // workspace. onWindowLeftMonitor fires right after us with the real source.
             const leftMonitorAt = WindowState.get(window, 'leftMonitorAt');
             const cameFromMonitorMove = leftMonitorAt &&
-                Date.now() - leftMonitorAt < constants.SAFETY_TIMEOUT_BUFFER_MS;
+                monotonicNow() - leftMonitorAt < constants.SAFETY_TIMEOUT_BUFFER_MS;
             const MONITOR = cameFromMonitorMove
                 ? WindowState.get(window, 'leftMonitor')
                 : removedMonitor;

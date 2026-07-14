@@ -23,7 +23,7 @@ import {
 } from './windowState.js';
 import { getMiniatureSize, applyMiniatureActorState, animateMiniatureToTarget } from './miniature.js';
 import { isWindowAlive } from './liveness.js';
-import { getSlowDownFactor } from './timing.js';
+import { getSlowDownFactor, monotonicNow } from './timing.js';
 
 const POSITION_STABILITY_WEIGHT = 40;
 // High enough to beat the other terms combined (they max out at 140), so
@@ -204,7 +204,6 @@ export const TilingManager = GObject.registerClass({
             return { width: preferred.width, height: preferred.height };
         }
 
-        // Final fallback (should rarely happen for managed windows)
         return {
             width: constants.SMART_RESIZE_MIN_WINDOW_WIDTH,
             height: constants.SMART_RESIZE_MIN_WINDOW_HEIGHT,
@@ -238,7 +237,7 @@ export const TilingManager = GObject.registerClass({
     // (transient) from "won't shrink" (a real minimum), keyed off the target, not the window's age.
     _setSmartResizeTarget(window, size) {
         WindowState.set(window, 'targetSmartResizeSize', { width: size.width, height: size.height });
-        WindowState.set(window, 'targetSmartResizeSetAt', Date.now());
+        WindowState.set(window, 'targetSmartResizeSetAt', monotonicNow());
     }
 
     // Native maximum size via Mutter 50+ get_max_size()
@@ -258,7 +257,6 @@ export const TilingManager = GObject.registerClass({
                currentSize.height <= minSize.height + tolerance;
     }
 
-    // Try gain factors from 1.0→0.1 and return the best one that fits without overflow
     findBestRestorationGain(windows, shrunkWindows, workArea) {
         for (let gainFactor = 1.0; gainFactor >= 0.1; gainFactor -= 0.1) {
             const simulatedWindows = windows.map(w => {
@@ -854,7 +852,7 @@ export const TilingManager = GObject.registerClass({
     _findOptimalOrder(windows, workArea, tilingFn) {
         if (windows.length <= 1) return windows;
 
-        const startTime = Date.now();
+        const startTime = monotonicNow();
         const permutations = this._generatePermutations(windows);
         const currentIds = this._lastTiledOrder ?? windows.map(w => w.id);
 
@@ -893,7 +891,7 @@ export const TilingManager = GObject.registerClass({
             }
         }
 
-        const elapsed = Date.now() - startTime;
+        const elapsed = Math.round(monotonicNow() - startTime);
         Logger.log(`_findOptimalOrder: ${windows.length} windows, ${permutations.length} permutations, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
 
         return bestOrder;
@@ -2449,7 +2447,6 @@ export const TilingManager = GObject.registerClass({
         return !layout.overflow;
     }
 
-    // Restore a window's size to its preferred/original dimensions
     restorePreferredSize(window) {
         if (!window) return;
 
@@ -2468,7 +2465,6 @@ export const TilingManager = GObject.registerClass({
         }
     }
 
-    // Save original size of a window before resizing
     saveOriginalSize(window) {
         if (!WindowState.has(window, 'originalSize')) {
             const frame = window.get_frame_rect();
@@ -2477,9 +2473,7 @@ export const TilingManager = GObject.registerClass({
         }
     }
 
-    // Save the preferred size of a window (called once when window first appears or user manually resizes)
-    // This is the TARGET size the window wants to be
-
+    // TARGET size the window wants to be
     savePreferredSize(window) {
         // Smart resize sets preferredSize itself in commitResizes().
         if (WindowState.get(window, 'isSmartResizing') || WindowState.get(window, 'isReverseSmartResizing')) {
@@ -2546,8 +2540,6 @@ export const TilingManager = GObject.registerClass({
             Logger.log(`savePreferredSize: Could not determine valid preferred size for ${window.get_id()}`);
         }
     }
-
-    // Clear preferred size when window is destroyed
 
     clearPreferredSize(window) {
         if (WindowState.has(window, 'preferredSize')) {
@@ -2758,7 +2750,6 @@ export const TilingManager = GObject.registerClass({
         return { x: area.x, y: area.y, width: Math.min(area.width, maxW), height: Math.min(area.height, maxH) };
     }
 
-    // Helper to get usable work area considering edge tiles
     getUsableWorkArea(workspace, monitor) {
         if (this._edgeTilingManager) {
             const edgeTiledWindows = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
@@ -2778,7 +2769,6 @@ export const TilingManager = GObject.registerClass({
         return this._clampedWorkArea(workspace, monitor);
     }
 
-    // Calculate layouts without moving windows (for Overview)
     calculateLayoutsOnly(targetWorkspace = null, targetMonitor = null) {
         const workspace = targetWorkspace || global.workspace_manager.get_active_workspace();
 
