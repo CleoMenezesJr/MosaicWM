@@ -107,6 +107,13 @@ export default class WindowMosaicExtension extends Extension {
         if (this.edgeTilingManager)
             this.edgeTilingManager.clearAllStates();
 
+        // A window still mid-entrance was hidden expecting a tile pass that now
+        // won't come, so hand it back its visibility here.
+        if (this.windowHandler) {
+            for (const window of workspace.list_windows())
+                this.windowHandler.revealPendingEntrance(window);
+        }
+
         // 300 ms margin lets the 250 ms miniature-restore animations finish first.
         this._timeoutRegistry?.add(300, () => {
             if (!this.isMosaicEnabledForWorkspace(workspace))

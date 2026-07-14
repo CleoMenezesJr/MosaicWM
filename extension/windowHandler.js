@@ -68,9 +68,21 @@ export const WindowHandler = GObject.registerClass({
         this._readinessWaiters.add(waiter);
     }
 
+    // Claiming the entrance hides the actor and cancels Mutter's open animation,
+    // betting the tile pass eases it in. Whoever the tile pass won't touch (disabled
+    // workspace, sacred, opening alone) can't take that bet: the failsafe a full
+    // second later would be their only way back to visible.
+    shouldSkipSlideIn(window) {
+        return WindowState.get(window, 'movedByOverflow') || this._ext._overflowInProgress
+            || !this._ext.isMosaicEnabledForWorkspace(window.get_workspace())
+            || this.windowingManager.isMaximizedOrFullscreen(window)
+            || this.windowingManager.isExcludedByPolicy(window)
+            || !this._hasSiblings(window);
+    }
+
     // Floating windows never enter the tile pass that would clear opacity=0;
     // reveal so the slide-in failsafe isn't their only path to visibility.
-    _revealExcludedWindow(window) {
+    revealPendingEntrance(window) {
         if (!WindowState.get(window, 'pendingFirstPlacement')) return;
         WindowState.remove(window, 'pendingFirstPlacement');
         this.animationsManager.cancelPendingEntrance(window);
@@ -92,7 +104,6 @@ export const WindowHandler = GObject.registerClass({
         Logger.log(`Workspace ${workspace.index()} LOCKED for tiling (depth=${depth})`);
     }
 
-    // Unlock a workspace after tiling is complete.
     unlockWorkspace(workspace) {
         if (!workspace) return;
         const depth = (this._workspaceLocks.get(workspace) ?? 0) - 1;
@@ -105,13 +116,11 @@ export const WindowHandler = GObject.registerClass({
         }
     }
 
-    // Check if a workspace is currently locked for tiling.
     isWorkspaceLocked(workspace) {
         if (!workspace) return false;
         return (this._workspaceLocks.get(workspace) ?? 0) > 0;
     }
 
-    // Check if the evaluation queue is currently processing windows.
     get isEvaluatingQueue() {
         return this._isEvaluatingQueue;
     }
@@ -211,7 +220,6 @@ export const WindowHandler = GObject.registerClass({
         const currentExclusion = this.windowingManager.isExcluded(window);
         WindowState.set(window, 'previousExclusionState', currentExclusion);
 
-        // Track previous workspace for cross-workspace moves
         const currentWorkspace = window.get_workspace();
         if (currentWorkspace) {
             WindowState.set(window, 'previousWorkspace', currentWorkspace.index());
@@ -226,10 +234,8 @@ export const WindowHandler = GObject.registerClass({
             Logger.log(`Disconnected signals for window ${window.get_id()}`);
         }
 
-        // Clear layout cache
         ComputedLayouts.delete(window);
 
-        // Clean up other states
         WindowState.remove(window, 'previousExclusionState');
         WindowState.remove(window, 'previousWorkspace');
     }
@@ -329,7 +335,7 @@ export const WindowHandler = GObject.registerClass({
 
             // Exclusion arriving after opacity=0 was set (e.g. always-on-top
             // toggled mid-entrance) strands the actor invisible; reveal now.
-            this._revealExcludedWindow(window);
+            this.revealPendingEntrance(window);
 
             const frame = window.get_frame_rect();
             const freedWidth = frame.width;
@@ -949,7 +955,7 @@ export const WindowHandler = GObject.registerClass({
                 if(this.windowingManager.isExcluded(window)) {
                     Logger.log('Window excluded from tiling');
                     WindowState.remove(window, 'arrivalPending');
-                    this._revealExcludedWindow(window);
+                    this.revealPendingEntrance(window);
                     return GLib.SOURCE_REMOVE;
                 }
 
@@ -1039,11 +1045,7 @@ export const WindowHandler = GObject.registerClass({
         const actor = window.get_compositor_private();
         if (actor) {
             const isRelated = this.windowingManager.isRelated(window);
-            const skipSlideIn = WindowState.get(window, 'movedByOverflow') || this._ext._overflowInProgress
-                || this.windowingManager.isMaximizedOrFullscreen(window)
-                || this.windowingManager.isExcludedByPolicy(window)
-                || !this._hasSiblings(window);
-            if (isRelated && !skipSlideIn) {
+            if (isRelated && !this.shouldSkipSlideIn(window)) {
                 // Ask Mutter to skip its own open animation outright (the same public
                 // API altTab.js uses to skip the unminimize effect) instead of fighting
                 // it after the fact. Our own pipeline drives the entrance once it knows
@@ -1141,16 +1143,7 @@ export const WindowHandler = GObject.registerClass({
         // have a real visual position. onWindowCreated separately asks Mutter to
         // skip its own open animation (skipNextEffect) and nudges animateWindow's
         // deferred entrance once the actor is actually mapped.
-        // Sacred (maximized/fullscreen) windows never reach animateReTiling at all.
-        // _getWorkingInfo short-circuits tileWorkspaceWindows for them entirely, so
-        // claiming their entrance here would only suppress Mutter's own working
-        // native maximize animation without ever supplying a replacement. Same deal
-        // for a window opening alone (see _hasSiblings): nothing to slide in next to.
-        const skipSlideIn = WindowState.get(window, 'movedByOverflow') || this._ext._overflowInProgress
-            || this.windowingManager.isMaximizedOrFullscreen(window)
-            || this.windowingManager.isExcludedByPolicy(window)
-            || !this._hasSiblings(window);
-        if (!skipSlideIn) {
+        if (!this.shouldSkipSlideIn(window)) {
             WindowState.set(window, 'pendingFirstPlacement', true);
             const actor = window.get_compositor_private();
             // onWindowCreated races independently and may have already started (or
@@ -1352,7 +1345,7 @@ export const WindowHandler = GObject.registerClass({
                 Logger.log('waitForGeometry: Window is excluded - connecting signals but skipping tiling');
                 WindowState.remove(WINDOW, 'arrivalPending');
                 this.connectWindowSignals(WINDOW);
-                this._revealExcludedWindow(WINDOW);
+                this.revealPendingEntrance(WINDOW);
                 return GLib.SOURCE_REMOVE;
             }
 
