@@ -99,6 +99,19 @@ export default class WindowMosaicExtension extends Extension {
         return !this._mosaicDisabledByDefault;
     }
 
+    isMosaicEnabledAnywhere() {
+        const workspaceManager = global.workspace_manager;
+        const nWorkspaces = workspaceManager.get_n_workspaces();
+
+        for (let i = 0; i < nWorkspaces; i++) {
+            const workspace = workspaceManager.get_workspace_by_index(i);
+            if (workspace && this.isMosaicEnabledForWorkspace(workspace))
+                return true;
+        }
+
+        return false;
+    }
+
     disableWorkspaceMosaic(workspace) {
         if (!workspace) return;
 
@@ -321,7 +334,6 @@ export default class WindowMosaicExtension extends Extension {
             this._settingsOverrider.add(shellKeybindings, 'shift-overview-down', emptyArray);
         }
 
-        // Override Overview layout to preserve mosaic positions
         this._injectionManager = new InjectionManager();
 
         // Patch MonitorGroup._init to fix miniature clone positions and scale.
@@ -503,7 +515,6 @@ export default class WindowMosaicExtension extends Extension {
                 if (!Main.overview.visible)
                     return originalMethod.apply(this, args);
 
-                // Determine workspace from the windows in this layout
                 let workspace = null;
                 for (const win of this._sortedWindows) {
                     const mw = win.metaWindow || win.source?.metaWindow;
@@ -521,7 +532,6 @@ export default class WindowMosaicExtension extends Extension {
 
                 const isEnabled = extension.isMosaicEnabledForWorkspace(workspace);
 
-                // Determine if we should use Mosaic or Fallback to Native
                 let useMosaic = isEnabled;
                 if (isEnabled) {
                     for (const win of this._sortedWindows) {

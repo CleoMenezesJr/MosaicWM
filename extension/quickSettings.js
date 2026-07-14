@@ -127,6 +127,9 @@ const MosaicMenuToggle = GObject.registerClass(
             }
 
             this._updateGlobalToggleState();
+
+            // Dropping the last enabled workspace has to take the top bar icon with it.
+            this._extension._updateIndicatorIcon();
         }
 
         _updateCurrentWorkspaceHighlight() {
@@ -171,16 +174,7 @@ const MosaicMenuToggle = GObject.registerClass(
         }
 
         _updateGlobalToggleState() {
-            const nWorkspaces = this._workspaceManager.get_n_workspaces();
-            let anyEnabled = false;
-
-            for (let i = 0; i < nWorkspaces; i++) {
-                const workspace = this._workspaceManager.get_workspace_by_index(i);
-                if (workspace && this._extension.isMosaicEnabledForWorkspace(workspace)) {
-                    anyEnabled = true;
-                    break;
-                }
-            }
+            const anyEnabled = this._extension.isMosaicEnabledAnywhere();
 
             this.checked = anyEnabled;
             this.gicon = _getIcon(this._extension, anyEnabled ? 'mosaic-on-symbolic' : 'mosaic-off-symbolic');
@@ -213,7 +207,6 @@ export const MosaicIndicator = GObject.registerClass(
 
             this._indicator = this._addIndicator();
             this._indicator.gicon = _getIcon(extension, 'mosaic-on-symbolic');
-            this._indicator.visible = true;
 
             this._toggle = new MosaicMenuToggle(extension);
             this.quickSettingsItems.push(this._toggle);
@@ -222,9 +215,17 @@ export const MosaicIndicator = GObject.registerClass(
             this._wsSwitchedId = this._workspaceManager.connect('active-workspace-changed', () => {
                 this._updateIcon();
             });
+
+            this._updateIcon();
         }
 
         _updateIcon() {
+            // The off variant means "not on this workspace", so it only makes sense while
+            // mosaic still lives somewhere; off everywhere, the icon leaves the bar.
+            this._indicator.visible = this._extension.isMosaicEnabledAnywhere();
+            if (!this._indicator.visible)
+                return;
+
             const activeIndex = this._workspaceManager.get_active_workspace_index();
             const workspace = this._workspaceManager.get_workspace_by_index(activeIndex);
             const isEnabled = this._extension.isMosaicEnabledForWorkspace(workspace);
