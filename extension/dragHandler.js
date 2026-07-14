@@ -449,7 +449,6 @@ export const DragHandler = GObject.registerClass({
             }
         }
         this.clearGhostWindows();
-        this._clearPreviewMiniIcons();
         this._skipNextTiling = null;
         this._draggedWindow = null;
         this._currentZone = null;
