@@ -59,15 +59,16 @@ const MosaicMenuToggle = GObject.registerClass(
 
             this.gicon = _getIcon(this._extension, enabled ? 'mosaic-on-symbolic' : 'mosaic-off-symbolic');
 
-            if (enabled) {
-            // For WeakMap, iterate all workspaces and ensure they are NOT in the map (or false)
-                for (let i = 0; i < nWorkspaces; i++) {
-                    const workspace = this._workspaceManager.get_workspace_by_index(i);
-                    if (workspace) {
-                        this._extension._disabledWorkspaceStates.delete(workspace);
-                    }
-                }
+            // Carries over to workspaces that don't exist yet. Per-workspace exceptions
+            // are dropped since a global click overrides whatever was picked one by one.
+            this._extension._mosaicDisabledByDefault = !enabled;
+            for (let i = 0; i < nWorkspaces; i++) {
+                const workspace = this._workspaceManager.get_workspace_by_index(i);
+                if (workspace)
+                    this._extension._disabledWorkspaceStates.delete(workspace);
+            }
 
+            if (enabled) {
                 for (let i = 0; i < nWorkspaces; i++) {
                     const workspace = this._workspaceManager.get_workspace_by_index(i);
                     if (workspace) {
@@ -80,10 +81,8 @@ const MosaicMenuToggle = GObject.registerClass(
             } else {
                 for (let i = 0; i < nWorkspaces; i++) {
                     const workspace = this._workspaceManager.get_workspace_by_index(i);
-                    if (workspace) {
-                        this._extension._disabledWorkspaceStates.set(workspace, true);
+                    if (workspace)
                         this._extension.disableWorkspaceMosaic(workspace);
-                    }
                 }
             }
 
@@ -100,7 +99,7 @@ const MosaicMenuToggle = GObject.registerClass(
 
             for (let i = 0; i < nWorkspaces; i++) {
                 const workspace = this._workspaceManager.get_workspace_by_index(i);
-                const isEnabled = workspace ? !this._extension._disabledWorkspaceStates.get(workspace) : true;
+                const isEnabled = this._extension.isMosaicEnabledForWorkspace(workspace);
                 const isActive = i === activeIndex;
 
                 const item = new PopupMenu.PopupSwitchMenuItem(
@@ -151,11 +150,9 @@ const MosaicMenuToggle = GObject.registerClass(
 
             const workspace = this._workspaceManager.get_workspace_by_index(workspaceIndex);
             if (workspace) {
-                if (enabled) {
-                    this._extension._disabledWorkspaceStates.delete(workspace);
-                } else {
-                    this._extension._disabledWorkspaceStates.set(workspace, true);
-                }
+                // Explicit either way: deleting would drop the workspace back to the
+                // global default, which is the opposite of what the user just picked.
+                this._extension._disabledWorkspaceStates.set(workspace, !enabled);
             }
 
             this._updateGlobalToggleState();
@@ -179,7 +176,7 @@ const MosaicMenuToggle = GObject.registerClass(
 
             for (let i = 0; i < nWorkspaces; i++) {
                 const workspace = this._workspaceManager.get_workspace_by_index(i);
-                if (workspace && !this._extension._disabledWorkspaceStates.get(workspace)) {
+                if (workspace && this._extension.isMosaicEnabledForWorkspace(workspace)) {
                     anyEnabled = true;
                     break;
                 }
@@ -230,7 +227,7 @@ export const MosaicIndicator = GObject.registerClass(
         _updateIcon() {
             const activeIndex = this._workspaceManager.get_active_workspace_index();
             const workspace = this._workspaceManager.get_workspace_by_index(activeIndex);
-            const isEnabled = workspace ? !this._extension._disabledWorkspaceStates.get(workspace) : true;
+            const isEnabled = this._extension.isMosaicEnabledForWorkspace(workspace);
             this._indicator.gicon = _getIcon(this._extension, isEnabled ? 'mosaic-on-symbolic' : 'mosaic-off-symbolic');
         }
 

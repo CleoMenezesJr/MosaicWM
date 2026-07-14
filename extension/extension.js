@@ -86,11 +86,17 @@ export default class WindowMosaicExtension extends Extension {
         this._timeoutRegistry = null;
 
         this._disabledWorkspaceStates = new WeakMap();
+        this._mosaicDisabledByDefault = false;
     }
 
+    // Workspaces are created on demand, so the global toggle can't just stamp the
+    // ones that exist when it's flipped: whatever is born later has to inherit its
+    // decision. The map only holds per-workspace exceptions on top of that default.
     isMosaicEnabledForWorkspace(workspace) {
         if (!workspace) return true;
-        return !this._disabledWorkspaceStates.get(workspace);
+        const exception = this._disabledWorkspaceStates.get(workspace);
+        if (exception !== undefined) return !exception;
+        return !this._mosaicDisabledByDefault;
     }
 
     disableWorkspaceMosaic(workspace) {
@@ -195,6 +201,7 @@ export default class WindowMosaicExtension extends Extension {
         Logger.info('Starting Mosaic layout manager.');
 
         this._disabledWorkspaceStates = new WeakMap();
+        this._mosaicDisabledByDefault = false;
         this._timeoutRegistry = new TimeoutRegistry();
         this._workspaceManager = global.workspace_manager;
 
@@ -512,7 +519,7 @@ export default class WindowMosaicExtension extends Extension {
                 if (!workspace)
                     return originalMethod.apply(this, args);
 
-                const isEnabled = !extension._disabledWorkspaceStates.get(workspace);
+                const isEnabled = extension.isMosaicEnabledForWorkspace(workspace);
 
                 // Determine if we should use Mosaic or Fallback to Native
                 let useMosaic = isEnabled;
