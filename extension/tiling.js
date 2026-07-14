@@ -1837,6 +1837,15 @@ export const TilingManager = GObject.registerClass({
             return { overflow: false, layout: null };
         }
 
+        // Callers that remember a monitor to retile later can land here after it was
+        // unplugged, and mutter asserts on a stale index instead of answering empty.
+        const monitorIsGone = _monitor !== null && _monitor !== undefined &&
+            (_monitor < 0 || _monitor >= global.display.get_n_monitors());
+        if (monitorIsGone) {
+            Logger.log(`tileWorkspaceWindows: Monitor ${_monitor} no longer exists; skipping tiling`);
+            return { overflow: false, layout: null };
+        }
+
         Logger.log(`tileWorkspaceWindows: Starting for workspace ${workspace.index()} (isRecursive=${isRecursive})`);
 
         if (!isRecursive && !dryRun) {
