@@ -325,7 +325,6 @@ export const WindowHandler = GObject.registerClass({
         const wasExcluded = WindowState.get(window, 'previousExclusionState') || false;
         WindowState.set(window, 'previousExclusionState', isNowExcluded);
 
-        // Only act on actual state transitions
         if (wasExcluded === isNowExcluded) {
             return;
         }
@@ -1188,6 +1187,14 @@ export const WindowHandler = GObject.registerClass({
     onWindowAdded(_workspace, window) {
         this.windowingManager.invalidateWindowsCache();
         if (!this._ext.windowingManager.isRelated(window)) {
+            return;
+        }
+
+        // Going on-all-workspaces (sticky, or landing on a secondary monitor under
+        // workspaces-only-on-primary) re-adds the window to every workspace at once.
+        // It isn't arriving anywhere; the monitor signals own its placement, and
+        // running the arrival pipeline here overflows it to another workspace.
+        if (window.is_on_all_workspaces()) {
             return;
         }
 

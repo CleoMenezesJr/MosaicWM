@@ -341,7 +341,6 @@ export const WindowingManager = GObject.registerClass({
             return true;
         }
 
-        // Always on top (window is above other windows)
         if (meta_window.is_above()) {
             return true;
         }
@@ -389,11 +388,25 @@ export const WindowingManager = GObject.registerClass({
             return false;
         }
 
-        if (meta_window.is_on_all_workspaces()) {
+        if (this.isTrulySticky(meta_window)) {
             return false;
         }
 
         return true;
+    }
+
+    // With workspaces-only-on-primary, Mutter reports every window on a secondary monitor
+    // as on-all-workspaces. That's the monitor policy talking, not the user pinning a
+    // window, so it stays a normal mosaic member. The overview layout asks this too; both
+    // have to agree on what sticky means or they end up laying out different mosaics.
+    isTrulySticky(meta_window) {
+        if (!meta_window.is_on_all_workspaces()) {
+            return false;
+        }
+
+        const stickyByMonitorPolicy = Meta.prefs_get_workspaces_only_on_primary() &&
+                                      !meta_window.is_on_primary_monitor();
+        return !stickyByMonitorPolicy;
     }
 
     isMaximizedOrFullscreen(window) {
@@ -457,7 +470,6 @@ export const WindowingManager = GObject.registerClass({
                 }
             }
 
-            // 3. Fallback: Systematic neighbor search (Left, then Right)
             if (!target || target.index() === currentIndex) {
                 target = workspace.get_neighbor(Meta.MotionDirection.LEFT);
 
@@ -473,7 +485,6 @@ export const WindowingManager = GObject.registerClass({
                 }
             }
 
-            // Execute navigation if a valid target was resolved
             if (target && target.index() >= 0 && target.index() !== currentIndex) {
                 target.activate(this.getTimestamp());
                 this.showWorkspaceSwitcher(target, monitorIndex);
@@ -498,13 +509,11 @@ export const WindowingManager = GObject.registerClass({
 
         Logger.log(`showWorkspaceSwitcher: showing WorkspaceSwitcherPopup for workspace ${index} on monitor ${monitorIndex}`);
 
-        // Use WorkspaceSwitcherPopup for native workspace switching indicator (dots/grid)
         try {
             if (!Main.wm._workspaceSwitcherPopup) {
                 Main.wm._workspaceSwitcherPopup = new WorkspaceSwitcherPopup.WorkspaceSwitcherPopup();
             }
 
-            // Ensure destruction cleanup
             if (!WindowState.get(Main.wm._workspaceSwitcherPopup, 'destroyConnected')) {
                 Main.wm._workspaceSwitcherPopup.connect('destroy', () => {
                     Main.wm._workspaceSwitcherPopup = null;
