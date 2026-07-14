@@ -495,12 +495,17 @@ export default class WindowMosaicExtension extends Extension {
                 // size state 0 starts from, and the icon is always ICON_SIZE tall.
                 const allocH = container.allocation.get_height() * container.scale_y;
                 const visualH = allocH > 0 ? allocH : this.boundingBox.height;
-                const [, preferredIconH] = this._icon.get_preferred_height(-1);
+                const [, preferredIconH] = allocH > 0 ? this._icon.get_preferred_height(-1) : [0, 0];
                 const iconH = preferredIconH || PREVIEW_ICON_SIZE;
 
                 this._mosaicIconLift = (1 - t) * (iconH * (PREVIEW_ICON_OVERLAP - 0.5) - visualH / 2);
                 this._icon.set({ scale_x: 1, scale_y: 1 });
-                this._adjustOverlayOffsets();
+
+                // Offsetting an empty box lands NaN in the overlay's translation, and the
+                // shell runs this again on the first allocation anyway, where the lift
+                // stored above gets picked up.
+                if (allocH > 0)
+                    this._adjustOverlayOffsets();
                 return undefined;
             };
         });
