@@ -98,7 +98,6 @@ const MiniatureEnforceEffect = GObject.registerClass({
     vfunc_paint(...args) {
         const actor = this.get_actor();
         if (!actor || !WindowState.get(this._window, IS_MINIATURE)) {
-            // Not a miniature anymore, just paint normally
             super.vfunc_paint(...args);
             return;
         }
@@ -189,9 +188,20 @@ const MiniatureClickOverlay = GObject.registerClass({
                 GObject.BindingFlags.SYNC_CREATE);
         }
 
-        this.connect('button-press-event', () => {
+        const restore = () => {
             Logger.log(`[MINIATURE] Click overlay clicked for ${window.get_id()}`);
             this._miniatureManager.restoreMiniature(window, null);
+        };
+        this.connect('button-press-event', () => {
+            restore();
+            return Clutter.EVENT_STOP;
+        });
+        // A tap never reaches this window_group sibling as an emulated button press,
+        // and Clutter.ClickAction is gone in GNOME 48+, so read the touch signal raw.
+        this.connect('touch-event', (_actor, event) => {
+            if (event.type() !== Clutter.EventType.TOUCH_BEGIN)
+                return Clutter.EVENT_PROPAGATE;
+            restore();
             return Clutter.EVENT_STOP;
         });
 

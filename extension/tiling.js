@@ -1166,7 +1166,6 @@ export const TilingManager = GObject.registerClass({
         level.x = Math.max(work_area.x, (work_area.width - maxWidth) / 2 + work_area.x);
         level.y = Math.max(work_area.y, (work_area.height - totalHeight) / 2 + work_area.y);
 
-        // Set target positions for each window
         let yPos = level.y;
         for (const w of level.windows) {
             w.targetX = level.x + (maxWidth - w.width) / 2;
@@ -1960,13 +1959,11 @@ export const TilingManager = GObject.registerClass({
             const nonEdgeTiledCount = workspace_windows.filter(w => !edgeTiledIds.includes(w.get_id())).length;
             if (this.dragRemainingSpace) {
                 Logger.log(`Reusing drag remaining space: x=${this.dragRemainingSpace.x}, w=${this.dragRemainingSpace.width}`);
-                // If we have a cached remaining space from drag, use it
                 work_area = this.dragRemainingSpace;
             } else {
                 Logger.log(`Remaining space: x=${remainingSpace.x}, y=${remainingSpace.y}, w=${remainingSpace.width}, h=${remainingSpace.height}`);
                 Logger.log(`Total workspace windows: ${workspace_windows.length}, Non-edge-tiled: ${nonEdgeTiledCount}`);
 
-                // Filter out edge-tiled windows from tiling
                 meta_windows = meta_windows.filter(w => !edgeTiledIds.includes(w.get_id()));
                 Logger.log(`After filtering edge-tiled: ${meta_windows.length} windows to tile`);
 

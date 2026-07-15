@@ -412,7 +412,6 @@ export const EdgeTilingManager = GObject.registerClass({
 
 
         if (hasLeftFull || hasLeftQuarters) {
-            // Find the rightmost edge of all left-tiled windows
             let maxRight = workArea.x;
             edgeTiledWindows.forEach(w => {
                 if (w.zone === TileZone.LEFT_FULL || w.zone === TileZone.TOP_LEFT || w.zone === TileZone.BOTTOM_LEFT) {
@@ -430,7 +429,6 @@ export const EdgeTilingManager = GObject.registerClass({
         }
 
         if (hasRightFull || hasRightQuarters) {
-            // Find the leftmost edge of all right-tiled windows
             let minLeft = workArea.x + workArea.width;
             edgeTiledWindows.forEach(w => {
                 if (w.zone === TileZone.RIGHT_FULL || w.zone === TileZone.TOP_RIGHT || w.zone === TileZone.BOTTOM_RIGHT) {
@@ -518,10 +516,8 @@ export const EdgeTilingManager = GObject.registerClass({
     }
 
     registerAutoTileDependency(dependentWindow, masterWindow) {
-        // Set master ref on dependent
         WindowState.set(dependentWindow, 'autoTileMaster', masterWindow);
 
-        // Add dependent to master's set
         let dependents = WindowState.get(masterWindow, 'autoTileDependents');
         if (!dependents) {
             dependents = new Set();
@@ -676,7 +672,6 @@ export const EdgeTilingManager = GObject.registerClass({
 
         const winId = window.get_id();
 
-        // Clear potential previous dependencies
         const oldMaster = WindowState.get(window, 'autoTileMaster');
         if (oldMaster) {
             Logger.log(`Manual retile breaks auto-tile dependency for ${winId}`);
@@ -833,7 +828,6 @@ export const EdgeTilingManager = GObject.registerClass({
                 }
 
                 this._timeoutRegistry.add(constants.POLL_INTERVAL_MS, () => {
-                    // Safety check: ensure windows are still valid
                     if (!window.get_compositor_private() ||
                         !fullToQuarterConversion.window.get_compositor_private()) {
                         return GLib.SOURCE_REMOVE;
@@ -1061,7 +1055,6 @@ export const EdgeTilingManager = GObject.registerClass({
             }
         }
 
-        // Use tiling manager to check if mosaic windows fit in remaining space
         if (!this._tilingManager) return;
 
         // Use miniature display size for miniaturized windows — get_frame_rect returns original full size.
@@ -1374,7 +1367,6 @@ export const EdgeTilingManager = GObject.registerClass({
         }
         // The maximum width for an edge tile is the work area minus the space required by the mosaic.
 
-        // Calculate actual mosaic bounds
         let mosaicMinX = Infinity;
         let mosaicMaxX = 0;
         for (const w of mosaicWindows) {

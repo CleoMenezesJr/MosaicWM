@@ -152,7 +152,6 @@ export const ReorderingManager = GObject.registerClass({
             this._animationsManager.setDragging(true);
         }
 
-        // Filter out edge-tiled windows
         let edgeTiledWindows = [];
         if (this._edgeTilingManager) {
             edgeTiledWindows = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
