@@ -1056,9 +1056,10 @@ export const WindowHandler = GObject.registerClass({
                     const otherWindows = workspaceWindows.filter(w => w.get_id() !== window.get_id());
 
                     if(otherWindows.length > 0) {
-                        Logger.log('Opened sacred (Max/Full) in occupied workspace - isolating (SACRED)');
-                        this.windowingManager.moveOversizedWindow(window).catch(e =>
-                            Logger.error(`Sacred open isolation failed: ${e}`));
+                        // Isolating straight from here would race the queue's own sacred
+                        // check and isolate twice, each pass creating its own workspace.
+                        Logger.log('Opened sacred (Max/Full) in occupied workspace; queueing for isolation (SACRED)');
+                        this.enqueueWindowForEvaluation(window, workspace, monitor);
                         return GLib.SOURCE_REMOVE;
                     } else {
                         Logger.log('Sacred window in empty workspace - keeping here');
