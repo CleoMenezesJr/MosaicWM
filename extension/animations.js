@@ -123,7 +123,7 @@ export const AnimationsManager = GObject.registerClass({
         return true;
     }
 
-    animateWindow(window, targetRect, options = {}) {
+    _animOptions(options) {
         const {
             duration = ANIMATION_DURATION,
             mode = null,
@@ -134,50 +134,25 @@ export const AnimationsManager = GObject.registerClass({
             firstPlacement = false,
             slideInOffset = null,
         } = options;
+        return { duration, mode, onComplete, draggedWindow, subtle, userOp, firstPlacement, slideInOffset };
+    }
+
+    animateWindow(window, targetRect, options = {}) {
+        const { duration, mode, onComplete, draggedWindow, subtle, userOp, firstPlacement, slideInOffset } =
+            this._animOptions(options);
 
         if (!this.shouldAnimateWindow(window, draggedWindow)) {
-            // Overview visible means not yet, not never: this window gets retiled
-            // again once it hides (onOverviewHidden's re-enqueue) and deserves a real
-            // shot at animating then. move_resize_frame is a no-op while the overview's
-            // open anyway (Mutter discards it), so skip entirely rather than snapping
-            // to a position that never took effect and losing the animation.
-            if (Main.overview.visible) {
-                if (onComplete) onComplete();
-                return;
-            }
-
-            WindowState.set(window, 'isMosaicResizing', true);
-            window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
-            this._clearMosaicResizingSoon(window);
-            if (firstPlacement) {
-                WindowState.remove(window, 'pendingFirstPlacement');
-                const actor = window.get_compositor_private();
-                if (actor) actor.opacity = 255;
-            }
-            if (onComplete) onComplete();
+            this._applyWithoutAnimation(window, targetRect, { userOp, firstPlacement, onComplete });
             return;
         }
 
         const windowActor = window.get_compositor_private();
         if (!windowActor) {
-            Logger.log(`No actor for window ${window.get_id()}, skipping animation`);
-            WindowState.set(window, 'isMosaicResizing', true);
-            window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
-            this._clearMosaicResizingSoon(window);
-            if (firstPlacement) WindowState.remove(window, 'pendingFirstPlacement');
-            if (onComplete) onComplete();
+            this._applyNoActor(window, targetRect, { firstPlacement, onComplete });
             return;
         }
 
-        // Redundant retile to the same destination already in flight (e.g. the
-        // window-open queue re-evaluates the same window ~100ms later). Restarting
-        // the ease here would cut the original transition off before its EASE_OUT_BACK
-        // overshoot plays, replacing a full bounce with an imperceptible one. Let the
-        // existing ease run to completion instead.
-        const lastTarget = this._animatingTargets.get(window.get_id());
-        if (this._animatingWindows.has(window.get_id()) && lastTarget &&
-            lastTarget.x === targetRect.x && lastTarget.y === targetRect.y &&
-            lastTarget.width === targetRect.width && lastTarget.height === targetRect.height) {
+        if (this._isRedundantRetile(window, targetRect)) {
             if (onComplete) onComplete();
             return;
         }
@@ -202,31 +177,10 @@ export const AnimationsManager = GObject.registerClass({
         this._animatingTargets.set(window.get_id(), targetRect);
 
         const effectiveDuration = Math.ceil(duration * getSlowDownFactor());
+        const animationMode = this._pickAnimationMode({ mode, subtle, firstPlacement });
 
-        // Bounce is reserved for a window joining or leaving the workspace. Everything
-        // else (miniaturize, swap, monitor change, exclusion, smart resize, edge snap)
-        // keeps the same membership and stays subtle.
-        const isMembershipChange = firstPlacement || this._membershipChangeBounce;
-        let animationMode;
-        if (mode !== null) {
-            animationMode = mode;
-        } else if (subtle || this._justEndedDrag || !isMembershipChange) {
-            animationMode = ANIMATION_MODE_SUBTLE;
-        } else {
-            animationMode = ANIMATION_MODE;
-        }
-
-        // idle  (currentTx=0): initialTx = frameX - targetX
-        // moving (currentTx!=0): initialTx = (frameX + currentTx) - targetX  (no jump)
-        // First placement has no prior visual position worth preserving, so start
-        // from the slide-in offset instead of the "no jump" continuity math.
-        const initialTx = slideInOffset ? slideInOffset.x : currentFrame.x + currentTx - targetRect.x;
-        const initialTy = slideInOffset ? slideInOffset.y : currentFrame.y + currentTy - targetRect.y;
-
-        // Same "no jump" logic, applied to visual size: preserves the actor's
-        // current on-screen size if a previous resize ease is still in flight.
-        const initialScaleX = targetRect.width > 0 ? (currentFrame.width * currentScaleX) / targetRect.width : 1;
-        const initialScaleY = targetRect.height > 0 ? (currentFrame.height * currentScaleY) / targetRect.height : 1;
+        const { initialTx, initialTy, initialScaleX, initialScaleY } = this._computeInitialTransform(
+            { currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, targetRect, slideInOffset });
 
         WindowState.set(window, 'isMosaicResizing', true);
         // A pure move applies to the actor's allocation immediately, but a Wayland
@@ -258,6 +212,75 @@ export const AnimationsManager = GObject.registerClass({
         }
 
         this._runEntranceEase(window, windowActor, easeParams);
+    }
+
+    _applyWithoutAnimation(window, targetRect, { userOp, firstPlacement, onComplete }) {
+        // Overview visible means not yet, not never: this window gets retiled
+        // again once it hides (onOverviewHidden's re-enqueue) and deserves a real
+        // shot at animating then. move_resize_frame is a no-op while the overview's
+        // open anyway (Mutter discards it), so skip entirely rather than snapping
+        // to a position that never took effect and losing the animation.
+        if (Main.overview.visible) {
+            if (onComplete) onComplete();
+            return;
+        }
+
+        WindowState.set(window, 'isMosaicResizing', true);
+        window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        this._clearMosaicResizingSoon(window);
+        if (firstPlacement) {
+            WindowState.remove(window, 'pendingFirstPlacement');
+            const actor = window.get_compositor_private();
+            if (actor) actor.opacity = 255;
+        }
+        if (onComplete) onComplete();
+    }
+
+    _applyNoActor(window, targetRect, { firstPlacement, onComplete }) {
+        Logger.log(`No actor for window ${window.get_id()}, skipping animation`);
+        WindowState.set(window, 'isMosaicResizing', true);
+        window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        this._clearMosaicResizingSoon(window);
+        if (firstPlacement) WindowState.remove(window, 'pendingFirstPlacement');
+        if (onComplete) onComplete();
+    }
+
+    // Redundant retile to the same destination already in flight (e.g. the
+    // window-open queue re-evaluates the same window ~100ms later). Restarting
+    // the ease would cut the original transition off before its EASE_OUT_BACK
+    // overshoot plays, replacing a full bounce with an imperceptible one.
+    _isRedundantRetile(window, targetRect) {
+        const lastTarget = this._animatingTargets.get(window.get_id());
+        return this._animatingWindows.has(window.get_id()) && lastTarget &&
+            lastTarget.x === targetRect.x && lastTarget.y === targetRect.y &&
+            lastTarget.width === targetRect.width && lastTarget.height === targetRect.height;
+    }
+
+    // Bounce is reserved for a window joining or leaving the workspace. Everything
+    // else (miniaturize, swap, monitor change, exclusion, smart resize, edge snap)
+    // keeps the same membership and stays subtle.
+    _pickAnimationMode({ mode, subtle, firstPlacement }) {
+        if (mode !== null) return mode;
+
+        const isMembershipChange = firstPlacement || this._membershipChangeBounce;
+        if (subtle || this._justEndedDrag || !isMembershipChange) return ANIMATION_MODE_SUBTLE;
+        return ANIMATION_MODE;
+    }
+
+    _computeInitialTransform({ currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, targetRect, slideInOffset }) {
+        // idle  (currentTx=0): initialTx = frameX - targetX
+        // moving (currentTx!=0): initialTx = (frameX + currentTx) - targetX  (no jump)
+        // First placement has no prior visual position worth preserving, so start
+        // from the slide-in offset instead of the "no jump" continuity math.
+        const initialTx = slideInOffset ? slideInOffset.x : currentFrame.x + currentTx - targetRect.x;
+        const initialTy = slideInOffset ? slideInOffset.y : currentFrame.y + currentTy - targetRect.y;
+
+        // Same "no jump" logic, applied to visual size: preserves the actor's
+        // current on-screen size if a previous resize ease is still in flight.
+        const initialScaleX = targetRect.width > 0 ? (currentFrame.width * currentScaleX) / targetRect.width : 1;
+        const initialScaleY = targetRect.height > 0 ? (currentFrame.height * currentScaleY) / targetRect.height : 1;
+
+        return { initialTx, initialTy, initialScaleX, initialScaleY };
     }
 
     // Runs the actual translation/scale ease. Called either immediately from

@@ -3,11 +3,34 @@
 // Window swapping logic
 
 import * as Logger from './logger.js';
-import { TileZone } from './constants.js';
+import { TileZone, ZONE_SIDE, ZONE_HALF, ZONE_VERTICAL_PAIR } from './constants.js';
 import * as WindowState from './windowState.js';
 import { monotonicNow } from './timing.js';
 
 import GObject from 'gi://GObject';
+
+// Which axis each direction travels on, and which way "closer" runs on it.
+const DIRECTION_RULES = Object.freeze({
+    left: { axis: 'x', sign: -1 },
+    right: { axis: 'x', sign: 1 },
+    up: { axis: 'y', sign: -1 },
+    down: { axis: 'y', sign: 1 }
+});
+
+function centerOf(frame) {
+    return { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
+}
+
+// A horizontal move only counts windows sharing rows, a vertical one columns.
+function overlapsOnCrossAxis(a, b, axis) {
+    if (axis === 'x') return !(a.y + a.height <= b.y || b.y + b.height <= a.y);
+    return !(a.x + a.width <= b.x || b.x + b.width <= a.x);
+}
+
+// Positive means the candidate really sits that way from the origin.
+function signedDistance(origin, center, rule) {
+    return (center[rule.axis] - origin[rule.axis]) * rule.sign;
+}
 
 export const SwappingManager = GObject.registerClass({
     GTypeName: 'MosaicSwappingManager',
@@ -58,14 +81,7 @@ export const SwappingManager = GObject.registerClass({
     _findVerticalQuarterNeighbor(zone, _direction, workspace, monitor) {
         const edgeTiledWindows = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
 
-        const verticalPairs = {
-            [TileZone.TOP_LEFT]: TileZone.BOTTOM_LEFT,
-            [TileZone.BOTTOM_LEFT]: TileZone.TOP_LEFT,
-            [TileZone.TOP_RIGHT]: TileZone.BOTTOM_RIGHT,
-            [TileZone.BOTTOM_RIGHT]: TileZone.TOP_RIGHT,
-        };
-
-        const targetZone = verticalPairs[zone];
+        const targetZone = ZONE_VERTICAL_PAIR[zone];
         if (!targetZone) return null;
 
         const targetWindow = edgeTiledWindows.find(w => {
@@ -81,18 +97,13 @@ export const SwappingManager = GObject.registerClass({
     }
 
     _findHorizontalNeighborFromTiling(window, zone, direction, workspace, monitor) {
-        const isLeft = zone === TileZone.LEFT_FULL || zone === TileZone.TOP_LEFT || zone === TileZone.BOTTOM_LEFT;
-        const isRight = zone === TileZone.RIGHT_FULL || zone === TileZone.TOP_RIGHT || zone === TileZone.BOTTOM_RIGHT;
+        if (direction !== 'left' && direction !== 'right') return null;
 
-        let targetSide;
-        if (direction === 'left') targetSide = 'left';
-        else if (direction === 'right') targetSide = 'right';
-        else return null;
-
-        const movingToOppositeSide = (isLeft && targetSide === 'right') || (isRight && targetSide === 'left');
+        const side = ZONE_SIDE[zone];
+        const movingToOppositeSide = side && side !== direction;
 
         if (movingToOppositeSide) {
-            return this._findOppositeSideNeighbor(window, zone, targetSide, workspace, monitor);
+            return this._findOppositeSideNeighbor(window, zone, direction, workspace, monitor);
         } else {
             return this._findSameSideMosaicNeighbor(window, null, null, null, null);
         }
@@ -101,19 +112,11 @@ export const SwappingManager = GObject.registerClass({
     _findOppositeSideNeighbor(_window, sourceZone, targetSide, workspace, monitor) {
         const edgeTiledWindows = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
         const isQuarter = this._edgeTilingManager.isQuarterZone(sourceZone);
-
-        const isTop = sourceZone === TileZone.TOP_LEFT || sourceZone === TileZone.TOP_RIGHT;
-        const isBottom = sourceZone === TileZone.BOTTOM_LEFT || sourceZone === TileZone.BOTTOM_RIGHT;
+        const sourceHalf = ZONE_HALF[sourceZone];
 
         const targetSideWindows = edgeTiledWindows.filter(w => {
             const state = this._edgeTilingManager.getWindowState(w.window);
-            if (!state) return false;
-            const z = state.zone;
-            if (targetSide === 'left') {
-                return z === TileZone.LEFT_FULL || z === TileZone.TOP_LEFT || z === TileZone.BOTTOM_LEFT;
-            } else {
-                return z === TileZone.RIGHT_FULL || z === TileZone.TOP_RIGHT || z === TileZone.BOTTOM_RIGHT;
-            }
+            return state && ZONE_SIDE[state.zone] === targetSide;
         });
 
         if (targetSideWindows.length === 0) {
@@ -131,27 +134,18 @@ export const SwappingManager = GObject.registerClass({
         if (isQuarter) {
             const matchingLevel = targetSideWindows.find(w => {
                 const state = this._edgeTilingManager.getWindowState(w.window);
-                if (isTop) {
-                    return state.zone === (targetSide === 'left' ? TileZone.TOP_LEFT : TileZone.TOP_RIGHT);
-                } else if (isBottom) {
-                    return state.zone === (targetSide === 'left' ? TileZone.BOTTOM_LEFT : TileZone.BOTTOM_RIGHT);
-                }
-                return false;
+                return sourceHalf && ZONE_HALF[state.zone] === sourceHalf;
             });
 
             if (matchingLevel) {
                 const state = this._edgeTilingManager.getWindowState(matchingLevel.window);
                 return { window: matchingLevel.window, zone: state.zone, type: 'tiling' };
             }
-
-            const targetWindow = targetSideWindows[0];
-            const state = this._edgeTilingManager.getWindowState(targetWindow.window);
-            return { window: targetWindow.window, zone: state.zone, type: 'tiling' };
-        } else {
-            const targetWindow = targetSideWindows[0];
-            const state = this._edgeTilingManager.getWindowState(targetWindow.window);
-            return { window: targetWindow.window, zone: state.zone, type: 'tiling' };
         }
+
+        const targetWindow = targetSideWindows[0];
+        const state = this._edgeTilingManager.getWindowState(targetWindow.window);
+        return { window: targetWindow.window, zone: state.zone, type: 'tiling' };
     }
 
     _findMosaicOnSide(side, workspace, monitor) {
@@ -184,68 +178,47 @@ export const SwappingManager = GObject.registerClass({
         if (!this._edgeTilingManager) return null;
 
         const mosaicWindows = this._edgeTilingManager.getNonEdgeTiledWindows(workspace, monitor);
-        const windowFrame = window.get_frame_rect();
-
         const mosaicNeighbor = this._findClosestMosaicInDirection(window, mosaicWindows, direction);
         if (mosaicNeighbor) return mosaicNeighbor;
 
-        if (direction === 'left' || direction === 'right') {
-            const edgeTiledWindows = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
-            const workArea = workspace.get_work_area_for_monitor(monitor);
-            const centerX = workArea.x + workArea.width / 2;
-            const windowCenterX = windowFrame.x + windowFrame.width / 2;
+        if (direction !== 'left' && direction !== 'right') return null;
+        return this._findEdgeTileAcrossCenter(window, direction, workspace, monitor);
+    }
 
-            if (direction === 'left' && windowCenterX > centerX) {
-                const leftTiles = edgeTiledWindows.filter(w => {
-                    const state = this._edgeTilingManager.getWindowState(w.window);
-                    return state && (state.zone === TileZone.LEFT_FULL || state.zone === TileZone.TOP_LEFT || state.zone === TileZone.BOTTOM_LEFT);
-                });
-                if (leftTiles.length > 0) {
-                    const state = this._edgeTilingManager.getWindowState(leftTiles[0].window);
-                    return { window: leftTiles[0].window, zone: state.zone, type: 'tiling' };
-                }
-            } else if (direction === 'right' && windowCenterX < centerX) {
-                const rightTiles = edgeTiledWindows.filter(w => {
-                    const state = this._edgeTilingManager.getWindowState(w.window);
-                    return state && (state.zone === TileZone.RIGHT_FULL || state.zone === TileZone.TOP_RIGHT || state.zone === TileZone.BOTTOM_RIGHT);
-                });
-                if (rightTiles.length > 0) {
-                    const state = this._edgeTilingManager.getWindowState(rightTiles[0].window);
-                    return { window: rightTiles[0].window, zone: state.zone, type: 'tiling' };
-                }
-            }
-        }
-        return null;
+    _findEdgeTileAcrossCenter(window, direction, workspace, monitor) {
+        const workArea = workspace.get_work_area_for_monitor(monitor);
+        const centerX = workArea.x + workArea.width / 2;
+        const windowCenterX = centerOf(window.get_frame_rect()).x;
+
+        // Only reach for a tile once the move actually crosses the center; one sitting
+        // on the same half as us isn't the neighbor in that direction.
+        const crossesCenter = direction === 'left' ? windowCenterX > centerX : windowCenterX < centerX;
+        if (!crossesCenter) return null;
+
+        const tiles = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor).filter(w => {
+            const state = this._edgeTilingManager.getWindowState(w.window);
+            return state && ZONE_SIDE[state.zone] === direction;
+        });
+        if (tiles.length === 0) return null;
+
+        const state = this._edgeTilingManager.getWindowState(tiles[0].window);
+        return { window: tiles[0].window, zone: state.zone, type: 'tiling' };
     }
 
     _findClosestMosaicInDirection(window, mosaicWindows, direction) {
+        const rule = DIRECTION_RULES[direction];
+        if (!rule) return null;
+
         const windowFrame = window.get_frame_rect();
-        const windowCenterX = windowFrame.x + windowFrame.width / 2;
-        const windowCenterY = windowFrame.y + windowFrame.height / 2;
+        const origin = centerOf(windowFrame);
 
         const candidates = mosaicWindows.filter(w => {
             if (w.get_id() === window.get_id()) return false;
 
             const frame = w.get_frame_rect();
-            const centerX = frame.x + frame.width / 2;
-            const centerY = frame.y + frame.height / 2;
+            if (!overlapsOnCrossAxis(windowFrame, frame, rule.axis)) return false;
 
-            if (direction === 'left' || direction === 'right') {
-                const verticalOverlap = !(windowFrame.y + windowFrame.height <= frame.y || frame.y + frame.height <= windowFrame.y);
-                if (!verticalOverlap) return false;
-            }
-            if (direction === 'up' || direction === 'down') {
-                const horizontalOverlap = !(windowFrame.x + windowFrame.width <= frame.x || frame.x + frame.width <= windowFrame.x);
-                if (!horizontalOverlap) return false;
-            }
-
-            switch (direction) {
-                case 'left': return centerX < windowCenterX;
-                case 'right': return centerX > windowCenterX;
-                case 'up': return centerY < windowCenterY;
-                case 'down': return centerY > windowCenterY;
-                default: return false;
-            }
+            return signedDistance(origin, centerOf(frame), rule) > 0;
         });
 
         if (candidates.length === 0) return null;
@@ -254,18 +227,7 @@ export const SwappingManager = GObject.registerClass({
         let minDistance = Infinity;
 
         for (const candidate of candidates) {
-            const frame = candidate.get_frame_rect();
-            const centerX = frame.x + frame.width / 2;
-            const centerY = frame.y + frame.height / 2;
-            let distance = Infinity;
-
-            switch (direction) {
-                case 'left': distance = windowCenterX - centerX; break;
-                case 'right': distance = centerX - windowCenterX; break;
-                case 'up': distance = windowCenterY - centerY; break;
-                case 'down': distance = centerY - windowCenterY; break;
-            }
-
+            const distance = signedDistance(origin, centerOf(candidate.get_frame_rect()), rule);
             if (distance < minDistance) {
                 minDistance = distance;
                 closest = candidate;
@@ -291,24 +253,12 @@ export const SwappingManager = GObject.registerClass({
         // retarget mid-flight, so it skips the anti-oscillation throttle below.
         const snappedInDirection = neighbor && neighbor.type === 'tiling';
         if (!isWindowTiled && this._tilingManager && !snappedInDirection) {
-            const best = this._tilingManager.bestRecomposition(workspace, monitor, window, direction);
-            if (best) {
-                this._tilingManager.pinComposition(workspace, best.shape, best.order);
-                this._tilingManager.invalidateLayoutCache();
-                this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
-                Logger.log(`Recomposed to [${best.shape.join(',')}] moving ${window.get_id()} ${direction}`);
-                return true;
-            }
-            // Recompose is the whole mosaic keyboard action; if nothing moves that way, do
-            // nothing rather than an order-swap that would leave the pinned shape stale.
-            Logger.log(`No recomposition for ${window.get_id()} ${direction}`);
-            return false;
+            return this._recompose(window, direction, workspace, monitor);
         }
 
         // Hysteresis: prevent rapid oscillation of the neighbor swap below.
         const lastSwap = WindowState.get(window, 'lastSwapTime');
-        const now = monotonicNow();
-        if (lastSwap && (now - lastSwap) < 500) {
+        if (lastSwap && (monotonicNow() - lastSwap) < 500) {
             Logger.log(`Swap throttled for window ${window.get_id()}`);
             return false;
         }
@@ -318,37 +268,59 @@ export const SwappingManager = GObject.registerClass({
             return false;
         }
 
+        if (isWindowTiled) {
+            return this._applySwapFromTiled(window, windowState.zone, neighbor, workspace, monitor);
+        }
+        return this._applySwapFromMosaic(window, neighbor, workspace, monitor);
+    }
+
+    _recompose(window, direction, workspace, monitor) {
+        const best = this._tilingManager.bestRecomposition(workspace, monitor, window, direction);
+        if (best) {
+            this._tilingManager.pinComposition(workspace, best.shape, best.order);
+            this._tilingManager.invalidateLayoutCache();
+            this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
+            Logger.log(`Recomposed to [${best.shape.join(',')}] moving ${window.get_id()} ${direction}`);
+            return true;
+        }
+        // Recompose is the whole mosaic keyboard action; if nothing moves that way, do
+        // nothing rather than an order-swap that would leave the pinned shape stale.
+        Logger.log(`No recomposition for ${window.get_id()} ${direction}`);
+        return false;
+    }
+
+    _applySwapFromTiled(window, zone, neighbor, workspace, monitor) {
         switch (neighbor.type) {
             case 'mosaic':
-                if (isWindowTiled) {
-                    return this._swapTiledWithMosaic(window, windowState.zone, neighbor.window, workspace, monitor);
-                } else {
-                    return this._swapMosaicWindows(window, neighbor.window, workspace, monitor);
-                }
+                return this._swapTiledWithMosaic(window, zone, neighbor.window, workspace, monitor);
             case 'tiling':
-                if (isWindowTiled) {
-                    return this._swapTiledWindows(window, windowState.zone, neighbor.window, neighbor.zone, workspace, monitor);
-                } else {
-                    return this._swapMosaicWithTiled(window, neighbor.window, neighbor.zone, workspace, monitor);
-                }
-            case 'empty_tiling':
-                if (isWindowTiled) {
-                    return false;
-                } else {
-                    const success = this._tileToEmptyZone(window, neighbor.zone, workspace, monitor);
-                    if (success) WindowState.set(window, 'lastSwapTime', monotonicNow());
-                    return success;
-                }
+                return this._swapTiledWindows(window, zone, neighbor.window, neighbor.zone, workspace, monitor);
             case 'empty_tiling_expand':
-                if (isWindowTiled && this._edgeTilingManager.isQuarterZone(windowState.zone)) {
-                    const success = this._expandQuarterToFull(window, windowState.zone, neighbor.zone, workspace, monitor);
-                    if (success) WindowState.set(window, 'lastSwapTime', monotonicNow());
-                    return success;
-                }
-                return false;
+                if (!this._edgeTilingManager.isQuarterZone(zone)) return false;
+                return this._markSwapped(window, this._expandQuarterToFull(window, zone, neighbor.zone, workspace, monitor));
             default:
                 return false;
         }
+    }
+
+    _applySwapFromMosaic(window, neighbor, workspace, monitor) {
+        switch (neighbor.type) {
+            case 'mosaic':
+                return this._swapMosaicWindows(window, neighbor.window, workspace, monitor);
+            case 'tiling':
+                return this._swapMosaicWithTiled(window, neighbor.window, neighbor.zone, workspace, monitor);
+            case 'empty_tiling':
+                return this._markSwapped(window, this._tileToEmptyZone(window, neighbor.zone, workspace, monitor));
+            default:
+                return false;
+        }
+    }
+
+    // Only the paths that place the window into a zone stamp the throttle clock; a plain
+    // swap leaves it alone, same as before.
+    _markSwapped(window, success) {
+        if (success) WindowState.set(window, 'lastSwapTime', monotonicNow());
+        return success;
     }
 
     swapWindows(draggedWindow, targetWindow, targetZone, workspace, monitor) {

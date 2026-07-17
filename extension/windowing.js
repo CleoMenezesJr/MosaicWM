@@ -9,7 +9,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as WorkspaceSwitcherPopup from 'resource:///org/gnome/shell/ui/workspaceSwitcherPopup.js';
 import { afterWorkspaceSwitch } from './timing.js';
 
-import { TileZone } from './constants.js';
+import { TileZone, ZONE_SIDE, SIDE_ZONES } from './constants.js';
 import * as WindowState from './windowState.js';
 import { isWindowAlive } from './liveness.js';
 
@@ -125,19 +125,14 @@ export const WindowingManager = GObject.registerClass({
             return false;
         }
 
-        let direction;
-        if (tileState.zone === TileZone.LEFT_FULL ||
-            tileState.zone === TileZone.TOP_LEFT ||
-            tileState.zone === TileZone.BOTTOM_LEFT) {
-            direction = 'right';
-        } else if (tileState.zone === TileZone.RIGHT_FULL ||
-                   tileState.zone === TileZone.TOP_RIGHT ||
-                   tileState.zone === TileZone.BOTTOM_RIGHT) {
-            direction = 'left';
-        } else {
+        const occupiedSide = ZONE_SIDE[tileState.zone];
+        if (!occupiedSide) {
             Logger.log('Unsupported edge tile zone for dual-tiling');
             return false;
         }
+
+        // We take whichever half the snapped window left free.
+        const direction = occupiedSide === 'left' ? 'right' : 'left';
 
         const existingFrame = edgeTiledWindow.get_frame_rect();
         const existingWidth = existingFrame.width;
@@ -145,27 +140,24 @@ export const WindowingManager = GObject.registerClass({
 
         Logger.log(`Auto-tiling: existing window width=${existingWidth}px, available=${availableWidth}px`);
 
-        let targetX, targetY, targetWidth, targetHeight;
+        const targetX = direction === 'left' ? workArea.x : workArea.x + existingWidth;
+        const targetY = workArea.y;
+        const targetWidth = availableWidth;
+        const targetHeight = workArea.height;
 
-        if (direction === 'left') {
-            targetX = workArea.x;
-            targetY = workArea.y;
-            targetWidth = availableWidth;
-            targetHeight = workArea.height;
-        } else { // right
-            targetX = workArea.x + existingWidth;
-            targetY = workArea.y;
-            targetWidth = availableWidth;
-            targetHeight = workArea.height;
-        }
+        return this._applyDualTile(window, edgeTiledWindow, previousWorkspace, direction, {
+            x: targetX, y: targetY, width: targetWidth, height: targetHeight
+        });
+    }
 
+    _applyDualTile(window, edgeTiledWindow, previousWorkspace, direction, rect) {
         try {
             this._edgeTilingManager.saveWindowState(window);
 
             window.unmaximize();
-            window.move_resize_frame(false, targetX, targetY, targetWidth, targetHeight);
+            window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
 
-            const zone = direction === 'left' ? TileZone.LEFT_FULL : TileZone.RIGHT_FULL;
+            const zone = SIDE_ZONES[direction].full;
             const state = this._edgeTilingManager.getWindowState(window);
             if (state) {
                 state.zone = zone;
@@ -176,10 +168,11 @@ export const WindowingManager = GObject.registerClass({
 
             this._edgeTilingManager.registerAutoTileDependency(window, edgeTiledWindow);
 
-            Logger.log(`Successfully dual-tiled window ${window.get_wm_class()} to ${direction} (${targetWidth}x${targetHeight})`);
+            Logger.log(`Successfully dual-tiled window ${window.get_wm_class()} to ${direction} (${rect.width}x${rect.height})`);
             return true;
         } catch (error) {
             Logger.log(`Failed to tile window: ${error.message}`);
+            // Undo the move that brought it here; leaving it stranded is worse than not tiling.
             if (previousWorkspace) {
                 window.change_workspace(previousWorkspace);
             }
@@ -284,10 +277,8 @@ export const WindowingManager = GObject.registerClass({
 
                     afterWorkspaceSwitch(() => {
                         try {
-                            // Perfectly tile the target workspace again after GNOME animations finish
                             this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
 
-                            // Check position after tiling
                             this._timeoutRegistry.addIdle(() => {
                                 try {
                                     if (!isWindowAlive(window)) {
@@ -437,61 +428,10 @@ export const WindowingManager = GObject.registerClass({
 
         // Queue in idle with low priority to let GNOME settle its dynamic workspace states
         this._timeoutRegistry.addIdle(() => {
-            const workspaceManager = global.workspace_manager;
-
-            // This workspace might already be gone by the time this idle runs,
-            // and workspace.index() crashes on a removed one, so check manually.
-            let currentIndex = -1;
-            for (let i = 0; i < workspaceManager.get_n_workspaces(); i++) {
-                if (workspaceManager.get_workspace_by_index(i) === workspace) {
-                    currentIndex = i;
-                    break;
-                }
-            }
-
+            const currentIndex = this._indexOfWorkspace(workspace);
             if (currentIndex < 0) return GLib.SOURCE_REMOVE;
 
-            const nWorkspaces = workspaceManager.get_n_workspaces();
-            const lastWorkspaceIndex = nWorkspaces - 1;
-            let target = null;
-
-            // 1. If on the final (placeholder) workspace, the only valid move is left
-            if (currentIndex === lastWorkspaceIndex) {
-                target = workspace.get_neighbor(Meta.MotionDirection.LEFT);
-                if (target) {
-                    Logger.log(`[RENAVIGATE] On final workspace, moving to left neighbor (WS-${target.index()})`);
-                }
-            }
-            // 2. Try to move in the direction of the last visited workspace
-            else if (lastVisitedIndex !== null && lastVisitedIndex !== currentIndex) {
-                const direction = lastVisitedIndex < currentIndex
-                    ? Meta.MotionDirection.LEFT
-                    : Meta.MotionDirection.RIGHT;
-
-                target = workspace.get_neighbor(direction);
-
-                // Guard: Don't jump to the final empty workspace if we were going right
-                if (target && target.index() === lastWorkspaceIndex) {
-                    target = null;
-                } else if (target) {
-                    Logger.log(`[RENAVIGATE] Moving ${direction === Meta.MotionDirection.LEFT ? 'left' : 'right'} toward last visited WS-${lastVisitedIndex}`);
-                }
-            }
-
-            if (!target || target.index() === currentIndex) {
-                target = workspace.get_neighbor(Meta.MotionDirection.LEFT);
-
-                if (!target || target.index() === currentIndex || target.index() < 0) {
-                    target = workspace.get_neighbor(Meta.MotionDirection.RIGHT);
-                }
-
-                // Final safety: never fallback to the placeholder workspace
-                if (target && target.index() === lastWorkspaceIndex) {
-                    target = null;
-                } else if (target) {
-                    Logger.log(`[RENAVIGATE] Falling back to available neighbor (WS-${target.index()})`);
-                }
-            }
+            const target = this._pickRenavigateTarget(workspace, currentIndex, lastVisitedIndex);
 
             if (target && target.index() >= 0 && target.index() !== currentIndex) {
                 target.activate(this.getTimestamp());
@@ -502,6 +442,66 @@ export const WindowingManager = GObject.registerClass({
 
             return GLib.SOURCE_REMOVE;
         }, 'windowing_renavigate', GLib.PRIORITY_LOW);
+    }
+
+    // This workspace might already be gone by the time the caller's idle runs, and
+    // workspace.index() crashes on a removed one, so match by identity instead.
+    _indexOfWorkspace(workspace) {
+        const workspaceManager = global.workspace_manager;
+        for (let i = 0; i < workspaceManager.get_n_workspaces(); i++) {
+            if (workspaceManager.get_workspace_by_index(i) === workspace) return i;
+        }
+        return -1;
+    }
+
+    _pickRenavigateTarget(workspace, currentIndex, lastVisitedIndex) {
+        const lastWorkspaceIndex = global.workspace_manager.get_n_workspaces() - 1;
+
+        let target = this._preferredNeighbor(workspace, currentIndex, lastWorkspaceIndex, lastVisitedIndex);
+
+        if (!target || target.index() === currentIndex) {
+            target = workspace.get_neighbor(Meta.MotionDirection.LEFT);
+
+            if (!target || target.index() === currentIndex || target.index() < 0) {
+                target = workspace.get_neighbor(Meta.MotionDirection.RIGHT);
+            }
+
+            // Final safety: never fallback to the placeholder workspace
+            if (target && target.index() === lastWorkspaceIndex) {
+                target = null;
+            } else if (target) {
+                Logger.log(`[RENAVIGATE] Falling back to available neighbor (WS-${target.index()})`);
+            }
+        }
+
+        return target;
+    }
+
+    // The last workspace is the placeholder, so from there the only way out is left.
+    // Anywhere else, head back where we came from; null hands the choice to the fallback.
+    _preferredNeighbor(workspace, currentIndex, lastWorkspaceIndex, lastVisitedIndex) {
+        if (currentIndex === lastWorkspaceIndex) {
+            const leftNeighbor = workspace.get_neighbor(Meta.MotionDirection.LEFT);
+            if (leftNeighbor) {
+                Logger.log(`[RENAVIGATE] On final workspace, moving to left neighbor (WS-${leftNeighbor.index()})`);
+            }
+            return leftNeighbor;
+        }
+
+        if (lastVisitedIndex === null || lastVisitedIndex === currentIndex) return null;
+
+        const direction = lastVisitedIndex < currentIndex
+            ? Meta.MotionDirection.LEFT
+            : Meta.MotionDirection.RIGHT;
+
+        const target = workspace.get_neighbor(direction);
+
+        // Guard: Don't jump to the final empty workspace if we were going right
+        if (target && target.index() === lastWorkspaceIndex) return null;
+        if (target) {
+            Logger.log(`[RENAVIGATE] Moving ${direction === Meta.MotionDirection.LEFT ? 'left' : 'right'} toward last visited WS-${lastVisitedIndex}`);
+        }
+        return target;
     }
 
     showWorkspaceSwitcher(workspace, monitorIndex = -1) {

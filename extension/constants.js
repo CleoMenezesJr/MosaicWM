@@ -27,6 +27,38 @@ export const TileZone = Object.freeze({
     FULLSCREEN: 7
 });
 
+// Zones that have no side or half (NONE, FULLSCREEN) are absent on purpose; a
+// lookup miss reads as undefined and never matches a real side.
+export const ZONE_SIDE = Object.freeze({
+    [TileZone.LEFT_FULL]: 'left',
+    [TileZone.TOP_LEFT]: 'left',
+    [TileZone.BOTTOM_LEFT]: 'left',
+    [TileZone.RIGHT_FULL]: 'right',
+    [TileZone.TOP_RIGHT]: 'right',
+    [TileZone.BOTTOM_RIGHT]: 'right'
+});
+
+export const ZONE_HALF = Object.freeze({
+    [TileZone.TOP_LEFT]: 'top',
+    [TileZone.TOP_RIGHT]: 'top',
+    [TileZone.BOTTOM_LEFT]: 'bottom',
+    [TileZone.BOTTOM_RIGHT]: 'bottom'
+});
+
+// Inverse of ZONE_SIDE/ZONE_HALF: what each side can offer.
+export const SIDE_ZONES = Object.freeze({
+    left: { full: TileZone.LEFT_FULL, top: TileZone.TOP_LEFT, bottom: TileZone.BOTTOM_LEFT },
+    right: { full: TileZone.RIGHT_FULL, top: TileZone.TOP_RIGHT, bottom: TileZone.BOTTOM_RIGHT }
+});
+
+// The quarter sharing a side with this one, i.e. the one stacked against it.
+export const ZONE_VERTICAL_PAIR = Object.freeze({
+    [TileZone.TOP_LEFT]: TileZone.BOTTOM_LEFT,
+    [TileZone.BOTTOM_LEFT]: TileZone.TOP_LEFT,
+    [TileZone.TOP_RIGHT]: TileZone.BOTTOM_RIGHT,
+    [TileZone.BOTTOM_RIGHT]: TileZone.TOP_RIGHT
+});
+
 export const STARTUP_TILE_DELAY_MS = 300;
 
 export const ANIMATION_DURATION_MS = 250;

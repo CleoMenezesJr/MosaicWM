@@ -279,21 +279,7 @@ export default class WindowMosaicExtension extends Extension {
         this._focusWindowChangedId = global.display.connect('notify::focus-window',
             () => this._onFocusWindowChanged());
 
-        this._dnd = global.backend?.get_dnd() ?? null;
-        if (this._dnd) {
-            this._dndScheduleRestore = createDebounced(
-                (window) => {
-                    this._dndPendingWindowId = null;
-                    if (isWindowAlive(window) && WindowState.get(window, WindowState.IS_MINIATURE))
-                        this.miniatureManager?.restoreMiniature(window, null);
-                },
-                constants.DND_MINIATURE_RESTORE_DELAY_MS,
-                this._timeoutRegistry
-            );
-            this._dndEnterId = this._dnd.connect('dnd-enter', this._onDndEnter.bind(this));
-            this._dndPositionId = this._dnd.connect('dnd-position-change', this._onDndPositionChange.bind(this));
-            this._dndLeaveId = this._dnd.connect('dnd-leave', this._onDndLeave.bind(this));
-        }
+        this._setupDndMiniatureRestore();
 
         this._mosaicIndicator = new MosaicIndicator(this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._mosaicIndicator);
@@ -314,25 +300,7 @@ export default class WindowMosaicExtension extends Extension {
             new GLib.Variant('b', false)
         );
 
-        const mutterKeybindings = new Gio.Settings({ schema_id: 'org.gnome.mutter.keybindings' });
-        const emptyArray = new GLib.Variant('as', []);
-
-        if (mutterKeybindings.get_strv('toggle-tiled-left').includes('<Super>Left')) {
-            this._settingsOverrider.add(mutterKeybindings, 'toggle-tiled-left', emptyArray);
-        }
-        if (mutterKeybindings.get_strv('toggle-tiled-right').includes('<Super>Right')) {
-            this._settingsOverrider.add(mutterKeybindings, 'toggle-tiled-right', emptyArray);
-        }
-
-        const shellKeybindings = new Gio.Settings({ schema_id: 'org.gnome.shell.keybindings' });
-        // Super+Alt+Up/Down is our swap-up/down default but also GNOME's stock
-        // shift-overview-up/down, so clear GNOME's to keep the combo for recomposition.
-        if (shellKeybindings.get_strv('shift-overview-up').includes('<Super><Alt>Up')) {
-            this._settingsOverrider.add(shellKeybindings, 'shift-overview-up', emptyArray);
-        }
-        if (shellKeybindings.get_strv('shift-overview-down').includes('<Super><Alt>Down')) {
-            this._settingsOverrider.add(shellKeybindings, 'shift-overview-down', emptyArray);
-        }
+        this._overrideConflictingKeybindings();
 
         this._injectionManager = new InjectionManager();
 
@@ -362,46 +330,16 @@ export default class WindowMosaicExtension extends Extension {
         // etc.) to work correctly with the native workspace switch animation.
         this._origMonitorGroupInit = WorkspaceAnimation.MonitorGroup.prototype._init;
         const origInit = this._origMonitorGroupInit;
+        const extension = this;
         WorkspaceAnimation.MonitorGroup.prototype._init = function (monitor, workspaceIndices, movingWindow) {
             origInit.call(this, monitor, workspaceIndices, movingWindow);
 
-            // After original _init, all WorkspaceGroups and their clones are created.
-            // Fix positions and scale of miniature clones.
-            //
-            // Clutter.Clone disables the source actor's model-view transform during
-            // clone paint, so set_scale/set_translation on the source are ignored.
-            // We must apply the miniature scale directly on the clone, and position
-            // it at the visual frame location (MINIATURE_TARGET_POS).
+            // After original _init, all WorkspaceGroups and their clones are created;
+            // patch the miniature clones the shell just built.
             for (const wsGroup of this._workspaceGroups) {
                 if (!wsGroup._windowRecords) continue;
                 for (const record of wsGroup._windowRecords) {
-                    const metaWindow = record.windowActor.meta_window;
-                    if (WindowState.get(metaWindow, IS_MINIATURE)) {
-                        const tgt = WindowState.get(metaWindow, MINIATURE_TARGET_POS);
-                        const sc = WindowState.get(metaWindow, MINIATURE_SCALE);
-                        const extL = WindowState.get(metaWindow, MINIATURE_EXT_LEFT) ?? 0;
-                        const extT = WindowState.get(metaWindow, MINIATURE_EXT_TOP) ?? 0;
-                        if (tgt && sc) {
-                            record.clone.set_pivot_point(0, 0);
-                            record.clone.set_scale(sc, sc);
-                            record.clone.x = tgt.x - monitor.x - extL * sc;
-                            record.clone.y = tgt.y - monitor.y - extT * sc;
-                        }
-
-                        // _createClone only ever sees the window actor, and the icon
-                        // overlay is its sibling, so the icon would vanish for the whole
-                        // slide. The overlay already sits at frame scale, hence no set_scale.
-                        const overlay = WindowState.get(metaWindow, MINIATURE_OVERLAY);
-                        if (overlay && tgt) {
-                            const iconClone = new Clutter.Clone({
-                                source: overlay,
-                                x: tgt.x - monitor.x,
-                                y: tgt.y - monitor.y,
-                            });
-                            overlay.connectObject('destroy', () => iconClone.destroy(), iconClone);
-                            wsGroup.add_child(iconClone);
-                        }
-                    }
+                    extension._fixSwitchMiniatureClone(wsGroup, record, monitor);
                 }
             }
         };
@@ -468,19 +406,13 @@ export default class WindowMosaicExtension extends Extension {
         // session icon was) and slides down to the native footer anchor. Driven by
         // the adjustment, not an ease, so a half-open swipe leaves it halfway.
         this._injectionManager.overrideMethod(previewProto, '_updateIconScale', originalMethod => {
+            const extension = this;
             return function (...args) {
                 const mw = this.metaWindow;
                 const { currentState, initialState, finalState } =
                     this._overviewAdjustment.getStateTransitionParams();
 
-                // A straight run to the app grid is one transition from 0 to 2, so
-                // currentState alone would sweep through the picker and flash an icon
-                // the shell keeps hidden. At rest the two endpoints collapse onto the
-                // current state, and _init lands there, so the icon has to be placed.
-                const { ControlsState } = OverviewControls;
-                const throughPicker = initialState === finalState ||
-                    initialState === ControlsState.WINDOW_PICKER ||
-                    finalState === ControlsState.WINDOW_PICKER;
+                const throughPicker = extension._overviewGoesThroughPicker(initialState, finalState);
 
                 if (!mw || !WindowState.get(mw, IS_MINIATURE) || !throughPicker || currentState > 1) {
                     this._mosaicIconLift = 0;
@@ -520,42 +452,15 @@ export default class WindowMosaicExtension extends Extension {
                 if (!Main.overview.visible)
                     return originalMethod.apply(this, args);
 
-                let workspace = null;
-                for (const win of this._sortedWindows) {
-                    const mw = win.metaWindow || win.source?.metaWindow;
-                    if (mw) {
-                        workspace = mw.get_workspace();
-                        if (workspace) break;
-                    }
-                }
-
                 // Opened from inside the overview, the screenshot picker slips past the
                 // check above, and its windows carry no metaWindow to locate a workspace
                 // with. Without this the mosaic strategy hands back an empty slot list.
+                const workspace = extension._firstOverviewWorkspace(this._sortedWindows);
                 if (!workspace)
                     return originalMethod.apply(this, args);
 
                 const isEnabled = extension.isMosaicEnabledForWorkspace(workspace);
-
-                let useMosaic = isEnabled;
-                if (isEnabled) {
-                    for (const win of this._sortedWindows) {
-                        const mw = win.metaWindow || win.source?.metaWindow;
-                        if (!mw) continue;
-
-                        // Fallback to Native GNOME layout if there are non-mosaic windows
-                        // (Above, Sticky, Maximized, Fullscreen, Modals, Transients, or Minimized)
-                        if (mw.minimized ||
-                            mw.is_above() || extension.windowingManager.isTrulySticky(mw) ||
-                            mw.is_fullscreen() ||
-                            mw.get_window_type() === Meta.WindowType.MODAL_DIALOG ||
-                            mw.is_attached_dialog() ||
-                            mw.get_transient_for() !== null) {
-                            useMosaic = false;
-                            break;
-                        }
-                    }
-                }
+                const useMosaic = isEnabled && !extension._hasFloatingOverviewWindow(this._sortedWindows);
 
                 if (!useMosaic) {
                     if (isEnabled) {
@@ -650,6 +555,120 @@ export default class WindowMosaicExtension extends Extension {
         }, 'startupTile');
     }
 
+    _setupDndMiniatureRestore() {
+        this._dnd = global.backend?.get_dnd() ?? null;
+        if (!this._dnd) return;
+
+        this._dndScheduleRestore = createDebounced(
+            (window) => {
+                this._dndPendingWindowId = null;
+                if (isWindowAlive(window) && WindowState.get(window, WindowState.IS_MINIATURE))
+                    this.miniatureManager?.restoreMiniature(window, null);
+            },
+            constants.DND_MINIATURE_RESTORE_DELAY_MS,
+            this._timeoutRegistry
+        );
+        this._dndEnterId = this._dnd.connect('dnd-enter', this._onDndEnter.bind(this));
+        this._dndPositionId = this._dnd.connect('dnd-position-change', this._onDndPositionChange.bind(this));
+        this._dndLeaveId = this._dnd.connect('dnd-leave', this._onDndLeave.bind(this));
+    }
+
+    // Clear the stock GNOME shortcuts that collide with ours, but only when they still hold
+    // their default combo, so a user who rebound them keeps their choice.
+    _overrideConflictingKeybindings() {
+        const mutterKeybindings = new Gio.Settings({ schema_id: 'org.gnome.mutter.keybindings' });
+        const emptyArray = new GLib.Variant('as', []);
+
+        if (mutterKeybindings.get_strv('toggle-tiled-left').includes('<Super>Left')) {
+            this._settingsOverrider.add(mutterKeybindings, 'toggle-tiled-left', emptyArray);
+        }
+        if (mutterKeybindings.get_strv('toggle-tiled-right').includes('<Super>Right')) {
+            this._settingsOverrider.add(mutterKeybindings, 'toggle-tiled-right', emptyArray);
+        }
+
+        const shellKeybindings = new Gio.Settings({ schema_id: 'org.gnome.shell.keybindings' });
+        // Super+Alt+Up/Down is our swap-up/down default but also GNOME's stock
+        // shift-overview-up/down, so clear GNOME's to keep the combo for recomposition.
+        if (shellKeybindings.get_strv('shift-overview-up').includes('<Super><Alt>Up')) {
+            this._settingsOverrider.add(shellKeybindings, 'shift-overview-up', emptyArray);
+        }
+        if (shellKeybindings.get_strv('shift-overview-down').includes('<Super><Alt>Down')) {
+            this._settingsOverrider.add(shellKeybindings, 'shift-overview-down', emptyArray);
+        }
+    }
+
+    // A straight run to the app grid is one transition from 0 to 2, so currentState alone
+    // would sweep through the picker and flash an icon the shell keeps hidden. At rest the
+    // two endpoints collapse onto the current state, and _init lands there, so it gets placed.
+    _overviewGoesThroughPicker(initialState, finalState) {
+        const { ControlsState } = OverviewControls;
+        return initialState === finalState ||
+            initialState === ControlsState.WINDOW_PICKER ||
+            finalState === ControlsState.WINDOW_PICKER;
+    }
+
+    // Clutter.Clone disables the source actor's model-view transform during clone paint,
+    // so set_scale/set_translation on the source are ignored. Apply the miniature scale
+    // directly on the clone and place it at the visual frame location (MINIATURE_TARGET_POS).
+    _fixSwitchMiniatureClone(wsGroup, record, monitor) {
+        const metaWindow = record.windowActor.meta_window;
+        if (!WindowState.get(metaWindow, IS_MINIATURE)) return;
+
+        const tgt = WindowState.get(metaWindow, MINIATURE_TARGET_POS);
+        const sc = WindowState.get(metaWindow, MINIATURE_SCALE);
+        const extL = WindowState.get(metaWindow, MINIATURE_EXT_LEFT) ?? 0;
+        const extT = WindowState.get(metaWindow, MINIATURE_EXT_TOP) ?? 0;
+        if (tgt && sc) {
+            record.clone.set_pivot_point(0, 0);
+            record.clone.set_scale(sc, sc);
+            record.clone.x = tgt.x - monitor.x - extL * sc;
+            record.clone.y = tgt.y - monitor.y - extT * sc;
+        }
+
+        // _createClone only ever sees the window actor, and the icon overlay is its
+        // sibling, so the icon would vanish for the whole slide. The overlay already
+        // sits at frame scale, hence no set_scale.
+        const overlay = WindowState.get(metaWindow, MINIATURE_OVERLAY);
+        if (overlay && tgt) {
+            const iconClone = new Clutter.Clone({
+                source: overlay,
+                x: tgt.x - monitor.x,
+                y: tgt.y - monitor.y,
+            });
+            overlay.connectObject('destroy', () => iconClone.destroy(), iconClone);
+            wsGroup.add_child(iconClone);
+        }
+    }
+
+    // The screenshot picker reuses WorkspaceLayout with window objects that carry no
+    // metaWindow, so a miss here (null) is the signal to leave the native layout alone.
+    _firstOverviewWorkspace(sortedWindows) {
+        for (const win of sortedWindows) {
+            const mw = win.metaWindow || win.source?.metaWindow;
+            const workspace = mw?.get_workspace();
+            if (workspace) return workspace;
+        }
+        return null;
+    }
+
+    _hasFloatingOverviewWindow(sortedWindows) {
+        return sortedWindows.some(win => {
+            const mw = win.metaWindow || win.source?.metaWindow;
+            return mw && this._isFloatingWindow(mw);
+        });
+    }
+
+    // Non-mosaic windows the overview must lay out natively: anything raised out of the
+    // tiling flow (Above, Sticky, Fullscreen, Modals, Transients, or Minimized).
+    _isFloatingWindow(mw) {
+        return mw.minimized ||
+            mw.is_above() || this.windowingManager.isTrulySticky(mw) ||
+            mw.is_fullscreen() ||
+            mw.get_window_type() === Meta.WindowType.MODAL_DIALOG ||
+            mw.is_attached_dialog() ||
+            mw.get_transient_for() !== null;
+    }
+
     _onFocusWindowChanged() {
         const window = global.display.focus_window;
         if (!window) return;
@@ -657,37 +676,15 @@ export default class WindowMosaicExtension extends Extension {
         const prevFocusedId = this._lastFocusedWindowId;
         this._lastFocusedWindowId = window.get_id();
 
-        if (!this.windowingManager.isRelated(window)) return;
-        if (this.windowingManager.isExcluded(window)) return;
-        if (this.windowingManager.isMaximizedOrFullscreen(window)) return;
-        if (!WindowState.get(window, IS_MINIATURE)) return;
-        if (WindowState.get(window, 'justMiniaturized')) {
-            Logger.log(`[FOCUS] Skip restore ${window.get_id()}: justMiniaturized`);
-            return;
-        }
-        if (this.tilingManager._isSmartResizingBlocked) {
-            Logger.log(`[FOCUS] Skip restore ${window.get_id()}: smartResizingBlocked`);
-            return;
-        }
+        if (!this._focusEligibleForRestore(window)) return;
 
         const windowId = window.get_id();
         Logger.log(`[FOCUS] Miniature focused ${windowId} (prev=${prevFocusedId}) cascade=${this._miniatureCascadeIds?.has(windowId)}`);
 
-        if (this._miniatureCascadeIds?.has(windowId)) {
-            if (prevFocusedId !== windowId) {
-                // User deliberately focused it after focusing something else → allow restore
-                Logger.log(`[FOCUS] Allow restore ${windowId} (deliberate, prev=${prevFocusedId})`);
-                this._miniatureCascadeIds.delete(windowId);
-            } else {
-                // Auto-focused during cascade → block; activate a non-miniature window instead
-                const ws  = window.get_workspace();
-                const mon = window.get_monitor();
-                const nonMiniature = this.windowingManager.getMonitorWorkspaceWindows(ws, mon)
-                    .find(w => !WindowState.get(w, IS_MINIATURE) && !this.windowingManager.isExcluded(w));
-                Logger.log(`[FOCUS] Block cascade restore ${windowId} → activating ${nonMiniature?.get_id() ?? 'none'}`);
-                if (nonMiniature) nonMiniature.activate(global.get_current_time());
-                return;
-            }
+        // A cascade auto-focus doesn't get to restore; only a deliberate re-focus does.
+        if (this._miniatureCascadeIds?.has(windowId) &&
+            !this._resolveCascadeFocus(window, windowId, prevFocusedId)) {
+            return;
         }
 
         Logger.log(`[FOCUS] Triggering restore ${windowId}`);
@@ -697,6 +694,42 @@ export default class WindowMosaicExtension extends Extension {
 
         this.miniatureManager.restoreMiniature(window, null);
         // 'miniature-restored' signal fires synchronously → _onMiniatureRestored runs next
+    }
+
+    // Only a miniature that the user could sensibly want back qualifies; a maximized,
+    // excluded, or just-miniaturized window, or one mid smart-resize, is left alone.
+    _focusEligibleForRestore(window) {
+        if (!this.windowingManager.isRelated(window)) return false;
+        if (this.windowingManager.isExcluded(window)) return false;
+        if (this.windowingManager.isMaximizedOrFullscreen(window)) return false;
+        if (!WindowState.get(window, IS_MINIATURE)) return false;
+        if (WindowState.get(window, 'justMiniaturized')) {
+            Logger.log(`[FOCUS] Skip restore ${window.get_id()}: justMiniaturized`);
+            return false;
+        }
+        if (this.tilingManager._isSmartResizingBlocked) {
+            Logger.log(`[FOCUS] Skip restore ${window.get_id()}: smartResizingBlocked`);
+            return false;
+        }
+        return true;
+    }
+
+    // Returns true to let the restore proceed (deliberate re-focus), false when it was an
+    // auto-focus during a cascade, which instead hands focus to a non-miniature window.
+    _resolveCascadeFocus(window, windowId, prevFocusedId) {
+        if (prevFocusedId !== windowId) {
+            Logger.log(`[FOCUS] Allow restore ${windowId} (deliberate, prev=${prevFocusedId})`);
+            this._miniatureCascadeIds.delete(windowId);
+            return true;
+        }
+
+        const ws  = window.get_workspace();
+        const mon = window.get_monitor();
+        const nonMiniature = this.windowingManager.getMonitorWorkspaceWindows(ws, mon)
+            .find(w => !WindowState.get(w, IS_MINIATURE) && !this.windowingManager.isExcluded(w));
+        Logger.log(`[FOCUS] Block cascade restore ${windowId} → activating ${nonMiniature?.get_id() ?? 'none'}`);
+        if (nonMiniature) nonMiniature.activate(global.get_current_time());
+        return false;
     }
 
     _onMiniatureRestored(window) {
@@ -882,6 +915,8 @@ export default class WindowMosaicExtension extends Extension {
         Logger.log('SWAP: swapWindow call completed');
     }
 
+    // Phases run in the same order the old flat method did; teardown order is load-bearing
+    // (e.g. the miniature listener comes off before restore, handlers destroy before refs null).
     disable() {
         Logger.log('Disabling extension');
 
@@ -891,6 +926,16 @@ export default class WindowMosaicExtension extends Extension {
 
         Logger.info('Disabling Mosaic layout manager.');
 
+        this._teardownOverrides();
+        this._removeKeybindings();
+        this._teardownEarlyManagers();
+        this._teardownDnd();
+        this._teardownMiniatures();
+        this._disconnectSignals();
+        this._destroyManagersAndClearRefs();
+    }
+
+    _teardownOverrides() {
         if (this._settingsOverrider) {
             this._settingsOverrider.destroy();
             this._settingsOverrider = null;
@@ -913,7 +958,9 @@ export default class WindowMosaicExtension extends Extension {
                 this._origWindowPreviewBoundingBoxDesc);
             this._origWindowPreviewBoundingBoxDesc = null;
         }
+    }
 
+    _removeKeybindings() {
         Main.wm.removeKeybinding('tile-left');
         Main.wm.removeKeybinding('tile-right');
         Main.wm.removeKeybinding('tile-top-left');
@@ -925,7 +972,9 @@ export default class WindowMosaicExtension extends Extension {
         Main.wm.removeKeybinding('swap-up');
         Main.wm.removeKeybinding('swap-down');
         Logger.log('Keyboard shortcuts removed');
+    }
 
+    _teardownEarlyManagers() {
         if (this.edgeTilingManager) this.edgeTilingManager.destroy();
         if (this.drawingManager) this.drawingManager.destroy();
         if (this.animationsManager) this.animationsManager.destroy();
@@ -939,7 +988,9 @@ export default class WindowMosaicExtension extends Extension {
             global.display.disconnect(this._focusWindowChangedId);
             this._focusWindowChangedId = 0;
         }
+    }
 
+    _teardownDnd() {
         if (this._dnd) {
             if (this._dndEnterId) this._dnd.disconnect(this._dndEnterId);
             if (this._dndPositionId) this._dnd.disconnect(this._dndPositionId);
@@ -953,7 +1004,9 @@ export default class WindowMosaicExtension extends Extension {
         this._dndScheduleRestore = null;
         this._dndActive = false;
         this._dndPendingWindowId = null;
+    }
 
+    _teardownMiniatures() {
         if (this.miniatureManager) {
             // Disconnect listener first, otherwise restoreMiniature re-enters
             // _onMiniatureRestored, scheduling timeouts that fire after windowHandler is nulled.
@@ -968,7 +1021,9 @@ export default class WindowMosaicExtension extends Extension {
 
         this._miniatureCascadeIds = null;
         this._lastFocusedWindowId = null;
+    }
 
+    _disconnectSignals() {
         if (this._tileTimeout && this._timeoutRegistry) {
             this._timeoutRegistry.remove(this._tileTimeout);
             this._tileTimeout = null;
@@ -1003,7 +1058,9 @@ export default class WindowMosaicExtension extends Extension {
         this._displayEventIds = [];
         this._workspaceManEventIds = [];
         this._workspaceEventIds = [];
+    }
 
+    _destroyManagersAndClearRefs() {
         // Clean up handler classes before nulling shared refs, since their destroy()
         // reaches the timeout registry through the extension reference.
         if (this.resizeHandler) this.resizeHandler.destroy();

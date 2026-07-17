@@ -52,9 +52,17 @@ const MosaicMenuToggle = GObject.registerClass(
             this._rebuildWorkspaceList();
         }
 
+        // get_workspace_by_index goes null mid-teardown, so callers never see the hole.
+        _eachWorkspace(fn) {
+            const nWorkspaces = this._workspaceManager.get_n_workspaces();
+            for (let i = 0; i < nWorkspaces; i++) {
+                const workspace = this._workspaceManager.get_workspace_by_index(i);
+                if (workspace) fn(workspace, i);
+            }
+        }
+
         _onGlobalToggle() {
             const enabled = this.checked;
-            const nWorkspaces = this._workspaceManager.get_n_workspaces();
             Logger.log(`Quick Settings: Global toggle ${enabled ? 'ON' : 'OFF'}`);
 
             this.gicon = _getIcon(this._extension, enabled ? 'mosaic-on-symbolic' : 'mosaic-off-symbolic');
@@ -62,28 +70,17 @@ const MosaicMenuToggle = GObject.registerClass(
             // Carries over to workspaces that don't exist yet. Per-workspace exceptions
             // are dropped since a global click overrides whatever was picked one by one.
             this._extension._mosaicDisabledByDefault = !enabled;
-            for (let i = 0; i < nWorkspaces; i++) {
-                const workspace = this._workspaceManager.get_workspace_by_index(i);
-                if (workspace)
-                    this._extension._disabledWorkspaceStates.delete(workspace);
-            }
+            this._eachWorkspace(workspace => this._extension._disabledWorkspaceStates.delete(workspace));
 
             if (enabled) {
-                for (let i = 0; i < nWorkspaces; i++) {
-                    const workspace = this._workspaceManager.get_workspace_by_index(i);
-                    if (workspace) {
-                        Logger.log(`Quick Settings: Re-tiling workspace ${i + 1} (global toggle)`);
-                        const nMonitors = global.display.get_n_monitors();
-                        for (let j = 0; j < nMonitors; j++)
-                            this._extension.tilingManager.enforceWorkspaceFit(workspace, j);
-                    }
-                }
+                this._eachWorkspace((workspace, i) => {
+                    Logger.log(`Quick Settings: Re-tiling workspace ${i + 1} (global toggle)`);
+                    const nMonitors = global.display.get_n_monitors();
+                    for (let j = 0; j < nMonitors; j++)
+                        this._extension.tilingManager.enforceWorkspaceFit(workspace, j);
+                });
             } else {
-                for (let i = 0; i < nWorkspaces; i++) {
-                    const workspace = this._workspaceManager.get_workspace_by_index(i);
-                    if (workspace)
-                        this._extension.disableWorkspaceMosaic(workspace);
-                }
+                this._eachWorkspace(workspace => this._extension.disableWorkspaceMosaic(workspace));
             }
 
             this._rebuildWorkspaceList();

@@ -62,7 +62,6 @@ export const ReorderingManager = GObject.registerClass({
 
         const workspace = meta_window.get_workspace();
         const monitor = global.display.get_current_monitor();
-        const workArea = workspace.get_work_area_for_monitor(monitor);
 
         const _cursor = global.get_pointer();
         const cursor = {
@@ -70,13 +69,7 @@ export const ReorderingManager = GObject.registerClass({
             y: _cursor[1]
         };
 
-        let isOverEdgeZone = false;
-        if (this._edgeTilingManager) {
-            const zone = this._edgeTilingManager.detectZone(cursor.x, cursor.y, workArea, workspace);
-            isOverEdgeZone = zone !== TileZone.NONE;
-        }
-
-        if (isOverEdgeZone) {
+        if (this._isOverEdgeZone(cursor, workspace, monitor)) {
             this._lastTileState = 'edge-zone';
             return;
         }
@@ -86,11 +79,7 @@ export const ReorderingManager = GObject.registerClass({
 
         const { layout: closestLayout, distance: minDist } = closest;
 
-
-        if (this._chosenLayout && closestLayout !== this._chosenLayout) {
-            const currentDist = this._cursorDistance(cursor, this._chosenLayout.draggedRect);
-            if (minDist > currentDist * 0.5) return;
-        }
+        if (!this._shouldSwitchLayout(cursor, closestLayout, minDist)) return;
 
         const newState = this._tileStateFor(closestLayout);
         if (this._lastTileState !== newState) {
@@ -98,6 +87,22 @@ export const ReorderingManager = GObject.registerClass({
             this._lastTileState = newState;
             this._chosenLayout = closestLayout;
         }
+    }
+
+    _isOverEdgeZone(cursor, workspace, monitor) {
+        if (!this._edgeTilingManager) return false;
+
+        const workArea = workspace.get_work_area_for_monitor(monitor);
+        return this._edgeTilingManager.detectZone(cursor.x, cursor.y, workArea, workspace) !== TileZone.NONE;
+    }
+
+    // Sticking to the layout we're already previewing until the new one is clearly closer;
+    // near-ties would otherwise flip the preview back and forth under a still cursor.
+    _shouldSwitchLayout(cursor, closestLayout, minDist) {
+        if (!this._chosenLayout || closestLayout === this._chosenLayout) return true;
+
+        const currentDist = this._cursorDistance(cursor, this._chosenLayout.draggedRect);
+        return minDist <= currentDist * 0.5;
     }
 
     _closestLayout(cursor) {

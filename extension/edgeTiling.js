@@ -6,7 +6,7 @@ import * as Logger from './logger.js';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import * as constants from './constants.js';
-import { TileZone } from './constants.js';
+import { TileZone, ZONE_SIDE, ZONE_HALF, ZONE_VERTICAL_PAIR, SIDE_ZONES } from './constants.js';
 import * as WindowState from './windowState.js';
 import { IS_MINIATURE, ANIMATING_MINIATURE, MINIATURE_ANIM_KIND } from './windowState.js';
 import { getMiniatureSize } from './miniature.js';
@@ -85,39 +85,31 @@ export const EdgeTilingManager = GObject.registerClass({
         this._timeoutRegistry = null;
     }
 
+    // Windows that can hold a zone here; hidden and non-normal ones never tile.
+    _tileableWindows(workspace, monitor, exclude = null) {
+        return workspace.list_windows().filter(w =>
+            w.get_monitor() === monitor &&
+            !w.is_hidden() &&
+            w.get_window_type() === Meta.WindowType.NORMAL &&
+            w.get_id() !== exclude?.get_id()
+        );
+    }
+
     // cachedEdgeTiledIds is ignored in WeakMap implementation
     _hasEdgeTiledWindowsOnSide(workspace, side, _cachedEdgeTiledIds = null) {
         if (!workspace) return false;
 
         // Iterating WeakMap is not possible in GJS, so query workspace windows instead
         // This is robust but slightly more expensive than a Map lookup
-
-        const windows = workspace.list_windows();
-        for (const win of windows) {
+        return workspace.list_windows().some(win => {
             const state = WindowState.get(win, 'edgeTilingState');
-            if (!state || state.zone === TileZone.NONE || state.zone === TileZone.FULLSCREEN) continue;
-
-            if (side === 'left') {
-                if (state.zone === TileZone.LEFT_FULL ||
-                    state.zone === TileZone.TOP_LEFT ||
-                    state.zone === TileZone.BOTTOM_LEFT) {
-                    return true;
-                }
-            } else if (side === 'right') {
-                if (state.zone === TileZone.RIGHT_FULL ||
-                    state.zone === TileZone.TOP_RIGHT ||
-                    state.zone === TileZone.BOTTOM_RIGHT) {
-                    return true;
-                }
-            }
-        }
-        return false;
+            return state && ZONE_SIDE[state.zone] === side;
+        });
     }
 
     // _cachedEdgeTiledIds: optional array of window IDs to avoid list_windows() call
     detectZone(cursorX, cursorY, workArea, workspace, cachedEdgeTiledIds = null) {
         const threshold = constants.EDGE_TILING_THRESHOLD;
-        const thirdY = workArea.height / 3;
 
         // Check TOP edge first (maximize)
         if (cursorY < workArea.y + threshold) {
@@ -125,200 +117,128 @@ export const EdgeTilingManager = GObject.registerClass({
         }
 
         if (cursorX < workArea.x + threshold) {
-            const hasLeftWindows = this._hasEdgeTiledWindowsOnSide(workspace, 'left', cachedEdgeTiledIds);
-
-            if (!hasLeftWindows) return TileZone.LEFT_FULL;
-
-            const relY = cursorY - workArea.y;
-            if (relY < thirdY) return TileZone.TOP_LEFT;
-            if (relY > workArea.height - thirdY) return TileZone.BOTTOM_LEFT;
-            return TileZone.LEFT_FULL;
+            return this._sideZone('left', cursorY, workArea, workspace, cachedEdgeTiledIds);
         }
-
         if (cursorX > workArea.x + workArea.width - threshold) {
-            const hasRightWindows = this._hasEdgeTiledWindowsOnSide(workspace, 'right', cachedEdgeTiledIds);
-
-            if (!hasRightWindows) return TileZone.RIGHT_FULL;
-
-            const relY = cursorY - workArea.y;
-            if (relY < thirdY) return TileZone.TOP_RIGHT;
-            if (relY > workArea.height - thirdY) return TileZone.BOTTOM_RIGHT;
-            return TileZone.RIGHT_FULL;
+            return this._sideZone('right', cursorY, workArea, workspace, cachedEdgeTiledIds);
         }
         return TileZone.NONE;
+    }
+
+    // A side only offers quarters once something is tiled there; on an empty side the
+    // whole edge reads as the full half, wherever vertically the cursor sits.
+    _sideZone(side, cursorY, workArea, workspace, cachedEdgeTiledIds) {
+        const zones = SIDE_ZONES[side];
+        if (!this._hasEdgeTiledWindowsOnSide(workspace, side, cachedEdgeTiledIds)) return zones.full;
+
+        const thirdY = workArea.height / 3;
+        const relY = cursorY - workArea.y;
+        if (relY < thirdY) return zones.top;
+        if (relY > workArea.height - thirdY) return zones.bottom;
+        return zones.full;
     }
 
     _getExistingSideWidth(workspace, monitor, side) {
         if (!workspace || monitor === undefined) return null;
 
-        const workspaceWindows = workspace.list_windows().filter(w =>
-            w.get_monitor() === monitor &&
-            !w.is_hidden() &&
-            w.get_window_type() === Meta.WindowType.NORMAL
-        );
-
-        let existing = null;
-        for (const w of workspaceWindows) {
+        const existing = this._tileableWindows(workspace, monitor).find(w => {
             const state = this.getWindowState(w);
-            if (!state || !state.zone) continue;
+            return state && ZONE_SIDE[state.zone] === side;
+        });
 
-            if (side === 'LEFT' && (
-                state.zone === TileZone.LEFT_FULL ||
-                state.zone === TileZone.TOP_LEFT ||
-                state.zone === TileZone.BOTTOM_LEFT
-            )) {
-                existing = w;
-                break;
-            } else if (side === 'RIGHT' && (
-                state.zone === TileZone.RIGHT_FULL ||
-                state.zone === TileZone.TOP_RIGHT ||
-                state.zone === TileZone.BOTTOM_RIGHT
-            )) {
-                existing = w;
-                break;
-            }
-        }
-
-        if (existing) {
-            const frame = existing.get_frame_rect();
-            return frame.width;
-        }
-        return null;
+        return existing ? existing.get_frame_rect().width : null;
     }
 
     _getExistingQuarterHeight(workspace, monitor, zone) {
         if (!workspace || monitor === undefined) return null;
 
-        const workspaceWindows = workspace.list_windows().filter(w =>
-            w.get_monitor() === monitor &&
-            !w.is_hidden() &&
-            w.get_window_type() === Meta.WindowType.NORMAL
-        );
-
-        const existing = workspaceWindows.find(w => {
+        const existing = this._tileableWindows(workspace, monitor).find(w => {
             const state = this.getWindowState(w);
             return state && state.zone === zone;
         });
 
-        if (existing) {
-            const frame = existing.get_frame_rect();
-            return frame.height;
-        }
-        return null;
+        return existing ? existing.get_frame_rect().height : null;
     }
 
     getZoneRect(zone, workArea, windowToTile = null) {
         if (!workArea) return null;
 
-        let existingWidth = null;
-
-        if (windowToTile) {
-            const workspace = windowToTile.get_workspace();
-            const monitor = windowToTile.get_monitor();
-            const workspaceWindows = workspace.list_windows().filter(w =>
-                w.get_monitor() === monitor &&
-                w.get_id() !== windowToTile.get_id() &&
-                !w.is_hidden() &&
-                w.get_window_type() === Meta.WindowType.NORMAL
-            );
-
-            let oppositeZone = null;
-            if (zone === TileZone.LEFT_FULL) oppositeZone = TileZone.RIGHT_FULL;
-            else if (zone === TileZone.RIGHT_FULL) oppositeZone = TileZone.LEFT_FULL;
-
-            if (oppositeZone) {
-                const existingWindow = workspaceWindows.find(w => {
-                    const state = this.getWindowState(w);
-                    return state && state.zone === oppositeZone;
-                });
-
-                if (existingWindow) {
-                    // Mid-animation the frame is a transient size; the ease target is the width it will
-                    // settle at, so a freshly auto-tiled partner splits 50/50 instead of chasing the blur.
-                    const animTarget = this._animationsManager?.getAnimatingTarget(existingWindow.get_id());
-                    existingWidth = animTarget?.width ?? existingWindow.get_frame_rect().width;
-                    Logger.log(`getZoneRect: Found existing tiled window with width ${existingWidth}px`);
-                }
-            }
+        if (zone === TileZone.FULLSCREEN) {
+            return { x: workArea.x, y: workArea.y, width: workArea.width, height: workArea.height };
         }
+        if (ZONE_HALF[zone]) {
+            return this._quarterRect(zone, workArea, windowToTile);
+        }
+        if (zone === TileZone.LEFT_FULL || zone === TileZone.RIGHT_FULL) {
+            return this._fullSideRect(zone, workArea, windowToTile);
+        }
+        return null;
+    }
 
-        const halfHeight = Math.floor(workArea.height / 2);
+    // Width the partner across the split already occupies, so we claim only the rest.
+    _oppositeFullWidth(zone, windowToTile) {
+        if (!windowToTile) return null;
+
+        const oppositeZone = zone === TileZone.LEFT_FULL ? TileZone.RIGHT_FULL : TileZone.LEFT_FULL;
+        const candidates = this._tileableWindows(windowToTile.get_workspace(), windowToTile.get_monitor(), windowToTile);
+
+        const existingWindow = candidates.find(w => {
+            const state = this.getWindowState(w);
+            return state && state.zone === oppositeZone;
+        });
+        if (!existingWindow) return null;
+
+        // Mid-animation the frame is a transient size; the ease target is the width it will
+        // settle at, so a freshly auto-tiled partner splits 50/50 instead of chasing the blur.
+        const animTarget = this._animationsManager?.getAnimatingTarget(existingWindow.get_id());
+        const width = animTarget?.width ?? existingWindow.get_frame_rect().width;
+        Logger.log(`getZoneRect: Found existing tiled window with width ${width}px`);
+        return width;
+    }
+
+    _fullSideRect(zone, workArea, windowToTile) {
         const halfWidth = Math.floor(workArea.width / 2);
+        const existingWidth = this._oppositeFullWidth(zone, windowToTile);
+        const width = existingWidth ? (workArea.width - existingWidth) : halfWidth;
 
+        if (zone === TileZone.LEFT_FULL) {
+            return { x: workArea.x, y: workArea.y, width, height: workArea.height };
+        }
+        return {
+            x: existingWidth ? (workArea.x + existingWidth) : (workArea.x + halfWidth),
+            y: workArea.y,
+            width: existingWidth ? (workArea.width - existingWidth) : (workArea.width - halfWidth),
+            height: workArea.height
+        };
+    }
+
+    _quarterRect(zone, workArea, windowToTile) {
         const workspace = windowToTile?.get_workspace();
         const monitor = windowToTile?.get_monitor();
+        const halfWidth = Math.floor(workArea.width / 2);
+        const halfHeight = Math.floor(workArea.height / 2);
 
-        switch(zone) {
-            case TileZone.LEFT_FULL:
-                return {
-                    x: workArea.x,
-                    y: workArea.y,
-                    width: existingWidth ? (workArea.width - existingWidth) : halfWidth,
-                    height: workArea.height
-                };
+        const side = ZONE_SIDE[zone];
+        const width = this._getExistingSideWidth(workspace, monitor, side) || halfWidth;
+        const x = side === 'left' ? workArea.x : workArea.x + workArea.width - width;
 
-            case TileZone.RIGHT_FULL:
-                return {
-                    x: existingWidth ? (workArea.x + existingWidth) : (workArea.x + halfWidth),
-                    y: workArea.y,
-                    width: existingWidth ? (workArea.width - existingWidth) : (workArea.width - halfWidth),
-                    height: workArea.height
-                };
+        // The quarter stacked against us already picked its height; we take what's left.
+        const stackedHeight = this._getExistingQuarterHeight(workspace, monitor, ZONE_VERTICAL_PAIR[zone]);
 
-            case TileZone.TOP_LEFT: {
-                const leftWidth = this._getExistingSideWidth(workspace, monitor, 'LEFT') || halfWidth;
-                const bottomHeight = this._getExistingQuarterHeight(workspace, monitor, TileZone.BOTTOM_LEFT);
-                return {
-                    x: workArea.x,
-                    y: workArea.y,
-                    width: leftWidth,
-                    height: bottomHeight ? (workArea.height - bottomHeight) : halfHeight
-                };
-            }
-
-            case TileZone.TOP_RIGHT: {
-                const rightWidth = this._getExistingSideWidth(workspace, monitor, 'RIGHT') || halfWidth;
-                const bottomHeight = this._getExistingQuarterHeight(workspace, monitor, TileZone.BOTTOM_RIGHT);
-                return {
-                    x: workArea.x + workArea.width - rightWidth,
-                    y: workArea.y,
-                    width: rightWidth,
-                    height: bottomHeight ? (workArea.height - bottomHeight) : halfHeight
-                };
-            }
-
-            case TileZone.BOTTOM_LEFT: {
-                const leftWidth = this._getExistingSideWidth(workspace, monitor, 'LEFT') || halfWidth;
-                const topHeight = this._getExistingQuarterHeight(workspace, monitor, TileZone.TOP_LEFT);
-                return {
-                    x: workArea.x,
-                    y: topHeight ? (workArea.y + topHeight) : (workArea.y + halfHeight),
-                    width: leftWidth,
-                    height: topHeight ? (workArea.height - topHeight) : (workArea.height - halfHeight)
-                };
-            }
-
-            case TileZone.BOTTOM_RIGHT: {
-                const rightWidth = this._getExistingSideWidth(workspace, monitor, 'RIGHT') || halfWidth;
-                const topHeight = this._getExistingQuarterHeight(workspace, monitor, TileZone.TOP_RIGHT);
-                return {
-                    x: workArea.x + workArea.width - rightWidth,
-                    y: topHeight ? (workArea.y + topHeight) : (workArea.y + halfHeight),
-                    width: rightWidth,
-                    height: topHeight ? (workArea.height - topHeight) : (workArea.height - halfHeight)
-                };
-            }
-
-            case TileZone.FULLSCREEN:
-                return {
-                    x: workArea.x,
-                    y: workArea.y,
-                    width: workArea.width,
-                    height: workArea.height
-                };
-            default:
-                return null;
+        if (ZONE_HALF[zone] === 'top') {
+            return {
+                x,
+                y: workArea.y,
+                width,
+                height: stackedHeight ? (workArea.height - stackedHeight) : halfHeight
+            };
         }
+        return {
+            x,
+            y: stackedHeight ? (workArea.y + stackedHeight) : (workArea.y + halfHeight),
+            width,
+            height: stackedHeight ? (workArea.height - stackedHeight) : (workArea.height - halfHeight)
+        };
     }
 
     saveWindowState(window) {
@@ -400,25 +320,14 @@ export const EdgeTilingManager = GObject.registerClass({
 
         if (edgeTiledWindows.length === 0) return workArea;
 
-        const hasLeftFull = edgeTiledWindows.some(w => w.zone === TileZone.LEFT_FULL);
-        const hasLeftQuarters = edgeTiledWindows.some(w =>
-            w.zone === TileZone.TOP_LEFT || w.zone === TileZone.BOTTOM_LEFT
-        );
-
-        const hasRightFull = edgeTiledWindows.some(w => w.zone === TileZone.RIGHT_FULL);
-        const hasRightQuarters = edgeTiledWindows.some(w =>
-            w.zone === TileZone.TOP_RIGHT || w.zone === TileZone.BOTTOM_RIGHT
-        );
-
-
-        if (hasLeftFull || hasLeftQuarters) {
-            let maxRight = workArea.x;
-            edgeTiledWindows.forEach(w => {
-                if (w.zone === TileZone.LEFT_FULL || w.zone === TileZone.TOP_LEFT || w.zone === TileZone.BOTTOM_LEFT) {
-                    const rect = w.window.get_frame_rect();
-                    maxRight = Math.max(maxRight, rect.x + rect.width);
-                }
-            });
+        // Tiles on the left push the free space rightwards, tiles on the right cap it.
+        // Left keeps priority when both sides are occupied.
+        const leftTiles = edgeTiledWindows.filter(w => ZONE_SIDE[w.zone] === 'left');
+        if (leftTiles.length > 0) {
+            const maxRight = leftTiles.reduce((acc, w) => {
+                const rect = w.window.get_frame_rect();
+                return Math.max(acc, rect.x + rect.width);
+            }, workArea.x);
 
             return {
                 x: maxRight,
@@ -428,14 +337,12 @@ export const EdgeTilingManager = GObject.registerClass({
             };
         }
 
-        if (hasRightFull || hasRightQuarters) {
-            let minLeft = workArea.x + workArea.width;
-            edgeTiledWindows.forEach(w => {
-                if (w.zone === TileZone.RIGHT_FULL || w.zone === TileZone.TOP_RIGHT || w.zone === TileZone.BOTTOM_RIGHT) {
-                    const rect = w.window.get_frame_rect();
-                    minLeft = Math.min(minLeft, rect.x);
-                }
-            });
+        const rightTiles = edgeTiledWindows.filter(w => ZONE_SIDE[w.zone] === 'right');
+        if (rightTiles.length > 0) {
+            const minLeft = rightTiles.reduce(
+                (acc, w) => Math.min(acc, w.window.get_frame_rect().x),
+                workArea.x + workArea.width
+            );
 
             return {
                 x: workArea.x,
@@ -446,6 +353,27 @@ export const EdgeTilingManager = GObject.registerClass({
         }
 
         return workArea;
+    }
+
+    // Snapping a quarter onto a side that already holds a full tile splits that side, so the
+    // sitting tile gets pushed into the quarter stacked against the incoming one.
+    _planFullToQuarterConversion(window, zone, workspace, monitor) {
+        const side = ZONE_SIDE[zone];
+        if (!side || !ZONE_HALF[zone]) return null;
+
+        const fullZone = SIDE_ZONES[side].full;
+        const fullWindow = this._tileableWindows(workspace, monitor, window).find(w => {
+            const state = this.getWindowState(w);
+            return state && state.zone === fullZone;
+        });
+
+        if (!fullWindow) {
+            Logger.log(`No ${side} full window found for conversion`);
+            return null;
+        }
+
+        Logger.log(`Found ${side} full window ${fullWindow.get_id()} for conversion`);
+        return { window: fullWindow, newZone: ZONE_VERTICAL_PAIR[zone] };
     }
 
     calculateRemainingSpaceForZone(zone, workArea) {
@@ -561,7 +489,6 @@ export const EdgeTilingManager = GObject.registerClass({
 
         const workArea = workspace.get_work_area_for_monitor(monitor);
 
-        // Check left side
         const leftQuarters = edgeTiledWindows.filter(w =>
             w.zone === TileZone.TOP_LEFT || w.zone === TileZone.BOTTOM_LEFT
         );
@@ -583,7 +510,6 @@ export const EdgeTilingManager = GObject.registerClass({
             }
         }
 
-        // Check right side
         const rightQuarters = edgeTiledWindows.filter(w =>
             w.zone === TileZone.TOP_RIGHT || w.zone === TileZone.BOTTOM_RIGHT
         );
@@ -699,50 +625,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
         const workspace = window.get_workspace();
         const monitor = window.get_monitor();
-        let fullToQuarterConversion = null;
-
-        if (zone === TileZone.BOTTOM_LEFT || zone === TileZone.TOP_LEFT) {
-            Logger.log(`Checking for LEFT_FULL conversion, zone=${zone}`);
-            const workspaceWindows = workspace.list_windows().filter(w =>
-                w.get_monitor() === monitor &&
-                w.get_id() !== window.get_id() &&
-                !w.is_hidden() &&
-                w.get_window_type() === Meta.WindowType.NORMAL
-            );
-
-            Logger.log(`Found ${workspaceWindows.length} potential windows`);
-
-            const leftFullWindow = workspaceWindows.find(w => {
-                const state = this.getWindowState(w);
-                Logger.log(`Window ${w.get_id()} state: ${state ? `zone=${state.zone}` : 'no state'}`);
-                return state && state.zone === TileZone.LEFT_FULL;
-            });
-
-            if (leftFullWindow) {
-                Logger.log(`Found LEFT_FULL window ${leftFullWindow.get_id()} for conversion`);
-                const newZone = (zone === TileZone.BOTTOM_LEFT) ? TileZone.TOP_LEFT : TileZone.BOTTOM_LEFT;
-                fullToQuarterConversion = { window: leftFullWindow, newZone };
-            } else {
-                Logger.log('No LEFT_FULL window found for conversion');
-            }
-        } else if (zone === TileZone.BOTTOM_RIGHT || zone === TileZone.TOP_RIGHT) {
-            const workspaceWindows = workspace.list_windows().filter(w =>
-                w.get_monitor() === monitor &&
-                w.get_id() !== window.get_id() &&
-                !w.is_hidden() &&
-                w.get_window_type() === Meta.WindowType.NORMAL
-            );
-
-            const rightFullWindow = workspaceWindows.find(w => {
-                const state = this.getWindowState(w);
-                return state && state.zone === TileZone.RIGHT_FULL;
-            });
-
-            if (rightFullWindow) {
-                const newZone = (zone === TileZone.BOTTOM_RIGHT) ? TileZone.TOP_RIGHT : TileZone.BOTTOM_RIGHT;
-                fullToQuarterConversion = { window: rightFullWindow, newZone };
-            }
-        }
+        const fullToQuarterConversion = this._planFullToQuarterConversion(window, zone, workspace, monitor);
 
         let savedFullTileWidth = null;
         if (fullToQuarterConversion) {
@@ -759,19 +642,7 @@ export const EdgeTilingManager = GObject.registerClass({
             // only make the clamp detector learn a false minimum against it.
             WindowState.remove(window, 'targetSmartResizeSize');
 
-            if (this._animationsManager) {
-                this._animationsManager.animateWindow(window, rect, { subtle: true });
-            } else {
-                // Nobody eases the leftover miniature transform away here, so clear it by hand.
-                const actor = window.get_compositor_private();
-                if (actor) {
-                    actor.remove_all_transitions();
-                    actor.set_scale(1, 1);
-                    actor.set_translation(0, 0, 0);
-                }
-                window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
-            }
-
+            this._placeTiledWindow(window, rect);
             this.setupResizeListener(window);
 
             const state = WindowState.get(window, 'edgeTilingState');
@@ -780,92 +651,8 @@ export const EdgeTilingManager = GObject.registerClass({
             Logger.log(`Applied edge tile zone ${zone} to window ${winId}`);
 
             if (fullToQuarterConversion && savedFullTileWidth) {
-                const convertedRect = this.getZoneRect(fullToQuarterConversion.newZone, workArea, fullToQuarterConversion.window);
-
-                convertedRect.width = savedFullTileWidth;
-                rect.width = savedFullTileWidth;
-
-                if (fullToQuarterConversion.newZone === TileZone.TOP_LEFT || fullToQuarterConversion.newZone === TileZone.BOTTOM_LEFT) {
-                    convertedRect.x = workArea.x;
-                    rect.x = workArea.x;
-                } else {
-                    convertedRect.x = workArea.x + workArea.width - savedFullTileWidth;
-                    rect.x = workArea.x + workArea.width - savedFullTileWidth;
-                }
-
-                const halfHeight = Math.floor(workArea.height / 2);
-
-                if (this._animationsManager) {
-                    this._animationsManager.animateWindow(fullToQuarterConversion.window, {
-                        x: convertedRect.x,
-                        y: convertedRect.y,
-                        width: convertedRect.width,
-                        height: halfHeight
-                    }, { subtle: true });
-
-                    this._animationsManager.animateWindow(window, {
-                        x: rect.x,
-                        y: rect.y,
-                        width: rect.width,
-                        height: halfHeight
-                    });
-                } else {
-                    fullToQuarterConversion.window.move_resize_frame(false, convertedRect.x, convertedRect.y, convertedRect.width, halfHeight);
-                    window.move_resize_frame(false, rect.x, rect.y, rect.width, halfHeight);
-                }
-
-                Logger.log(`Applied quarter tiles with halfHeight=${halfHeight}px, width=${savedFullTileWidth}px`);
-
-                const convertedState = WindowState.get(fullToQuarterConversion.window, 'edgeTilingState');
-                if (convertedState) {
-                    Logger.log(`Converted window original state: ${convertedState.width}x${convertedState.height} (preserving for restore)`);
-                    convertedState.zone = fullToQuarterConversion.newZone;
-                }
-
-                this.emit('edge-tiling-changed', window, zone);
-                if (fullToQuarterConversion) {
-                    this.emit('edge-tiling-changed', fullToQuarterConversion.window, fullToQuarterConversion.newZone);
-                }
-
-                this._timeoutRegistry.add(constants.POLL_INTERVAL_MS, () => {
-                    if (!window.get_compositor_private() ||
-                        !fullToQuarterConversion.window.get_compositor_private()) {
-                        return GLib.SOURCE_REMOVE;
-                    }
-
-                    const actualConvertedFrame = fullToQuarterConversion.window.get_frame_rect();
-                    const actualNewFrame = window.get_frame_rect();
-
-                    if (actualConvertedFrame.height !== halfHeight || actualNewFrame.height !== halfHeight) {
-                        if (zone === TileZone.BOTTOM_LEFT || zone === TileZone.BOTTOM_RIGHT) {
-                            if (actualNewFrame.height > halfHeight) {
-                                const topHeight = workArea.height - actualNewFrame.height;
-                                const bottomY = workArea.y + topHeight;
-                                fullToQuarterConversion.window.move_resize_frame(false, convertedRect.x, workArea.y, convertedRect.width, topHeight);
-                                window.move_resize_frame(false, rect.x, bottomY, rect.width, actualNewFrame.height);
-                            } else {
-                                const bottomY = actualConvertedFrame.y + actualConvertedFrame.height;
-                                const bottomHeight = (workArea.y + workArea.height) - bottomY;
-                                window.move_resize_frame(false, rect.x, bottomY, rect.width, bottomHeight);
-                            }
-                        } else {
-                            if (actualNewFrame.height > halfHeight) {
-                                const bottomHeight = workArea.height - actualNewFrame.height;
-                                const bottomY = workArea.y + actualNewFrame.height;
-                                fullToQuarterConversion.window.move_resize_frame(false, convertedRect.x, bottomY, convertedRect.width, bottomHeight);
-                            } else {
-                                const bottomY = actualNewFrame.y + actualNewFrame.height;
-                                const bottomHeight = (workArea.y + workArea.height) - bottomY;
-                                fullToQuarterConversion.window.move_resize_frame(false, convertedRect.x, bottomY, convertedRect.width, bottomHeight);
-                            }
-                        }
-                    }
-
-                    if (this._tilingManager) {
-                        this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
-                    }
-                    return GLib.SOURCE_REMOVE;
-                });
+                this._splitSideIntoQuarters(window, zone, rect, workArea, workspace, monitor,
+                    fullToQuarterConversion, savedFullTileWidth);
             }
 
             // Handle mosaic windows that can't fit in remaining space
@@ -878,6 +665,121 @@ export const EdgeTilingManager = GObject.registerClass({
         });
 
         return true;
+    }
+
+    _placeTiledWindow(window, rect) {
+        if (this._animationsManager) {
+            this._animationsManager.animateWindow(window, rect, { subtle: true });
+            return;
+        }
+
+        // Nobody eases the leftover miniature transform away here, so clear it by hand.
+        const actor = window.get_compositor_private();
+        if (actor) {
+            actor.remove_all_transitions();
+            actor.set_scale(1, 1);
+            actor.set_translation(0, 0, 0);
+        }
+        window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+    }
+
+    // The sitting full tile keeps its width so the split lands where the user had already
+    // dragged the divider, instead of snapping both quarters back to 50/50.
+    _splitSideIntoQuarters(window, zone, rect, workArea, workspace, monitor, conversion, savedFullTileWidth) {
+        const convertedRect = this.getZoneRect(conversion.newZone, workArea, conversion.window);
+
+        convertedRect.width = savedFullTileWidth;
+        rect.width = savedFullTileWidth;
+
+        const x = ZONE_SIDE[conversion.newZone] === 'left'
+            ? workArea.x
+            : workArea.x + workArea.width - savedFullTileWidth;
+        convertedRect.x = x;
+        rect.x = x;
+
+        const halfHeight = Math.floor(workArea.height / 2);
+
+        if (this._animationsManager) {
+            this._animationsManager.animateWindow(conversion.window, {
+                x: convertedRect.x,
+                y: convertedRect.y,
+                width: convertedRect.width,
+                height: halfHeight
+            }, { subtle: true });
+
+            this._animationsManager.animateWindow(window, {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: halfHeight
+            });
+        } else {
+            conversion.window.move_resize_frame(false, convertedRect.x, convertedRect.y, convertedRect.width, halfHeight);
+            window.move_resize_frame(false, rect.x, rect.y, rect.width, halfHeight);
+        }
+
+        Logger.log(`Applied quarter tiles with halfHeight=${halfHeight}px, width=${savedFullTileWidth}px`);
+
+        const convertedState = WindowState.get(conversion.window, 'edgeTilingState');
+        if (convertedState) {
+            Logger.log(`Converted window original state: ${convertedState.width}x${convertedState.height} (preserving for restore)`);
+            convertedState.zone = conversion.newZone;
+        }
+
+        this.emit('edge-tiling-changed', window, zone);
+        this.emit('edge-tiling-changed', conversion.window, conversion.newZone);
+
+        this._settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, halfHeight);
+    }
+
+    // An app can refuse the halved height. Whoever won that argument dictates where the
+    // other one starts, so the pair still covers the side with no gap between them.
+    _settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, halfHeight) {
+        this._timeoutRegistry.add(constants.POLL_INTERVAL_MS, () => {
+            if (!window.get_compositor_private() ||
+                !conversion.window.get_compositor_private()) {
+                return GLib.SOURCE_REMOVE;
+            }
+
+            const actualConvertedFrame = conversion.window.get_frame_rect();
+            const actualNewFrame = window.get_frame_rect();
+
+            if (actualConvertedFrame.height !== halfHeight || actualNewFrame.height !== halfHeight) {
+                this._realignQuarterPair(window, zone, rect, convertedRect, workArea, conversion,
+                    actualNewFrame, actualConvertedFrame, halfHeight);
+            }
+
+            if (this._tilingManager) {
+                this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _realignQuarterPair(window, zone, rect, convertedRect, workArea, conversion, actualNewFrame, actualConvertedFrame, halfHeight) {
+        if (ZONE_HALF[zone] === 'bottom') {
+            if (actualNewFrame.height > halfHeight) {
+                const topHeight = workArea.height - actualNewFrame.height;
+                const bottomY = workArea.y + topHeight;
+                conversion.window.move_resize_frame(false, convertedRect.x, workArea.y, convertedRect.width, topHeight);
+                window.move_resize_frame(false, rect.x, bottomY, rect.width, actualNewFrame.height);
+            } else {
+                const bottomY = actualConvertedFrame.y + actualConvertedFrame.height;
+                const bottomHeight = (workArea.y + workArea.height) - bottomY;
+                window.move_resize_frame(false, rect.x, bottomY, rect.width, bottomHeight);
+            }
+            return;
+        }
+
+        if (actualNewFrame.height > halfHeight) {
+            const bottomHeight = workArea.height - actualNewFrame.height;
+            const bottomY = workArea.y + actualNewFrame.height;
+            conversion.window.move_resize_frame(false, convertedRect.x, bottomY, convertedRect.width, bottomHeight);
+        } else {
+            const bottomY = actualNewFrame.y + actualNewFrame.height;
+            const bottomHeight = (workArea.y + workArea.height) - bottomY;
+            conversion.window.move_resize_frame(false, convertedRect.x, bottomY, convertedRect.width, bottomHeight);
+        }
     }
 
     removeTile(window, callback = null, placeAtCursor = false) {
@@ -909,13 +811,36 @@ export const EdgeTilingManager = GObject.registerClass({
         WindowState.remove(window, 'targetSmartResizeSize');
         WindowState.set(window, 'isConstrainedByMosaic', false);
 
-        Logger.log(`removeTile: Checking dependencies for master=${winId}`);
+        this._releaseAutoTileLinks(window);
+
+        if (this._isQuarterZone(savedZone)) {
+            this._expandAdjacentQuarterToFull(window, savedZone);
+        }
+
+        if (window.is_maximized()) {
+            window.unmaximize();
+        }
+
+        this._restoreFrameAfterUntile(window, savedWidth, savedHeight, placeAtCursor);
+
+        if (callback) {
+            this._timeoutRegistry.add(constants.RETILE_DELAY_MS, () => {
+                callback();
+                return GLib.SOURCE_REMOVE;
+            }, 'edgeTiling_removeTileCallback');
+        }
+    }
+
+    // An untiled window drags its auto-tiled dependents out with it, and stops counting
+    // against whatever master pulled it in.
+    _releaseAutoTileLinks(window) {
+        Logger.log(`removeTile: Checking dependencies for master=${window.get_id()}`);
+
         const dependents = WindowState.get(window, 'autoTileDependents');
         if (dependents && dependents.size > 0) {
             Logger.log(`removeTile: Found ${dependents.size} dependents`);
             // Copy set to avoid modification during iteration
-            const depsArray = Array.from(dependents);
-            for (const dependent of depsArray) {
+            for (const dependent of Array.from(dependents)) {
                 Logger.log(`removeTile: Calling removeTile on dependent ${dependent.get_id()}`);
                 this.removeTile(dependent);
 
@@ -933,34 +858,33 @@ export const EdgeTilingManager = GObject.registerClass({
             if (masterDeps) masterDeps.delete(window);
             WindowState.remove(window, 'autoTileMaster');
         }
+    }
 
-        if (this._isQuarterZone(savedZone)) {
-            Logger.log(`Quarter tile ${winId} being removed from zone ${savedZone}`);
+    // The quarter stacked against the one leaving has the whole side to itself now.
+    _expandAdjacentQuarterToFull(window, savedZone) {
+        Logger.log(`Quarter tile ${window.get_id()} being removed from zone ${savedZone}`);
 
-            const adjacentZone = this._getAdjacentQuarterZone(savedZone);
-            if (adjacentZone) {
-                const adjacentWindow = this._findWindowInZone(adjacentZone, window.get_workspace());
+        const adjacentZone = this._getAdjacentQuarterZone(savedZone);
+        if (!adjacentZone) return;
 
-                if (adjacentWindow) {
-                    const fullZone = this._getFullZoneFromQuarter(savedState.zone);
-                    const workspace = window.get_workspace();
-                    const monitor = window.get_monitor();
-                    const workArea = workspace.get_work_area_for_monitor(monitor);
-                    const fullRect = this.getZoneRect(fullZone, workArea, adjacentWindow);
+        const adjacentWindow = this._findWindowInZone(adjacentZone, window.get_workspace());
+        if (!adjacentWindow) return;
 
-                    if (fullRect) {
-                        adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
-                        const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
-                        if (adjacentState) adjacentState.zone = fullZone;
-                    }
-                }
-            }
-        }
+        // Our own zone is already cleared to NONE by now, so the side has to come from the
+        // saved copy; reading it back would resolve to RIGHT_FULL for a left quarter.
+        const fullZone = this._getFullZoneFromQuarter(savedZone);
+        const workspace = window.get_workspace();
+        const monitor = window.get_monitor();
+        const workArea = workspace.get_work_area_for_monitor(monitor);
+        const fullRect = this.getZoneRect(fullZone, workArea, adjacentWindow);
+        if (!fullRect) return;
 
-        if (window.is_maximized()) {
-            window.unmaximize();
-        }
+        adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
+        const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
+        if (adjacentState) adjacentState.zone = fullZone;
+    }
 
+    _restoreFrameAfterUntile(window, savedWidth, savedHeight, placeAtCursor) {
         // Restore the pre-tiling size as it was. Whether it still fits is the mosaic's call, and it
         // shrinks or miniaturizes accordingly; pre-shrinking here would just lose the size for good.
         let restoredX;
@@ -977,15 +901,50 @@ export const EdgeTilingManager = GObject.registerClass({
             restoredY = frame.y;
         }
 
-        Logger.log(`removeTile: Restoring window ${winId} to size ${savedWidth}x${savedHeight} at (${restoredX}, ${restoredY})`);
+        Logger.log(`removeTile: Restoring window ${window.get_id()} to size ${savedWidth}x${savedHeight} at (${restoredX}, ${restoredY})`);
         window.move_resize_frame(false, restoredX, restoredY, savedWidth, savedHeight);
+    }
 
-        if (callback) {
-            this._timeoutRegistry.add(constants.RETILE_DELAY_MS, () => {
-                callback();
-                return GLib.SOURCE_REMOVE;
-            }, 'edgeTiling_removeTileCallback');
+    _evacuateMosaicToNewWorkspace(mosaicWindows, workspace, monitor) {
+        Logger.log(`Both sides edge-tiled - moving ${mosaicWindows.length} mosaic windows to new workspace`);
+        const newWorkspace = this._windowingManager.createOrReuseAdjacentWorkspace(workspace);
+
+        for (const mosaicWindow of mosaicWindows) {
+            mosaicWindow.change_workspace(newWorkspace);
         }
+
+        this._timeoutRegistry.add(constants.REVERSE_RESIZE_PROTECTION_MS, () => {
+            if (this._tilingManager) {
+                this._tilingManager.tileWorkspaceWindows(workspace, null, monitor);
+            }
+            return GLib.SOURCE_REMOVE;
+        }, 'edgeTiling_bothSidesRetile');
+
+        newWorkspace.activate(global.get_current_time());
+        this._windowingManager.showWorkspaceSwitcher(newWorkspace, monitor);
+    }
+
+    _tryPairIntoOppositeHalf(mosaicWindow, tiledWindow, zone, workArea) {
+        if (zone !== TileZone.LEFT_FULL && zone !== TileZone.RIGHT_FULL) return false;
+
+        const oppositeZone = (zone === TileZone.LEFT_FULL) ? TileZone.RIGHT_FULL : TileZone.LEFT_FULL;
+        const oppositeRect = this.getZoneRect(oppositeZone, workArea, mosaicWindow);
+
+        // A window that can't fill the half (max-size capped) falls through to the miniature path.
+        if (!oppositeRect || !this.isEdgeTileable(mosaicWindow, oppositeRect)) return false;
+
+        Logger.log(`_handleMosaicOverflow: auto-tiling single window ${mosaicWindow.get_id()} to opposite zone ${oppositeZone}`);
+
+        // Reserve the zone and drop any miniature synchronously so the trigger's size-changed
+        // retile treats this window as tiled before applyTile positions it, with no race.
+        this.saveWindowState(mosaicWindow);
+        const oppState = this.getWindowState(mosaicWindow);
+        if (oppState) oppState.zone = oppositeZone;
+        this._dropMiniature(mosaicWindow);
+
+        this.applyTile(mosaicWindow, oppositeZone, workArea);
+        this.registerAutoTileDependency(mosaicWindow, tiledWindow);
+        return true;
     }
 
     _handleMosaicOverflow(tiledWindow, zone, remainingSpace) {
@@ -996,68 +955,29 @@ export const EdgeTilingManager = GObject.registerClass({
         const workArea = workspace.get_work_area_for_monitor(monitor);
 
         // Check if BOTH sides are now edge-tiled (including the window just tiled)
-        const edgeTiledWindows = this.getEdgeTiledWindows(workspace, monitor);
-        const zones = edgeTiledWindows.map(w => w.zone);
-
-        const hasLeft = zones.includes(TileZone.LEFT_FULL) ||
-                        zones.some(z => z === TileZone.TOP_LEFT || z === TileZone.BOTTOM_LEFT);
-        const hasRight = zones.includes(TileZone.RIGHT_FULL) ||
-                         zones.some(z => z === TileZone.TOP_RIGHT || z === TileZone.BOTTOM_RIGHT);
+        const occupiedSides = new Set(
+            this.getEdgeTiledWindows(workspace, monitor).map(w => ZONE_SIDE[w.zone])
+        );
 
         const mosaicWindows = this.getNonEdgeTiledWindows(workspace, monitor);
 
         if (mosaicWindows.length === 0) return;
 
         // If both sides are occupied, move ALL mosaic windows to new workspace
-        if (hasLeft && hasRight) {
-            Logger.log(`Both sides edge-tiled - moving ${mosaicWindows.length} mosaic windows to new workspace`);
-            const newWorkspace = this._windowingManager.createOrReuseAdjacentWorkspace(workspace);
-
-            for (const mosaicWindow of mosaicWindows) {
-                mosaicWindow.change_workspace(newWorkspace);
-            }
-
-            this._timeoutRegistry.add(constants.REVERSE_RESIZE_PROTECTION_MS, () => {
-                if (this._tilingManager) {
-                    this._tilingManager.tileWorkspaceWindows(workspace, null, monitor);
-                }
-                return GLib.SOURCE_REMOVE;
-            }, 'edgeTiling_bothSidesRetile');
-
-            newWorkspace.activate(global.get_current_time());
-            this._windowingManager.showWorkspaceSwitcher(newWorkspace, monitor);
+        if (occupiedSides.has('left') && occupiedSides.has('right')) {
+            this._evacuateMosaicToNewWorkspace(mosaicWindows, workspace, monitor);
             return;
         }
 
         // Single edge tile: pair the last window into the opposite half instead of miniaturizing it.
-        if (mosaicWindows.length === 1) {
-            const mosaicWindow = mosaicWindows[0];
-
-            if (zone === TileZone.LEFT_FULL || zone === TileZone.RIGHT_FULL) {
-                const oppositeZone = (zone === TileZone.LEFT_FULL) ? TileZone.RIGHT_FULL : TileZone.LEFT_FULL;
-                const oppositeRect = this.getZoneRect(oppositeZone, workArea, mosaicWindow);
-
-                // A window that can't fill the half (max-size capped) falls through to the miniature path.
-                if (oppositeRect && this.isEdgeTileable(mosaicWindow, oppositeRect)) {
-                    Logger.log(`_handleMosaicOverflow: auto-tiling single window ${mosaicWindow.get_id()} to opposite zone ${oppositeZone}`);
-
-                    // Reserve the zone and drop any miniature synchronously so the trigger's size-changed
-                    // retile treats this window as tiled before applyTile positions it, with no race.
-                    this.saveWindowState(mosaicWindow);
-                    const oppState = this.getWindowState(mosaicWindow);
-                    if (oppState) oppState.zone = oppositeZone;
-                    this._dropMiniature(mosaicWindow);
-
-                    this.applyTile(mosaicWindow, oppositeZone, workArea);
-                    this.registerAutoTileDependency(mosaicWindow, tiledWindow);
-                    return;
-                }
-            }
+        if (mosaicWindows.length === 1 &&
+            this._tryPairIntoOppositeHalf(mosaicWindows[0], tiledWindow, zone, workArea)) {
+            return;
         }
 
         if (!this._tilingManager) return;
 
-        // Use miniature display size for miniaturized windows — get_frame_rect returns original full size.
+        // Miniaturized windows report their original full size from get_frame_rect, so pass the miniature display size instead.
         const testTileInfo = this._tilingManager._tile(
             mosaicWindows.map((w, i) => {
                 if (WindowState.get(w, IS_MINIATURE)) {
@@ -1127,7 +1047,7 @@ export const EdgeTilingManager = GObject.registerClass({
         const adjacentWindow = this._getAdjacentWindow(window, workspace, monitor, zone);
 
         if (!adjacentWindow) {
-            // No adjacent edge tile - retile mosaic to adapt to new edge tile size
+            // No adjacent edge tile, so retile the mosaic to adapt to the new edge tile size
             this._handleResizeWithMosaic(window, workspace, monitor);
             return;
         }
@@ -1343,10 +1263,9 @@ export const EdgeTilingManager = GObject.registerClass({
         const workArea = workspace.get_work_area_for_monitor(monitor);
         const edgeFrame = edgeTiledWindow.get_frame_rect();
 
-        // Get mosaic windows that need space
         const mosaicWindows = this.getNonEdgeTiledWindows(workspace, monitor);
         if (mosaicWindows.length === 0) {
-            // No mosaic windows - MUST leave room for at least one minimum-width window
+            // No mosaic windows, so leave room for at least one minimum-width window
             const minFreeSpace = constants.MIN_WINDOW_WIDTH;
             const maxWidth = workArea.width - minFreeSpace;
 

@@ -408,12 +408,156 @@ export const MiniatureManager = GObject.registerClass({
         this._animationsManager = animationsManager;
     }
 
+    // Shared onStopped for both shrink paths: clear anim flags and re-apply the latest
+    // target, since the layout may have recomputed the slot while the ease ran.
+    _finishMiniatureAnim(window, windowActor) {
+        WindowState.remove(window, ANIMATING_MINIATURE);
+        WindowState.remove(window, MINIATURE_ANIM_KIND);
+        windowActor.set_pivot_point(0, 0);
+        if (!WindowState.get(window, IS_MINIATURE)) return;
+
+        const finalTgt = WindowState.get(window, MINIATURE_TARGET_POS);
+        const finalSc = WindowState.get(window, MINIATURE_SCALE);
+        const finalExtL = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
+        const finalExtT = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
+        if (finalTgt && finalSc) {
+            applyMiniatureActorState(windowActor, finalSc, finalExtL, finalExtT, finalTgt.x, finalTgt.y);
+        }
+        const [finalAx, finalAy] = windowActor.get_position();
+        const [finalW, finalH] = windowActor.get_size();
+        Logger.log(`[MINIATURE] createMiniature animation complete ${window.get_id()}: FINAL actor=(${finalAx},${finalAy} ${finalW}x${finalH}) scale=${finalSc} FINAL_VISUAL=${Math.round(finalW * finalSc)}x${Math.round(finalH * finalSc)}`);
+    }
+
+    // Shrinking straight out of an interrupted restore: pick up the actor's live scale and
+    // translation so the flight starts from what's on screen, not from a full-size frame.
+    _animateMiniatureFromRestore(window, windowActor, ctx) {
+        const { scale, targetX, targetY, extLeft, extTop, actorBefore_x, actorBefore_y, currentFrame, endCenterX, endCenterY } = ctx;
+        const [actorW, actorH] = windowActor.get_size();
+
+        const [cpx, cpy] = windowActor.get_pivot_point();
+        const cs = windowActor.scale_x;
+        const curTx = windowActor.translation_x;
+        const curTy = windowActor.translation_y;
+        const visualX = actorBefore_x + cpx * actorW * (1 - cs) + curTx + extLeft * cs;
+        const visualY = actorBefore_y + cpy * actorH * (1 - cs) + curTy + extTop * cs;
+        const startTx = visualX - actorBefore_x - extLeft * cs;
+        const startTy = visualY - actorBefore_y - extTop * cs;
+        const endTx = targetX - actorBefore_x - extLeft * scale;
+        const endTy = targetY - actorBefore_y - extTop * scale;
+        const animDuration = Math.max(1, Math.round(constants.MINIATURE_ANIM_MS * getSlowDownFactor() * (cs - scale) / Math.max(0.001, 1.0 - scale)));
+
+        // Frame is already shrunk to cs here, so its center rides that scale.
+        const iconFly = {
+            dx: visualX + currentFrame.width * cs / 2 - endCenterX,
+            dy: visualY + currentFrame.height * cs / 2 - endCenterY,
+            duration: animDuration,
+        };
+
+        // Set kind before remove_all_transitions, since restore's onStopped fires
+        // synchronously and needs to see 'create' to skip its conditional removal.
+        // IS_MINIATURE is already true (set above), so restore's actor reset is also skipped.
+        WindowState.set(window, MINIATURE_ANIM_KIND, 'create');
+        windowActor.remove_all_transitions();
+
+        windowActor.set_pivot_point(0, 0);
+        windowActor.set_scale(cs, cs);
+        windowActor.set_translation(startTx, startTy, 0);
+
+        windowActor.ease({
+            scale_x: scale,
+            scale_y: scale,
+            translation_x: endTx,
+            translation_y: endTy,
+            duration: animDuration,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onStopped: () => this._finishMiniatureAnim(window, windowActor),
+        });
+
+        return iconFly;
+    }
+
+    _animateMiniatureFresh(window, windowActor, ctx) {
+        const { scale, targetX, targetY, extLeft, extTop, actorBefore_x, actorBefore_y, currentFrame, endCenterX, endCenterY } = ctx;
+        const [actorW, actorH] = windowActor.get_size();
+
+        WindowState.set(window, MINIATURE_ANIM_KIND, 'create');
+
+        // Pivot at the exact frame anchor so scale tracks adjacent edges; tx/ty absorb residual when clamped past [0,1].
+        const dw = actorW * (1 - scale);
+        const dh = actorH * (1 - scale);
+        const px = dw > 0 ? Math.max(0, Math.min(1, (targetX - actorBefore_x - extLeft * scale) / dw)) : 0;
+        const py = dh > 0 ? Math.max(0, Math.min(1, (targetY - actorBefore_y - extTop * scale) / dh)) : 0;
+        const tx = targetX - actorBefore_x - px * dw - extLeft * scale;
+        const ty = targetY - actorBefore_y - py * dh - extTop * scale;
+
+        const iconFly = {
+            duration: Math.ceil(constants.MINIATURE_ANIM_MS * getSlowDownFactor()),
+            dx: currentFrame.x + currentFrame.width / 2 - endCenterX,
+            dy: currentFrame.y + currentFrame.height / 2 - endCenterY,
+        };
+
+        windowActor.remove_all_transitions();
+        windowActor.set_pivot_point(px, py);
+        windowActor.set_translation(0, 0, 0);
+
+        windowActor.ease({
+            scale_x: scale,
+            scale_y: scale,
+            translation_x: tx,
+            translation_y: ty,
+            duration: iconFly.duration,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onStopped: () => this._finishMiniatureAnim(window, windowActor),
+        });
+
+        return iconFly;
+    }
+
     createMiniature(window, computedSlot, forcedPreSize = null, { animate = true } = {}) {
         const windowActor = window.get_compositor_private();
         if (!windowActor) return false;
 
         this._animationsManager?.removeAnimatingWindow(window.get_id());
 
+        const { preSize, scale, targetX, targetY, actorBefore_x, actorBefore_y, currentFrame, extLeft, extTop } =
+            this._computeMiniatureGeometry(window, windowActor, computedSlot, forcedPreSize);
+
+        this._storeMiniatureState(window, windowActor, { scale, preSize, targetX, targetY, extLeft, extTop });
+
+        // BinLayout gives icon center for free once flight translation reaches zero.
+        const endCenterX = targetX + preSize.width * scale / 2;
+        const endCenterY = targetY + preSize.height * scale / 2;
+        let iconFly = { dx: 0, dy: 0, duration: 0 };
+
+        if (animate) {
+            const ctx = { scale, targetX, targetY, extLeft, extTop, actorBefore_x, actorBefore_y, currentFrame, endCenterX, endCenterY };
+            WindowState.set(window, ANIMATING_MINIATURE, true);
+
+            if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore') {
+                iconFly = this._animateMiniatureFromRestore(window, windowActor, ctx);
+            } else {
+                iconFly = this._animateMiniatureFresh(window, windowActor, ctx);
+            }
+        } else {
+            // Instant: apply transforms synchronously so the overview's frozen
+            // slot (already set to mini) matches the actor state from the first frame.
+            applyMiniatureActorState(windowActor, scale, extLeft, extTop, targetX, targetY);
+        }
+
+        Logger.log(`[MINIATURE] createMiniature ${window.get_id()}: miniSize=${Math.round(preSize.width * scale)}x${Math.round(preSize.height * scale)}`);
+
+        this._armMiniatureFocusGuard(window);
+
+        this._miniatureWindows.set(window.get_id(), window);
+        this.emit('miniature-created', window);
+
+        this._attachMiniatureOverlay(window, windowActor, iconFly, animate);
+
+        Logger.log(`[MINIATURE] Created miniature for ${window.get_id()}, scale=${scale.toFixed(4)}`);
+        return true;
+    }
+
+    _computeMiniatureGeometry(window, windowActor, computedSlot, forcedPreSize) {
         const preSize = forcedPreSize || window.get_frame_rect();
         const scale = constants.MINIATURE_TARGET_SIZE_PX / Math.max(preSize.width, preSize.height);
         Logger.log(`[MINIATURE] createMiniature ${window.get_id()}: preSize=${preSize.width}x${preSize.height} scale=${scale} forced=${!!forcedPreSize}`);
@@ -431,6 +575,10 @@ export const MiniatureManager = GObject.registerClass({
         const extTop = currentFrame.y - bufferRect.y;
         Logger.log(`[MINIATURE] createMiniature ${window.get_id()} (${window.get_wm_class?.() ?? '?'}): preFrame=(${preSize.x},${preSize.y} ${preSize.width}x${preSize.height}) slot=${Math.round(preSize.width * scale)}x${Math.round(preSize.height * scale)} currentFrame=(${currentFrame.x},${currentFrame.y} ${currentFrame.width}x${currentFrame.height}) actorBefore=(${actorBefore_x},${actorBefore_y}) target=(${targetX},${targetY}) scale=${scale.toFixed(4)} extLeft=${extLeft} extTop=${extTop}`);
 
+        return { preSize, scale, targetX, targetY, actorBefore_x, actorBefore_y, currentFrame, extLeft, extTop };
+    }
+
+    _storeMiniatureState(window, windowActor, { scale, preSize, targetX, targetY, extLeft, extTop }) {
         // Store before animation; enforce effect + workspace patch read these during anim.
         WindowState.set(window, IS_MINIATURE, true);
         WindowState.set(window, MINIATURE_SCALE, scale);
@@ -446,288 +594,185 @@ export const MiniatureManager = GObject.registerClass({
             windowActor.opacity = 255;
         }
 
-        const enforceEffect = new MiniatureEnforceEffect(window);
-        windowActor.add_effect(enforceEffect);
+        windowActor.add_effect(new MiniatureEnforceEffect(window));
+    }
 
-        // BinLayout gives icon center for free once flight translation reaches zero.
-        const endCenterX = targetX + preSize.width * scale / 2;
-        const endCenterY = targetY + preSize.height * scale / 2;
-        let iconFlyDx = 0;
-        let iconFlyDy = 0;
-        let iconFlyDuration = 0;
+    // Guard blocks restore forever if registry can't expire it.
+    _armMiniatureFocusGuard(window) {
+        if (!this._timeoutRegistry) return;
 
-        if (animate) {
-            const prevKind = WindowState.get(window, MINIATURE_ANIM_KIND);
+        WindowState.set(window, 'justMiniaturized', true);
+        const timeoutId = this._timeoutRegistry.add(constants.MINIATURE_FOCUS_GUARD_MS, () => {
+            WindowState.remove(window, 'justMiniaturized');
+            WindowState.remove(window, 'miniatureJustMiniaturizedTimeoutId');
+            return GLib.SOURCE_REMOVE;
+        }, 'miniature_focusGuard');
+        WindowState.set(window, 'miniatureJustMiniaturizedTimeoutId', timeoutId);
+    }
 
-            WindowState.set(window, ANIMATING_MINIATURE, true);
-
-            const [actorW, actorH] = windowActor.get_size();
-
-            if (prevKind === 'restore') {
-                // Interrupted restore, read current visual frame origin before canceling
-                const [cpx, cpy] = windowActor.get_pivot_point();
-                const cs = windowActor.scale_x;
-                const curTx = windowActor.translation_x;
-                const curTy = windowActor.translation_y;
-                const visualX = actorBefore_x + cpx * actorW * (1 - cs) + curTx + extLeft * cs;
-                const visualY = actorBefore_y + cpy * actorH * (1 - cs) + curTy + extTop * cs;
-                const startTx = visualX - actorBefore_x - extLeft * cs;
-                const startTy = visualY - actorBefore_y - extTop * cs;
-                const endTx = targetX - actorBefore_x - extLeft * scale;
-                const endTy = targetY - actorBefore_y - extTop * scale;
-                const animDuration = Math.max(1, Math.round(constants.MINIATURE_ANIM_MS * getSlowDownFactor() * (cs - scale) / Math.max(0.001, 1.0 - scale)));
-
-                // Frame is already shrunk to cs here, so its center rides that scale.
-                iconFlyDx = visualX + currentFrame.width * cs / 2 - endCenterX;
-                iconFlyDy = visualY + currentFrame.height * cs / 2 - endCenterY;
-                iconFlyDuration = animDuration;
-
-                // Set kind before remove_all_transitions, since restore's onStopped fires
-                // synchronously and needs to see 'create' to skip its conditional removal.
-                // IS_MINIATURE is already true (set above), so restore's actor reset is also skipped.
-                WindowState.set(window, MINIATURE_ANIM_KIND, 'create');
-                windowActor.remove_all_transitions();
-
-                windowActor.set_pivot_point(0, 0);
-                windowActor.set_scale(cs, cs);
-                windowActor.set_translation(startTx, startTy, 0);
-
-                windowActor.ease({
-                    scale_x: scale,
-                    scale_y: scale,
-                    translation_x: endTx,
-                    translation_y: endTy,
-                    duration: animDuration,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                    onStopped: () => {
-                        WindowState.remove(window, ANIMATING_MINIATURE);
-                        WindowState.remove(window, MINIATURE_ANIM_KIND);
-                        windowActor.set_pivot_point(0, 0);
-                        if (WindowState.get(window, IS_MINIATURE)) {
-                            const finalTgt = WindowState.get(window, MINIATURE_TARGET_POS);
-                            const finalSc = WindowState.get(window, MINIATURE_SCALE);
-                            const finalExtL = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
-                            const finalExtT = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
-                            if (finalTgt && finalSc) {
-                                applyMiniatureActorState(windowActor, finalSc, finalExtL, finalExtT, finalTgt.x, finalTgt.y);
-                            }
-                            const [finalAx, finalAy] = windowActor.get_position();
-                            const [finalW, finalH] = windowActor.get_size();
-                            Logger.log(`[MINIATURE] createMiniature animation complete ${window.get_id()}: FINAL actor=(${finalAx},${finalAy} ${finalW}x${finalH}) scale=${finalSc} FINAL_VISUAL=${Math.round(finalW * finalSc)}x${Math.round(finalH * finalSc)}`);
-                        }
-                    },
-                });
-            } else {
-                WindowState.set(window, MINIATURE_ANIM_KIND, 'create');
-
-                // Pivot at the exact frame anchor so scale tracks adjacent edges; tx/ty absorb residual when clamped past [0,1].
-                const dw = actorW * (1 - scale);
-                const dh = actorH * (1 - scale);
-                const px = dw > 0 ? Math.max(0, Math.min(1, (targetX - actorBefore_x - extLeft * scale) / dw)) : 0;
-                const py = dh > 0 ? Math.max(0, Math.min(1, (targetY - actorBefore_y - extTop * scale) / dh)) : 0;
-                const tx = targetX - actorBefore_x - px * dw - extLeft * scale;
-                const ty = targetY - actorBefore_y - py * dh - extTop * scale;
-
-                iconFlyDuration = Math.ceil(constants.MINIATURE_ANIM_MS * getSlowDownFactor());
-                iconFlyDx = currentFrame.x + currentFrame.width / 2 - endCenterX;
-                iconFlyDy = currentFrame.y + currentFrame.height / 2 - endCenterY;
-
-                windowActor.remove_all_transitions();
-                windowActor.set_pivot_point(px, py);
-                windowActor.set_translation(0, 0, 0);
-
-                windowActor.ease({
-                    scale_x: scale,
-                    scale_y: scale,
-                    translation_x: tx,
-                    translation_y: ty,
-                    duration: iconFlyDuration,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                    onStopped: () => {
-                        WindowState.remove(window, ANIMATING_MINIATURE);
-                        WindowState.remove(window, MINIATURE_ANIM_KIND);
-                        // Reset pivot for enforce effect (uses pivot 0,0)
-                        windowActor.set_pivot_point(0, 0);
-                        if (WindowState.get(window, IS_MINIATURE)) {
-                            // Re-apply with the LATEST target (layout may have recomputed)
-                            const finalTgt = WindowState.get(window, MINIATURE_TARGET_POS);
-                            const finalSc = WindowState.get(window, MINIATURE_SCALE);
-                            const finalExtL = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
-                            const finalExtT = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
-                            if (finalTgt && finalSc) {
-                                applyMiniatureActorState(windowActor, finalSc, finalExtL, finalExtT, finalTgt.x, finalTgt.y);
-                            }
-                            const [finalAx, finalAy] = windowActor.get_position();
-                            const [finalW, finalH] = windowActor.get_size();
-                            Logger.log(`[MINIATURE] createMiniature animation complete ${window.get_id()}: FINAL actor=(${finalAx},${finalAy} ${finalW}x${finalH}) scale=${finalSc} FINAL_VISUAL=${Math.round(finalW * finalSc)}x${Math.round(finalH * finalSc)}`);
-                        }
-                    },
-                });
-            }
-        } else {
-            // Instant: apply transforms synchronously so the overview's frozen
-            // slot (already set to mini) matches the actor state from the first frame.
-            applyMiniatureActorState(windowActor, scale, extLeft, extTop, targetX, targetY);
-        }
-
-        Logger.log(`[MINIATURE] createMiniature ${window.get_id()}: miniSize=${Math.round(preSize.width * scale)}x${Math.round(preSize.height * scale)}`);
-
-        // Guard blocks restore forever if registry can't expire it.
-        if (this._timeoutRegistry) {
-            WindowState.set(window, 'justMiniaturized', true);
-            const timeoutId = this._timeoutRegistry.add(constants.MINIATURE_FOCUS_GUARD_MS, () => {
-                WindowState.remove(window, 'justMiniaturized');
-                WindowState.remove(window, 'miniatureJustMiniaturizedTimeoutId');
-                return GLib.SOURCE_REMOVE;
-            }, 'miniature_focusGuard');
-            WindowState.set(window, 'miniatureJustMiniaturizedTimeoutId', timeoutId);
-        }
-
-        this._miniatureWindows.set(window.get_id(), window);
-        this.emit('miniature-created', window);
-
+    _attachMiniatureOverlay(window, windowActor, iconFly, animate) {
         const overlay = new MiniatureClickOverlay(window, this);
         global.window_group.insert_child_above(overlay, windowActor);
         WindowState.set(window, MINIATURE_OVERLAY, overlay);
 
         // Ease is already running on the same frame clock; icon still lands with it.
-        overlay.flyIconIn(iconFlyDx, iconFlyDy, animate ? iconFlyDuration : 0);
+        overlay.flyIconIn(iconFly.dx, iconFly.dy, animate ? iconFly.duration : 0);
         if (this._overviewActive) overlay.setIconSuppressed('overview', true);
-
-        Logger.log(`[MINIATURE] Created miniature for ${window.get_id()}, scale=${scale.toFixed(4)}`);
-        return true;
     }
 
     restoreMiniature(window, _newSlot, { activate = true } = {}) {
         if (!WindowState.get(window, IS_MINIATURE)) return false;
 
         const windowActor = window.get_compositor_private();
-
-        const frame = window.get_frame_rect();
         const sc = WindowState.get(window, MINIATURE_SCALE) ?? 1;
-        const extL = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
-        const extT = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
         const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
 
+        const frame = window.get_frame_rect();
         Logger.log(`[MINIATURE] restoreMiniature START ${window.get_id()} (${window.get_wm_class?.() ?? '?'}): frame=(${frame.x},${frame.y} ${frame.width}x${frame.height}) scale=${sc.toFixed(4)}`);
 
         WindowState.remove(window, IS_MINIATURE);
 
-        // Drop from state first so tiling stops finding it during icon fade-out.
-        const overlay = WindowState.get(window, MINIATURE_OVERLAY);
-        if (overlay) {
-            WindowState.remove(window, MINIATURE_OVERLAY);
-            overlay.fadeOutAndDestroy(Math.ceil(constants.MINIATURE_ICON_FADE_OUT_MS * getSlowDownFactor()));
-        }
+        this._fadeMiniatureOverlay(window);
 
         if (windowActor) {
-            const effects = windowActor.get_effects();
-            for (const effect of effects) {
-                if (effect instanceof MiniatureEnforceEffect) {
-                    windowActor.remove_effect(effect);
-                    break;
-                }
+            this._animateRestore(window, windowActor, { sc, tgt, activate });
+        }
+
+        this._snapshotRestoreAnchor(window, tgt, sc);
+        this._clearMiniatureState(window);
+
+        this._miniatureWindows.delete(window.get_id());
+        this.emit('miniature-restored', window);
+
+        Logger.log(`[MINIATURE] Restored miniature ${window.get_id()}`);
+        return true;
+    }
+
+    // Drop from state first so tiling stops finding it during icon fade-out.
+    _fadeMiniatureOverlay(window) {
+        const overlay = WindowState.get(window, MINIATURE_OVERLAY);
+        if (!overlay) return;
+        WindowState.remove(window, MINIATURE_OVERLAY);
+        overlay.fadeOutAndDestroy(Math.ceil(constants.MINIATURE_ICON_FADE_OUT_MS * getSlowDownFactor()));
+    }
+
+    _removeEnforceEffect(windowActor) {
+        for (const effect of windowActor.get_effects()) {
+            if (effect instanceof MiniatureEnforceEffect) {
+                windowActor.remove_effect(effect);
+                break;
             }
+        }
+    }
 
-            const kind = WindowState.get(window, MINIATURE_ANIM_KIND);
-            const [ax, ay] = windowActor.get_position();
-            const [actorW, actorH] = windowActor.get_size();
+    _animateRestore(window, windowActor, { sc, tgt, activate }) {
+        this._removeEnforceEffect(windowActor);
 
-            let startPivotX, startPivotY, startScale, startTx, startTy, duration;
+        const extL = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
+        const extT = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
+        const frame = window.get_frame_rect();
+        const kind = WindowState.get(window, MINIATURE_ANIM_KIND);
+        const [ax, ay] = windowActor.get_position();
+        const [actorW, actorH] = windowActor.get_size();
 
-            if (kind === 'create') {
-                // Interrupted miniaturize, read current visual frame origin before canceling
-                const [cpx, cpy] = windowActor.get_pivot_point();
-                const cs = windowActor.scale_x;
-                const curTx = windowActor.translation_x;
-                const curTy = windowActor.translation_y;
-                const visualX = ax + cpx * actorW * (1 - cs) + curTx + extL * cs;
-                const visualY = ay + cpy * actorH * (1 - cs) + curTy + extT * cs;
-                startPivotX = 0;
-                startPivotY = 0;
-                startScale = cs;
-                startTx = visualX - ax - extL * cs;
-                startTy = visualY - ay - extT * cs;
-                duration = Math.max(1, Math.round(constants.MINIATURE_ANIM_MS * getSlowDownFactor() * (1.0 - cs) / Math.max(0.001, 1.0 - sc)));
-            } else {
-                const miniTgt = tgt ?? { x: frame.x, y: frame.y };
-                const dw = actorW * (1 - sc);
-                const dh = actorH * (1 - sc);
-                startPivotX = dw > 0 ? Math.max(0, Math.min(1, (miniTgt.x - ax - extL * sc) / dw)) : 0;
-                startPivotY = dh > 0 ? Math.max(0, Math.min(1, (miniTgt.y - ay - extT * sc) / dh)) : 0;
-                startScale = sc;
-                startTx = dw > 0 ? miniTgt.x - ax - startPivotX * dw - extL * sc : 0;
-                startTy = dh > 0 ? miniTgt.y - ay - startPivotY * dh - extT * sc : 0;
-                duration = Math.ceil(constants.MINIATURE_ANIM_MS * getSlowDownFactor());
-            }
+        let startPivotX, startPivotY, startScale, startTx, startTy, duration;
 
-            // Set after remove_all_transitions: create's onStopped fires synchronously and removes
-            // MINIATURE_ANIM_KIND, so setting before would be overwritten.
-            windowActor.remove_all_transitions();
-            WindowState.set(window, MINIATURE_ANIM_KIND, 'restore');
+        if (kind === 'create') {
+            // Interrupted miniaturize, read current visual frame origin before canceling
+            const [cpx, cpy] = windowActor.get_pivot_point();
+            const cs = windowActor.scale_x;
+            const curTx = windowActor.translation_x;
+            const curTy = windowActor.translation_y;
+            const visualX = ax + cpx * actorW * (1 - cs) + curTx + extL * cs;
+            const visualY = ay + cpy * actorH * (1 - cs) + curTy + extT * cs;
+            startPivotX = 0;
+            startPivotY = 0;
+            startScale = cs;
+            startTx = visualX - ax - extL * cs;
+            startTy = visualY - ay - extT * cs;
+            duration = Math.max(1, Math.round(constants.MINIATURE_ANIM_MS * getSlowDownFactor() * (1.0 - cs) / Math.max(0.001, 1.0 - sc)));
+        } else {
+            const miniTgt = tgt ?? { x: frame.x, y: frame.y };
+            const dw = actorW * (1 - sc);
+            const dh = actorH * (1 - sc);
+            startPivotX = dw > 0 ? Math.max(0, Math.min(1, (miniTgt.x - ax - extL * sc) / dw)) : 0;
+            startPivotY = dh > 0 ? Math.max(0, Math.min(1, (miniTgt.y - ay - extT * sc) / dh)) : 0;
+            startScale = sc;
+            startTx = dw > 0 ? miniTgt.x - ax - startPivotX * dw - extL * sc : 0;
+            startTy = dh > 0 ? miniTgt.y - ay - startPivotY * dh - extT * sc : 0;
+            duration = Math.ceil(constants.MINIATURE_ANIM_MS * getSlowDownFactor());
+        }
 
-            windowActor.set_pivot_point(startPivotX, startPivotY);
-            windowActor.set_scale(startScale, startScale);
-            windowActor.set_translation(startTx, startTy, 0);
+        // Set after remove_all_transitions: create's onStopped fires synchronously and removes
+        // MINIATURE_ANIM_KIND, so setting before would be overwritten.
+        windowActor.remove_all_transitions();
+        WindowState.set(window, MINIATURE_ANIM_KIND, 'restore');
 
-            if (activate) window.activate(global.get_current_time());
+        windowActor.set_pivot_point(startPivotX, startPivotY);
+        windowActor.set_scale(startScale, startScale);
+        windowActor.set_translation(startTx, startTy, 0);
 
-            // A retile can interrupt this mid-flight (it shares the actor with
-            // animateWindow's own position ease). Rather than snap to full size,
-            // pick the scale-up back up from wherever it got cut off; position is
-            // already handed off to whatever interrupted us by this point.
-            const continueScaleUp = (isFinished) => {
-                if (!windowActor || windowActor.is_destroyed()) return;
+        if (activate) window.activate(global.get_current_time());
 
-                if (!isFinished) {
-                    if (WindowState.get(window, IS_MINIATURE)) return;
-                    if (Math.abs(windowActor.scale_x - 1.0) < 0.001 && Math.abs(windowActor.scale_y - 1.0) < 0.001) {
-                        if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore')
-                            WindowState.remove(window, MINIATURE_ANIM_KIND);
-                        return;
-                    }
-                    windowActor.ease({
-                        scale_x: 1.0,
-                        scale_y: 1.0,
-                        duration,
-                        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                        onStopped: continueScaleUp,
-                    });
+        // A retile can interrupt this mid-flight (it shares the actor with
+        // animateWindow's own position ease). Rather than snap to full size,
+        // pick the scale-up back up from wherever it got cut off; position is
+        // already handed off to whatever interrupted us by this point.
+        const continueScaleUp = (isFinished) => {
+            if (!windowActor || windowActor.is_destroyed()) return;
+
+            if (!isFinished) {
+                if (WindowState.get(window, IS_MINIATURE)) return;
+                if (Math.abs(windowActor.scale_x - 1.0) < 0.001 && Math.abs(windowActor.scale_y - 1.0) < 0.001) {
+                    if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore')
+                        WindowState.remove(window, MINIATURE_ANIM_KIND);
                     return;
                 }
+                windowActor.ease({
+                    scale_x: 1.0,
+                    scale_y: 1.0,
+                    duration,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                    onStopped: continueScaleUp,
+                });
+                return;
+            }
 
-                if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore')
-                    WindowState.remove(window, MINIATURE_ANIM_KIND);
-                if (!WindowState.get(window, IS_MINIATURE)) {
-                    windowActor.set_pivot_point(0, 0);
-                    windowActor.set_scale(1.0, 1.0);
-                    windowActor.set_translation(0, 0, 0);
-                }
-                const [finalAx, finalAy] = windowActor.get_position();
-                const [finalW, finalH] = windowActor.get_size();
-                Logger.log(`[MINIATURE] restoreMiniature animation complete ${window.get_id()}: FINAL actor=(${finalAx},${finalAy} ${finalW}x${finalH})`);
-            };
+            if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore')
+                WindowState.remove(window, MINIATURE_ANIM_KIND);
+            if (!WindowState.get(window, IS_MINIATURE)) {
+                windowActor.set_pivot_point(0, 0);
+                windowActor.set_scale(1.0, 1.0);
+                windowActor.set_translation(0, 0, 0);
+            }
+            const [finalAx, finalAy] = windowActor.get_position();
+            const [finalW, finalH] = windowActor.get_size();
+            Logger.log(`[MINIATURE] restoreMiniature animation complete ${window.get_id()}: FINAL actor=(${finalAx},${finalAy} ${finalW}x${finalH})`);
+        };
 
-            windowActor.ease({
-                scale_x: 1.0,
-                scale_y: 1.0,
-                translation_x: 0,
-                translation_y: 0,
-                duration,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onStopped: continueScaleUp,
-            });
-        }
+        windowActor.ease({
+            scale_x: 1.0,
+            scale_y: 1.0,
+            translation_x: 0,
+            translation_y: 0,
+            duration,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onStopped: continueScaleUp,
+        });
+    }
 
-        // Snapshot before clearing; layout scorer uses this to pull window back near its slot.
+    // Snapshot before clearing; layout scorer uses this to pull window back near its slot.
+    _snapshotRestoreAnchor(window, tgt, sc) {
         const anchorPre = WindowState.get(window, PRE_MINIATURE_SIZE);
-        if (tgt && anchorPre) {
-            const cx = tgt.x + (anchorPre.width * sc) / 2;
-            const cy = tgt.y + (anchorPre.height * sc) / 2;
-            WindowState.set(window, 'restoreAnchorCenter', { cx, cy });
-            Logger.log(`[RESTORE ANCHOR] ${window.get_id()}: slot center (${cx.toFixed(0)},${cy.toFixed(0)})`);
-        }
+        if (!tgt || !anchorPre) return;
 
+        const cx = tgt.x + (anchorPre.width * sc) / 2;
+        const cy = tgt.y + (anchorPre.height * sc) / 2;
+        WindowState.set(window, 'restoreAnchorCenter', { cx, cy });
+        Logger.log(`[RESTORE ANCHOR] ${window.get_id()}: slot center (${cx.toFixed(0)},${cy.toFixed(0)})`);
+    }
+
+    _clearMiniatureState(window) {
         WindowState.remove(window, MINIATURE_SCALE);
         WindowState.remove(window, PRE_MINIATURE_SIZE);
         WindowState.remove(window, MINIATURE_TARGET_POS);
@@ -741,12 +786,6 @@ export const MiniatureManager = GObject.registerClass({
         if (timeoutId) this._timeoutRegistry?.remove(timeoutId);
         WindowState.remove(window, 'miniatureJustMiniaturizedTimeoutId');
         WindowState.remove(window, 'justMiniaturized');
-
-        this._miniatureWindows.delete(window.get_id());
-        this.emit('miniature-restored', window);
-
-        Logger.log(`[MINIATURE] Restored miniature ${window.get_id()}`);
-        return true;
     }
 
     destroyMiniature(window) {
