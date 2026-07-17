@@ -99,6 +99,15 @@ export const WindowingManager = GObject.registerClass({
         return _windows;
     }
 
+    // Always pass a workspace: the null path drops Mutter's real MRU list and
+    // falls back to sorting by the coarser user_time.
+    getMRUOrder(workspace) {
+        const order = new Map();
+        global.display.get_tab_list(Meta.TabList.NORMAL, workspace)
+            .forEach((w, i) => order.set(w.get_id(), i));
+        return order;
+    }
+
     tryTileWithSnappedWindow(window, edgeTiledWindow, previousWorkspace) {
         if (!this._edgeTilingManager) {
             Logger.error('tryTileWithSnappedWindow: edgeTilingManager not set');
@@ -208,7 +217,6 @@ export const WindowingManager = GObject.registerClass({
                 this._overflowStartCallback();
             }
 
-            // Flag window as overflow-moved to prevent tiling errors
             WindowState.set(window, 'movedByOverflow', true);
 
             // Use current workspace as origin to prevent overflow target loops.
@@ -502,7 +510,6 @@ export const WindowingManager = GObject.registerClass({
         const index = workspace.index();
         Logger.log(`[SWITCHER] Activating OSD for WS-${index}`);
 
-        // Default to primary monitor if none specified
         if (monitorIndex === -1) {
             monitorIndex = Main.layoutManager.primaryIndex;
         }
