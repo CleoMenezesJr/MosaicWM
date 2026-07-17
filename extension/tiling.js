@@ -2132,6 +2132,8 @@ export const TilingManager = GObject.registerClass({
         if (overflow && canMiniaturize && this._extension?.miniatureManager) {
             const focusedId = global.display.focus_window?.get_id();
             const resizingId = this._animationsManager?.getResizingWindowId();
+            const mru2  = this._windowingManager.getMRUOrder(workspace);
+            const rank2 = w => mru2.get(w.get_id()) ?? Number.MAX_SAFE_INTEGER;
 
             const overflowCandidates = meta_windows
                 .filter(w =>
@@ -2142,7 +2144,7 @@ export const TilingManager = GObject.registerClass({
                     w.get_id() !== (reference_meta_window?.get_id() ?? null) &&
                     !this._windowingManager.isMaximizedOrFullscreen(w)
                 )
-                .sort((a, b) => (WindowState.get(a, 'addedTime') ?? 0) - (WindowState.get(b, 'addedTime') ?? 0));
+                .sort((a, b) => rank2(b) - rank2(a));
 
             let overflowResolved = false;
 
@@ -2851,8 +2853,9 @@ export const TilingManager = GObject.registerClass({
             if (allResizable.length === 0) return { success: false };
 
             Logger.log(`[SMART RESIZE] tryFitWithResize: ${allWindows.length} windows (${allResizable.length} resizable), workArea: ${workArea.width}×${workArea.height}`);
+            const mruDiag = this._windowingManager.getMRUOrder(workspace);
             for (const [id, d] of windowData) {
-                Logger.log(`[SMART RESIZE]   ${id}(${d.window.get_wm_class()}): current=${d.current.width}×${d.current.height}, min=${d.min.width}×${d.min.height}, resizable=${d.isResizable}, addedTime=${WindowState.get(d.window, 'addedTime')}`);
+                Logger.log(`[SMART RESIZE]   ${id}(${d.window.get_wm_class()}): current=${d.current.width}×${d.current.height}, min=${d.min.width}×${d.min.height}, resizable=${d.isResizable}, mruRank=${mruDiag.get(id) ?? '∞'}`);
             }
 
             // Interpolate between min and current sizes at factor t (1=current, 0=min)
@@ -2889,11 +2892,11 @@ export const TilingManager = GObject.registerClass({
                 if (ext0?.miniatureManager) {
                     const focusedId0 = (focusedWindowOverride ?? global.display.focus_window)?.get_id();
 
-                    // Oldest first: whichever window has been open longest is the
-                    // best candidate to sacrifice, regardless of which window's
-                    // pass happens to be running right now.
-                    const orderedWindows0 = [...allWindows].sort((a, b) =>
-                        (WindowState.get(a, 'addedTime') ?? 0) - (WindowState.get(b, 'addedTime') ?? 0));
+                    // A higher MRU index means less recently used, so descending
+                    // sacrifices whichever window the user has ignored longest.
+                    const mru0  = this._windowingManager.getMRUOrder(workspace);
+                    const rank0 = w => mru0.get(w.get_id()) ?? Number.MAX_SAFE_INTEGER;
+                    const orderedWindows0 = [...allWindows].sort((a, b) => rank0(b) - rank0(a));
 
                     for (const w of orderedWindows0) {
                         const d = windowData.get(w.get_id());
@@ -2956,6 +2959,9 @@ export const TilingManager = GObject.registerClass({
                     };
                 };
 
+                const mru  = this._windowingManager.getMRUOrder(workspace);
+                const rank = id => mru.get(id) ?? Number.MAX_SAFE_INTEGER;
+
                 for (let iter = 0; iter < allWindows.length; iter++) {
                     const candidates = buildSimulated(lo).filter(sim => {
                         const d = windowData.get(sim.id);
@@ -2970,11 +2976,8 @@ export const TilingManager = GObject.registerClass({
 
                     if (candidates.length === 0) break;
 
-                    // Oldest first: the longest-open window is the best one to sacrifice,
-                    // regardless of which window's pass happens to be running right now.
-                    candidates.sort((a, b) =>
-                        (WindowState.get(windowData.get(a.id).window, 'addedTime') ?? 0) -
-                        (WindowState.get(windowData.get(b.id).window, 'addedTime') ?? 0));
+                    // Descending, so the window ignored longest is sacrificed first.
+                    candidates.sort((a, b) => rank(b.id) - rank(a.id));
                     const candidateSim  = candidates[0];
                     const candidateData = windowData.get(candidateSim.id);
 

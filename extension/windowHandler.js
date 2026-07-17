@@ -1199,8 +1199,8 @@ export const WindowHandler = GObject.registerClass({
 
         this._ext.tilingManager.savePreferredSize(window);
 
-        // addedTime orders miniaturization candidates; arrivalPending shields the
-        // window until its arrival evaluation resolves placement.
+        // addedTime feeds the resize settle check and the rebalance's newest-window pick;
+        // arrivalPending shields the window until its arrival evaluation resolves placement.
         WindowState.set(window, 'addedTime', monotonicNow());
         WindowState.set(window, 'arrivalPending', true);
 
