@@ -470,30 +470,41 @@ export const WindowHandler = GObject.registerClass({
         this.enqueueWindowForEvaluation(window, workspace, monitor);
     }
 
-    // Tries to bring back the oldest miniature when space frees up. Shared by
+    // Brings back the most recently used miniature when space frees up. Shared by
     // the close, move and live-resize paths so they don't duplicate the fit check.
     _tryAutoRestoreMiniature(remainingWindows, workspace, monitor) {
         if (!this._ext.miniatureManager) return false;
 
+        const mru  = this.windowingManager.getMRUOrder(workspace);
+        const rank = w => mru.get(w.get_id()) ?? Number.MAX_SAFE_INTEGER;
+
+        // Ascending here, unlike the sacrifice sites: index 0 is the most recent,
+        // and that's the miniature to bring back first.
         const miniatureWindows = remainingWindows
             .filter(w => WindowState.get(w, IS_MINIATURE))
-            .sort((a, b) => a.get_id() - b.get_id());
+            .sort((a, b) => rank(a) - rank(b));
 
         if (miniatureWindows.length === 0) return false;
 
-        const candidate = miniatureWindows[0];
         const workArea = this._ext.tilingManager.getUsableWorkArea(workspace, monitor);
-        if (!this._ext.tilingManager.canRestoreMiniature(candidate, remainingWindows, workArea)) {
-            Logger.log(`_tryAutoRestoreMiniature: keeping mini ${candidate.get_id()} - would overflow if restored`);
-            return false;
+
+        // canRestoreMiniature only simulates, so falling through to the next candidate
+        // costs nothing; the most recent may not fit while an older one still does.
+        for (const candidate of miniatureWindows) {
+            if (!this._ext.tilingManager.canRestoreMiniature(candidate, remainingWindows, workArea)) {
+                Logger.log(`_tryAutoRestoreMiniature: keeping mini ${candidate.get_id()}, would overflow if restored`);
+                continue;
+            }
+
+            this._ext._miniatureCascadeIds?.delete(candidate.get_id());
+            this._ext.miniatureManager.restoreMiniature(candidate, null, { activate: false });
+            // 'miniature-restored' signal fires synchronously, _onMiniatureRestored already
+            // ran by the time restoreMiniature returns; calling it again here used to double
+            // the whole Smart Resize + retile pass for one restore.
+            return true;
         }
 
-        this._ext._miniatureCascadeIds?.delete(candidate.get_id());
-        this._ext.miniatureManager.restoreMiniature(candidate, null, { activate: false });
-        // 'miniature-restored' signal fires synchronously, _onMiniatureRestored already
-        // ran by the time restoreMiniature returns; calling it again here used to double
-        // the whole Smart Resize + retile pass for one restore.
-        return true;
+        return false;
     }
 
     // Deduped via closeRetileHandledAt since both close signals land here; whichever
