@@ -107,7 +107,6 @@ export const TilingManager = GObject.registerClass({
         this._windowingManager = null;
         this._extension = null;
 
-        // Flag to block overflow decisions during smart resize
         this._isSmartResizingBlocked = false;
         // Window ID being restored from miniature; shields it from the overflow handler
         this._restoringWindowId = null;
@@ -210,9 +209,7 @@ export const TilingManager = GObject.registerClass({
         };
     }
 
-    // Native minimum size via Mutter 50+ get_min_size(), with fallback.
-    // Also checks cached actual minimums discovered from client-side clamping
-    // (e.g., libadwaita apps report 100px via get_min_size but enforce 360px).
+    // Libadwaita apps report 100px via get_min_size but enforce 360px.
     getWindowMinimumSize(window) {
         let baseW = constants.SMART_RESIZE_MIN_WINDOW_WIDTH;
         let baseH = constants.SMART_RESIZE_MIN_WINDOW_HEIGHT;
@@ -240,7 +237,6 @@ export const TilingManager = GObject.registerClass({
         WindowState.set(window, 'targetSmartResizeSetAt', monotonicNow());
     }
 
-    // Native maximum size via Mutter 50+ get_max_size()
     getWindowMaximumSize(window) {
         if (window.get_max_size) {
             const [hasHint, maxW, maxH] = window.get_max_size();
@@ -1799,7 +1795,7 @@ export const TilingManager = GObject.registerClass({
             ?? allWindows[0];
         const others = allWindows.filter(w => w.get_id() !== reference.get_id());
 
-        const resizeResult = this.tryFitWithResize(reference, others, workArea, reference);
+        const resizeResult = this.tryFitWithResize(reference, others, workArea, workspace, reference);
 
         if (resizeResult?.success) {
             this._isSmartResizingBlocked = true;
@@ -2092,7 +2088,7 @@ export const TilingManager = GObject.registerClass({
                     // Only try resize if we haven't already (to avoid loops)
                     if (!WindowState.get(reference_meta_window, 'isSmartResizing')) {
                         Logger.log('Triggering Smart Resize for returning sacred window');
-                        const resizeResult = this.tryFitWithResize(reference_meta_window, realExisting, workArea);
+                        const resizeResult = this.tryFitWithResize(reference_meta_window, realExisting, workArea, workspace);
                         if (!resizeResult?.success) {
                             Logger.log('Smart resize could not fit sacred window');
                             this._positionSnapshot = null;
@@ -2792,7 +2788,7 @@ export const TilingManager = GObject.registerClass({
         this._drawTile(tile_info, work_area, meta_windows, true, null, work_area);
     }
 
-    tryFitWithResize(newWindow, windows, workArea, focusedWindowOverride = null) {
+    tryFitWithResize(newWindow, windows, workArea, workspace, focusedWindowOverride = null) {
         if (this._isSmartResizingBlocked) {
             Logger.log('[SMART RESIZE] tryFitWithResize BLOCKED by _isSmartResizingBlocked');
             return { success: false };

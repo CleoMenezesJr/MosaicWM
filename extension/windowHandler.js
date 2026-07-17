@@ -387,7 +387,7 @@ export const WindowHandler = GObject.registerClass({
                 // as focused, since Mutter's focus_window may still point at the
                 // previously focused sibling, which would otherwise be excluded
                 // from miniaturization candidates alongside newWindow.
-                const resizeResult = this.tilingManager.tryFitWithResize(window, existingWindows, workArea, window);
+                const resizeResult = this.tilingManager.tryFitWithResize(window, existingWindows, workArea, workspace, window);
 
                 if (resizeResult?.success) {
                     Logger.log('Re-include: Smart resize applied - tiling workspace');
@@ -785,7 +785,6 @@ export const WindowHandler = GObject.registerClass({
                 }
             }
 
-            // Track the expected workspace for the next iteration
             expectedWorkspace = workspace;
 
             Logger.log(`Evaluating queued window ${window.get_id()} on WS-${workspace.index()} (remaining: ${this._evaluationQueue.length})`);
@@ -815,7 +814,6 @@ export const WindowHandler = GObject.registerClass({
                 Logger.error(`Error in evaluation queue for window ${window.get_id()}: ${e}`);
             }
 
-            // Placement resolved either way, so the arrival shield no longer applies
             WindowState.remove(window, 'arrivalPending');
 
             // Small delay to let animations/mutter settle before evaluating the next window
@@ -931,7 +929,7 @@ export const WindowHandler = GObject.registerClass({
             // Pass the new window as focused override, since Mutter's focus_window
             // may still be the previously focused sibling at this point, which
             // would exclude it from miniaturization alongside newWindow.
-            const resizeResult = this.tilingManager.tryFitWithResize(window, existingWindows, workArea, window);
+            const resizeResult = this.tilingManager.tryFitWithResize(window, existingWindows, workArea, workspace, window);
             if (resizeResult?.success) {
                 Logger.log('Smart resize applied, tiling directly');
                 // Block overflow during tiling, since a null reference would otherwise let it expel something

@@ -454,7 +454,6 @@ export const ResizeHandler = GObject.registerClass({
             } else if (isMonitorSized) {
                 Logger.log(`onSizeChanged: Rejected monitor-sized dimensions ${rect.width}x${rect.height} for ${window.get_id()}`);
             } else if (userForcedResize) {
-                // Manual resize always updates preferredSize and clears constraints
                 WindowState.set(window, 'preferredSize', { width: rect.width, height: rect.height });
                 if (isConstrained) {
                     WindowState.set(window, 'isConstrainedByMosaic', false);
@@ -651,8 +650,7 @@ export const ResizeHandler = GObject.registerClass({
                     this._resizeOverflowWindow = null;
                 }
 
-                // If it fits, perform tiling to ensure other windows move out of the way (live tiling)
-                // However, we throttle it slightly to avoid excessive calculations during smooth resizing
+                // Throttle to avoid excessive calculations during smooth resizing
                 if (canFit) {
                     if (this._lastTileTime && (now - this._lastTileTime < 30)) {
                         this._sizeChanged = false;
@@ -719,17 +717,15 @@ export const ResizeHandler = GObject.registerClass({
         const fitConfirmed = WindowState.get(window, 'sacredFitConfirmed') === true;
         const pendingMiniatures = WindowState.get(window, 'pendingMiniaturesForReturn') || [];
 
-        // MOVE ATOMICALLY
         window.change_workspace(originWS);
         originWS.activate(global.get_current_time());
         this.windowingManager.showWorkspaceSwitcher(originWS, monitor);
 
-        // CLEAR FLAGS IMMEDIATELY to prevent double-move
+        // prevent double-move
         WindowState.remove(window, 'isRestoringSacred');
         WindowState.remove(window, 'sacredFitConfirmed');
         WindowState.remove(window, 'pendingMiniaturesForReturn');
 
-        // TILE IN DESTINATION
         afterWorkspaceSwitch(() => {
             Logger.log(`Triggering tiling in destination workspace ${originWorkspaceIndex}`);
             this.tilingManager._isSmartResizingBlocked = true;
@@ -802,7 +798,7 @@ export const ResizeHandler = GObject.registerClass({
         if (!canFit) {
             Logger.log(`handleUnmaximizeUndo: Window ${windowId} doesn't fit normally - attempting Smart Resize fit`);
             // Pass window as focused override: preMaxSize is its ceiling, so it won't be miniaturized.
-            const fitResult = this.tilingManager.tryFitWithResize(window, existingWindows, this.tilingManager.getUsableWorkArea(targetWorkspace, monitor), window);
+            const fitResult = this.tilingManager.tryFitWithResize(window, existingWindows, this.tilingManager.getUsableWorkArea(targetWorkspace, monitor), targetWorkspace, window);
             canFit = fitResult?.success ?? false;
             resizeNeeded = canFit;
             // Pending minis MUST reach the tile pass, since skipping leaves siblings at miniature size with no real miniature.

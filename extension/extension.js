@@ -51,7 +51,7 @@ export default class WindowMosaicExtension extends Extension {
 
         this._currentWorkspaceIndex = null;
         this._lastVisitedWorkspace = null;
-        this._overflowInProgress = false;  // Flag to prevent empty workspace navigation during overflow
+        this._overflowInProgress = false;
 
         this._settingsOverrider = null;
 
@@ -728,7 +728,7 @@ export default class WindowMosaicExtension extends Extension {
         // hasn't shifted yet (window.activate runs after the 250ms animation),
         // so the previously-focused sibling would otherwise be excluded from
         // miniaturization candidates and nothing would shrink.
-        const resizeResult = this.tilingManager.tryFitWithResize(window, existingWindows, workArea, window);
+        const resizeResult = this.tilingManager.tryFitWithResize(window, existingWindows, workArea, workspace, window);
 
         const doTile = () => {
             if (resizeResult?.success) {
