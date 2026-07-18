@@ -4,7 +4,6 @@
 
 import GLib from 'gi://GLib';
 import St from 'gi://St';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Logger from './logger.js';
 import * as constants from './constants.js';
 
@@ -28,7 +27,6 @@ export function getSlowDownFactor() {
 function getWorkspaceSwitchDuration() {
     if (!getAnimationsEnabled()) return 0;
 
-    // Adjust for slow down factor if present
     const baseDuration = FALLBACK_ANIMATION_MS;
     return Math.ceil(baseDuration * getSlowDownFactor());
 }
@@ -133,7 +131,6 @@ export function afterWorkspaceSwitch(callback, registry) {
         return;
     }
 
-    // Wait for workspace animation duration
     registry.add(duration, () => {
         callback();
         return GLib.SOURCE_REMOVE;
@@ -165,7 +162,6 @@ export function afterAnimations(animationsManager, callback, registry, maxWait =
     };
 
     signalId = animationsManager.connect('animations-completed', trigger);
-
 
     const adjustedMaxWait = Math.ceil(maxWait * getSlowDownFactor());
     timeoutId = registry.add(adjustedMaxWait, () => {
@@ -205,7 +201,6 @@ export function waitForGeometry(window, callback, registry, maxAttempts = consta
         }
     });
 
-
     const timeoutDuration = maxAttempts * 50;
     timeoutId = registry.add(timeoutDuration, () => {
         Logger.log('waitForGeometry: Safety timeout triggered');
@@ -223,37 +218,6 @@ export function afterWindowClose(callback, registry) {
     const duration = FALLBACK_ANIMATION_MS * getSlowDownFactor();
     registry.add(duration + 50, () => {
         callback();
-        return GLib.SOURCE_REMOVE;
-    });
-}
-
-export function afterOverviewHidden(callback, registry) {
-    if (!Main.overview.visible) {
-        callback();
-        return;
-    }
-
-    Logger.log('Waiting for overview to hide...');
-
-    let done = false;
-    let timeoutId = null;
-
-    const hiddenId = Main.overview.connect('hidden', () => {
-        if (done) return;
-        done = true;
-        Main.overview.disconnect(hiddenId);
-        if (timeoutId !== null) registry.remove(timeoutId);
-        Logger.log('Overview hidden - executing callback');
-        callback();
-    });
-
-    timeoutId = registry.add(1000, () => {
-        if (!done) {
-            done = true;
-            Logger.log('Overview hide timeout - forcing callback');
-            try { Main.overview.disconnect(hiddenId); } catch(_e) {}
-            callback();
-        }
         return GLib.SOURCE_REMOVE;
     });
 }

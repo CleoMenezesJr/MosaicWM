@@ -29,7 +29,7 @@ import { SwappingManager } from './swapping.js';
 import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
 import { MosaicLayoutStrategy } from './overviewLayout.js';
-import { TimeoutRegistry, createDebounced, afterAnimations, afterOverviewHidden } from './timing.js';
+import { TimeoutRegistry, createDebounced, afterAnimations } from './timing.js';
 import { WindowHandler } from './windowHandler.js';
 import { DragHandler } from './dragHandler.js';
 import { ResizeHandler } from './resizeHandler.js';
@@ -84,6 +84,7 @@ export default class WindowMosaicExtension extends Extension {
         this._injectionManager = null;
 
         this._timeoutRegistry = null;
+        this._pendingOverviewHiddenCallbacks = [];
 
         this._disabledWorkspaceStates = new WeakMap();
         this._mosaicDisabledByDefault = false;
@@ -216,6 +217,7 @@ export default class WindowMosaicExtension extends Extension {
         this._disabledWorkspaceStates = new WeakMap();
         this._mosaicDisabledByDefault = false;
         this._timeoutRegistry = new TimeoutRegistry();
+        this._pendingOverviewHiddenCallbacks = [];
         this._workspaceManager = global.workspace_manager;
 
         // SettingsOverrider already handles a stale override from a previous
@@ -517,6 +519,10 @@ export default class WindowMosaicExtension extends Extension {
             this.animationsManager.setOverviewActive(false);
             this.miniatureManager?.setOverviewActive(false);
             this.windowHandler.onOverviewHidden();
+            // Runs last so the deferred tiling sees the state the handlers above settled.
+            const deferred = this._pendingOverviewHiddenCallbacks;
+            this._pendingOverviewHiddenCallbacks = [];
+            for (const cb of deferred) cb();
         });
 
         this._workspaceManEventIds.push(global.workspace_manager.connect('active-workspace-changed', this._workspaceSwitchedHandler));
@@ -801,13 +807,12 @@ export default class WindowMosaicExtension extends Extension {
             }
         };
 
-        // When the overview is active, tiling with pending miniatures must wait
-        // until after the exit animation, since overview.hide fires before
-        // notify::focus-window on Wayland, so _isOverviewActive is still true
-        // here. Running cascade with animate=true only after 'hidden' ensures a
-        // smooth miniaturization rather than an instant snap.
-        if (this.animationsManager._isOverviewActive) {
-            afterOverviewHidden(doTile, this._timeoutRegistry);
+        // Mutter discards move_resize_frame while the overview is open, so tiling now
+        // would compute the layout and apply none of it. Waiting for 'hidden' also
+        // keeps the cascade animated instead of snapping into place.
+        if (Main.overview.visible) {
+            Logger.log('Deferring miniature restore tiling until the overview hides');
+            this._pendingOverviewHiddenCallbacks.push(doTile);
         } else {
             doTile();
         }
@@ -1089,6 +1094,7 @@ export default class WindowMosaicExtension extends Extension {
         this.animationsManager = null;
         this.windowingManager = null;
         this._timeoutRegistry = null;
+        this._pendingOverviewHiddenCallbacks = [];
         this._mutterSettings = null;
         this._settingsOverrider = null;
         this._injectionManager = null;
