@@ -744,6 +744,12 @@ export default class WindowMosaicExtension extends Extension {
         const workspace = window.get_workspace();
         if (!workspace) return;
         if (!this.isMosaicEnabledForWorkspace(workspace)) return;
+
+        // A drop's preview cleanup restores several miniatures in a row; retiling per restore
+        // re-miniaturizes them mid-drag and ping-pongs into a storm. The drag's own drop retile
+        // handles layout, so skip this heavy pass while that cleanup is running.
+        if (this.dragHandler?._suppressRestoreRetile) return;
+
         const monitor = window.get_monitor();
         const workArea = this.tilingManager.getUsableWorkArea(workspace, monitor);
 

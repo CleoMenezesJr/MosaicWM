@@ -31,6 +31,7 @@ export const DragHandler = GObject.registerClass({
         this._isPositionProcessing = false;
         this._currentGrabOp = null;
         this._restoringFromEdgeTile = false;
+        this._suppressRestoreRetile = false;
         this._skipNextTiling = null;
         this._lastReorderMonitor = null;
     }
@@ -62,10 +63,19 @@ export const DragHandler = GObject.registerClass({
     // leaving the zone (or dropping outside it) is the only thing that can hand these back.
     _restorePreviewMiniatures() {
         const miniatureManager = this._ext.miniatureManager;
-        for (const win of this._previewMiniaturizedWindows) {
-            if (!miniatureManager || !WindowState.get(win, WindowState.IS_MINIATURE)) continue;
-            Logger.log(`Edge preview cancelled - restoring miniature ${win.get_id()}`);
-            miniatureManager.restoreMiniature(win, null, { activate: false });
+        // restoreMiniature fires 'miniature-restored' synchronously, and its handler retiles;
+        // during this drop that retile would re-miniaturize the window (isDragging still true),
+        // flipping it back so the next entry restores it again in a loop. The drop's own
+        // _endReorderAndRetile does the one authoritative retile, so mute the per-restore one.
+        this._suppressRestoreRetile = true;
+        try {
+            for (const win of this._previewMiniaturizedWindows) {
+                if (!miniatureManager || !WindowState.get(win, WindowState.IS_MINIATURE)) continue;
+                Logger.log(`Edge preview cancelled - restoring miniature ${win.get_id()}`);
+                miniatureManager.restoreMiniature(win, null, { activate: false });
+            }
+        } finally {
+            this._suppressRestoreRetile = false;
         }
         this._previewMiniaturizedWindows = [];
     }
@@ -109,8 +119,13 @@ export const DragHandler = GObject.registerClass({
         // The edge preview is the only thing that miniaturizes mid-drag, so whatever gets
         // created while the grab is live is ours to hand back if the drop never happens.
         if (!this._miniatureCreatedId && this._ext.miniatureManager) {
+            // The preview re-miniaturizes the same window on every move into the zone, so dedupe;
+            // otherwise the restore loop hands the same window back dozens of times.
             this._miniatureCreatedId = this._ext.miniatureManager.connect('miniature-created',
-                (_mgr, win) => this._previewMiniaturizedWindows.push(win));
+                (_mgr, win) => {
+                    if (!this._previewMiniaturizedWindows.includes(win))
+                        this._previewMiniaturizedWindows.push(win);
+                });
         }
 
         const windowState = this.edgeTilingManager.getWindowState(window);
