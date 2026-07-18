@@ -136,4 +136,4 @@ This is unfunded work on a problem that will take a long time to finish properly
 
 ## License
 
-GNU General Public License v2.0 or later.
+GNU General Public License v2.0 or later, the same license as Mutter and GNOME Shell. See [LICENSE](LICENSE).

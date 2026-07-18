@@ -1,5 +1,5 @@
 // Copyright 2025-2026 Cleo Menezes Jr.
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-2.0-or-later
 // Custom layout strategy to preserve mosaic geometry in Overview
 
 import * as Workspace from 'resource:///org/gnome/shell/ui/workspace.js';

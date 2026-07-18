@@ -1,5 +1,5 @@
 // Copyright 2025-2026 Cleo Menezes Jr.
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-2.0-or-later
 // Visual feedback and preview rendering
 import * as Logger from './logger.js';
 import St from 'gi://St';

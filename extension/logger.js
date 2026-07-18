@@ -1,3 +1,6 @@
+// Copyright 2025-2026 Cleo Menezes Jr.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 const DEBUG = true;
 
 export function log(...args) {
