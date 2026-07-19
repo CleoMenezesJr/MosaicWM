@@ -13,7 +13,7 @@ import * as constants from './constants.js';
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
 import { IS_MINIATURE } from './windowState.js';
-import { ComputedLayouts } from './tiling.js';
+import { ComputedLayouts } from './mosaicModel.js';
 import { isWindowAlive } from './liveness.js';
 import { afterWorkspaceSwitch, afterAnimations, afterWindowClose, monotonicNow } from './timing.js';
 
@@ -30,7 +30,6 @@ export const WindowHandler = GObject.registerClass({
 
         this._overflowInProgress = false;
         this._windowSignals = new WeakMap(); // WeakMap so signal IDs are released when the window is GC'd
-        this._pendingRestoreRetiles = [];
         this._readinessWaiters = new Set();
     }
 
@@ -39,7 +38,6 @@ export const WindowHandler = GObject.registerClass({
             WindowState.remove(entry.window, 'pendingInQueue');
         this._evaluationQueue = [];
         this._isEvaluatingQueue = false;
-        this._pendingRestoreRetiles = [];
         for (const waiter of this._readinessWaiters) {
             for (const id of waiter.ids) waiter.window.disconnect(id);
         }
@@ -431,13 +429,6 @@ export const WindowHandler = GObject.registerClass({
         // reverse smart resize back into tiling forever. stopDrag retiles the source.
         if (this._ext.dragHandler._draggedWindow) return;
 
-        // Mutter discards resizes while the overview is open, so an overview drag would
-        // leave the source mosaic half-positioned. Hand it to onOverviewHidden instead.
-        if (Main.overview.visible) {
-            this._pendingRestoreRetiles.push({ workspace, monitor, windows: [] });
-            return;
-        }
-
         this._timeoutRegistry.add(constants.RETILE_DELAY_MS, () => {
             this.windowingManager.invalidateWindowsCache();
             this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
@@ -461,11 +452,6 @@ export const WindowHandler = GObject.registerClass({
         Logger.log(`Window ${window.get_id()} entered monitor ${monitor}; evaluating for mosaic`);
 
         this.windowingManager.invalidateWindowsCache();
-
-        if (Main.overview.visible) {
-            WindowState.set(window, 'deferTilingUntilOverviewHidden', true);
-            return;
-        }
 
         this.enqueueWindowForEvaluation(window, workspace, monitor);
     }
@@ -611,11 +597,6 @@ export const WindowHandler = GObject.registerClass({
             for (const w of restorableWindows) {
                 WindowState.remove(w, 'isReverseSmartResizing');
             }
-            if (Main.overview.visible) {
-                // animateWindow does nothing while the overview is open, so defer the tile and cleanup to onOverviewHidden.
-                this._pendingRestoreRetiles.push({ workspace, monitor, windows: restorableWindows });
-                return GLib.SOURCE_REMOVE;
-            }
             this.animationsManager.setMembershipChangeBounce(true);
             this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
             this.animationsManager.setMembershipChangeBounce(false);
@@ -627,13 +608,9 @@ export const WindowHandler = GObject.registerClass({
     }
 
     _retileWithoutRestore(workspace, monitor) {
-        if (Main.overview.visible) {
-            this._pendingRestoreRetiles.push({ workspace, monitor, windows: [] });
-        } else {
-            this.animationsManager.setMembershipChangeBounce(true);
-            this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
-            this.animationsManager.setMembershipChangeBounce(false);
-        }
+        this.animationsManager.setMembershipChangeBounce(true);
+        this._ext.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
+        this.animationsManager.setMembershipChangeBounce(false);
     }
 
     onWindowDestroyed(window) {
@@ -701,31 +678,6 @@ export const WindowHandler = GObject.registerClass({
         }
     }
 
-    onOverviewHidden() {
-        const workspace = this.windowingManager.getWorkspace();
-
-        for (const win of workspace.list_windows()) {
-            if (WindowState.get(win, 'deferTilingUntilOverviewHidden')) {
-                Logger.log(`Overview hidden: Tiling deferred window ${win.get_id()}`);
-                WindowState.remove(win, 'deferTilingUntilOverviewHidden');
-                this.enqueueWindowForEvaluation(win, workspace, win.get_monitor());
-            }
-        }
-
-        if (this._pendingRestoreRetiles.length > 0) {
-            for (const { workspace: ws, monitor: mon, windows } of this._pendingRestoreRetiles) {
-                Logger.log('Retiling after restore delay (deferred: overview was open)');
-                this.animationsManager.setMembershipChangeBounce(true);
-                this._ext.tilingManager.tileWorkspaceWindows(ws, null, mon, true);
-                this.animationsManager.setMembershipChangeBounce(false);
-                for (const w of windows) {
-                    WindowState.remove(w, 'targetRestoredSize');
-                }
-            }
-            this._pendingRestoreRetiles = [];
-        }
-    }
-
     enqueueWindowForEvaluation(window, workspace, monitor) {
         const windowId = window.get_id();
         // A (re)considered window voids any earlier close-retile dedup claim; cleared
@@ -777,13 +729,18 @@ export const WindowHandler = GObject.registerClass({
                 continue;
             }
 
+            // Capture once per evaluation and clear now, so no later early return in
+            // _ensureWindowFits can strand it; both consumers below read this value.
+            const arrivedFromDnD = WindowState.get(window, 'arrivedFromDnD');
+            WindowState.remove(window, 'arrivedFromDnD');
+
             const resolved = this._resolveQueueItemWorkspace(window, workspace);
             if (resolved.skip) continue;
-            workspace = this._applyQueueCascade(window, resolved.workspace, state, overflowedWorkspaces);
+            workspace = this._applyQueueCascade(window, resolved.workspace, arrivedFromDnD, state, overflowedWorkspaces);
             state.expectedWorkspace = workspace;
 
             Logger.log(`Evaluating queued window ${window.get_id()} on WS-${workspace.index()} (remaining: ${this._evaluationQueue.length})`);
-            await this._evaluateQueuedWindowFit(window, workspace, monitor, state, overflowedWorkspaces);
+            await this._evaluateQueuedWindowFit(window, workspace, monitor, arrivedFromDnD, state, overflowedWorkspaces);
 
             WindowState.remove(window, 'arrivalPending');
             await this._queueSettleDelay();
@@ -809,11 +766,15 @@ export const WindowHandler = GObject.registerClass({
 
     // Pick the workspace to evaluate on: follow a manual user switch (which wins over any
     // in-flight cascade), else keep cascading this batch's overflow. Returns that workspace.
-    _applyQueueCascade(window, workspace, state, overflowedWorkspaces) {
+    _applyQueueCascade(window, workspace, arrivedFromDnD, state, overflowedWorkspaces) {
         const activeWorkspace = this.windowingManager.getWorkspace();
         const targetWorkspace = state.lastOverflowWorkspace || state.expectedWorkspace || workspace;
 
-        if (activeWorkspace && targetWorkspace && activeWorkspace.index() !== targetWorkspace.index()) {
+        // A drop is a destination the user chose, so "they navigated away" doesn't apply; without
+        // this the overview drag lands the window and the cascade immediately drags it back.
+        const droppedByUser = arrivedFromDnD;
+
+        if (!droppedByUser && activeWorkspace && targetWorkspace && activeWorkspace.index() !== targetWorkspace.index()) {
             Logger.log(`Evaluation queue: User switched to WS-${activeWorkspace.index()} during processing (expected WS-${targetWorkspace.index()}) - following user`);
             state.lastOverflowWorkspace = null;
             overflowedWorkspaces.clear();
@@ -844,9 +805,9 @@ export const WindowHandler = GObject.registerClass({
         return dest;
     }
 
-    async _evaluateQueuedWindowFit(window, workspace, monitor, state, overflowedWorkspaces) {
+    async _evaluateQueuedWindowFit(window, workspace, monitor, arrivedFromDnD, state, overflowedWorkspaces) {
         try {
-            const resultWorkspace = await this._ensureWindowFits(window, workspace, monitor);
+            const resultWorkspace = await this._ensureWindowFits(window, workspace, monitor, arrivedFromDnD);
             if (resultWorkspace && resultWorkspace.index() !== workspace.index()) {
                 overflowedWorkspaces.add(workspace.index());
                 state.lastOverflowWorkspace = resultWorkspace;
@@ -886,7 +847,7 @@ export const WindowHandler = GObject.registerClass({
         });
     }
 
-    async _ensureWindowFits(window, workspace, monitor) {
+    async _ensureWindowFits(window, workspace, monitor, arrivedFromDnD) {
         if (this._ensureFitsBlocked(window, workspace)) return workspace;
 
         // Runs before constrained fast path: tiling refuses sacred workspaces and would
@@ -904,7 +865,7 @@ export const WindowHandler = GObject.registerClass({
         // Save preferred size after sacred checks, to avoid capturing monitor-sized dimensions
         this.tilingManager.savePreferredSize(window);
 
-        if (WindowState.get(window, 'arrivedFromDnD')) {
+        if (arrivedFromDnD) {
             this._handleDnDArrival(window, workspace, monitor);
         }
 
@@ -954,7 +915,6 @@ export const WindowHandler = GObject.registerClass({
     }
 
     _handleDnDArrival(window, workspace, monitor) {
-        WindowState.set(window, 'arrivedFromDnD', false);
         const monitorWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
             .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
         const preferredSize = this.tilingManager.getPreferredSize(window);
@@ -1193,12 +1153,11 @@ export const WindowHandler = GObject.registerClass({
         const edgeResult = this._tryTileNewWithEdge(window, workspace, monitor);
         if (edgeResult !== null) return edgeResult;
 
-        // Mutter discards resizes while overview is open, so defer until onOverviewHidden.
-        if (Main.overview.visible) {
-            Logger.log(`Window ${window.get_id()} created while overview visible - deferring evaluation until overview hidden`);
-            WindowState.set(window, 'deferTilingUntilOverviewHidden', true);
-            return GLib.SOURCE_REMOVE;
-        }
+        // The model carries the geometry now, so the pass is worth running even though
+        // Mutter will drop the frame moves; the overview renders from the model and the
+        // flag still gets the real windows placed once it hides.
+        if (Main.overview.visible)
+            Logger.log(`Window ${window.get_id()} created while overview visible; tiling into the model`);
 
         this.enqueueWindowForEvaluation(window, workspace, monitor);
         return GLib.SOURCE_REMOVE;
@@ -1353,7 +1312,7 @@ export const WindowHandler = GObject.registerClass({
             if (frame.width <= 0 || frame.height <= 0)
                 return false;
 
-            this._handleCrossWorkspaceDnD(WINDOW, WORKSPACE, MONITOR);
+            this._handleCrossWorkspaceDnD(WINDOW, WORKSPACE);
 
             // Mark window as waiting for geometry; prevents premature overflow
             WindowState.set(WINDOW, 'waitingForGeometry', true);
@@ -1384,7 +1343,7 @@ export const WindowHandler = GObject.registerClass({
 
     // Detect a DnD across workspaces: window was just removed from a different
     // workspace within SAFETY_TIMEOUT_BUFFER_MS, so this add is the drop side.
-    _handleCrossWorkspaceDnD(WINDOW, WORKSPACE, MONITOR) {
+    _handleCrossWorkspaceDnD(WINDOW, WORKSPACE) {
         const previousWorkspaceIndex = WindowState.get(WINDOW, 'previousWorkspace');
         const removedTimestamp = WindowState.get(WINDOW, 'removedTimestamp');
         const timeSinceRemoved = removedTimestamp ? monotonicNow() - removedTimestamp : Infinity;
@@ -1395,17 +1354,8 @@ export const WindowHandler = GObject.registerClass({
         // Skip if this is an overflow move, not a real drag-drop
         if (!isCrossWorkspaceDrop || WindowState.get(WINDOW, 'movedByOverflow')) return;
 
-        WORKSPACE.activate(global.get_current_time());
-        this._ext.windowingManager.showWorkspaceSwitcher(WORKSPACE, MONITOR);
-
         // Mark as DnD arrival; triggers expansion after tiling
         WindowState.set(WINDOW, 'arrivedFromDnD', true);
-
-        // Wait for overview to fully close before tiling
-        if (Main.overview.visible) {
-            WindowState.set(WINDOW, 'deferTilingUntilOverviewHidden', true);
-            Main.overview.hide();
-        }
 
         WindowState.remove(WINDOW, 'previousWorkspace');
         WindowState.remove(WINDOW, 'removedTimestamp');
@@ -1537,23 +1487,10 @@ export const WindowHandler = GObject.registerClass({
             }
 
             if (Main.overview.visible) {
-                Logger.log('Window created while overview visible - deferring evaluation until overview hidden');
-                WindowState.set(WINDOW, 'deferTilingUntilOverviewHidden', true);
+                Logger.log('Window created while overview visible; tiling into the model');
                 this._ext.tilingManager.savePreferredSize(WINDOW);
                 this.connectWindowSignals(WINDOW);
-                this._ext.tilingManager.calculateLayoutsOnly();
-
-                this._timeoutRegistry.addIdle(() => {
-                    try {
-                        if (Main.overview.visible) {
-                            const overview = Main.overview._overview;
-                            if (overview && overview._controls && overview._controls._thumbnailsBox) {
-                                overview._controls._thumbnailsBox.queue_relayout();
-                            }
-                        }
-                    } catch (_e) {}
-                    return GLib.SOURCE_REMOVE;
-                }, 'windowHandler_overviewRelayout', GLib.PRIORITY_DEFAULT_IDLE);
+                this.enqueueWindowForEvaluation(WINDOW, WORKSPACE, MONITOR);
                 return GLib.SOURCE_REMOVE;
             }
 

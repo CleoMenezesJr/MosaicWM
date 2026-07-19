@@ -11,6 +11,7 @@ import * as constants from './constants.js';
 import { TileZone } from './constants.js';
 import { isResizeGrabOp } from './grabOps.js';
 import { isWorkspaceAlive, isWindowAlive } from './liveness.js';
+import { MosaicModel } from './mosaicModel.js';
 
 import GObject from 'gi://GObject';
 
@@ -511,6 +512,9 @@ export const ResizeHandler = GObject.registerClass({
             Logger.log(`onSizeChanged: Rejected monitor-sized dimensions ${rect.width}x${rect.height} for ${window.get_id()}`);
         } else if (userForcedResize) {
             WindowState.set(window, 'preferredSize', { width: rect.width, height: rect.height });
+            // The user dragged the edge, so the model takes that as the new intent rather
+            // than reapplying a target they just overrode.
+            MosaicModel.learn(window, rect);
             if (isConstrained) {
                 WindowState.set(window, 'isConstrainedByMosaic', false);
                 Logger.log(`Manual resize for ${window.get_id()} - cleared constraint`);
@@ -529,16 +533,20 @@ export const ResizeHandler = GObject.registerClass({
             return;
         }
 
+        // Past the transition guard, whatever lands below is a size the client actually
+        // settled on, so the model needs to match it or it keeps steering toward a stale slot.
         const currentPreferredSize = WindowState.get(window, 'preferredSize');
         if (currentPreferredSize) {
             const widthDiff = Math.abs(rect.width - currentPreferredSize.width);
             const heightDiff = Math.abs(rect.height - currentPreferredSize.height);
             if (widthDiff > constants.ANIMATION_DIFF_THRESHOLD || heightDiff > constants.ANIMATION_DIFF_THRESHOLD) {
                 WindowState.set(window, 'preferredSize', { width: rect.width, height: rect.height });
+                MosaicModel.learn(window, rect);
                 Logger.log(`Preferred size updated (ambient): ${window.get_id()} = ${rect.width}x${rect.height}`);
             }
         } else if (WindowState.get(window, 'geometryReady')) {
             WindowState.set(window, 'preferredSize', { width: rect.width, height: rect.height });
+            MosaicModel.learn(window, rect);
             Logger.log(`Initial preferred size saved: ${window.get_id()} = ${rect.width}x${rect.height}`);
         }
     }

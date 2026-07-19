@@ -3,7 +3,7 @@
 // Custom layout strategy to preserve mosaic geometry in Overview
 
 import * as Workspace from 'resource:///org/gnome/shell/ui/workspace.js';
-import { ComputedLayouts } from './tiling.js';
+import { ComputedLayouts } from './mosaicModel.js';
 import { WINDOW_SPACING } from './constants.js';
 
 // Scales down the layout instead of reorganizing windows (preserves spatial memory)

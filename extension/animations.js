@@ -215,11 +215,9 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     _applyWithoutAnimation(window, targetRect, { userOp, firstPlacement, onComplete }) {
-        // Overview visible means not yet, not never: this window gets retiled
-        // again once it hides (onOverviewHidden's re-enqueue) and deserves a real
-        // shot at animating then. move_resize_frame is a no-op while the overview's
-        // open anyway (Mutter discards it), so skip entirely rather than snapping
-        // to a position that never took effect and losing the animation.
+        // move_resize_frame is a no-op while the overview is open (Mutter discards it), and
+        // the flush places this window for real once it hides, so skip entirely rather than
+        // snapping to a position that never took effect and losing the animation.
         if (Main.overview.visible) {
             if (onComplete) onComplete();
             return;

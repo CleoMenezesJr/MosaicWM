@@ -29,6 +29,7 @@ import { SwappingManager } from './swapping.js';
 import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
 import { MosaicLayoutStrategy } from './overviewLayout.js';
+import { MosaicRenderer } from './mosaicRenderer.js';
 import { TimeoutRegistry, createDebounced, afterAnimations } from './timing.js';
 import { WindowHandler } from './windowHandler.js';
 import { DragHandler } from './dragHandler.js';
@@ -61,6 +62,7 @@ export default class WindowMosaicExtension extends Extension {
         this.swappingManager = null;
         this.drawingManager = null;
         this.animationsManager = null;
+        this.mosaicRenderer = null;
         this.windowingManager = null;
 
         this.windowHandler = null;
@@ -84,7 +86,6 @@ export default class WindowMosaicExtension extends Extension {
         this._injectionManager = null;
 
         this._timeoutRegistry = null;
-        this._pendingOverviewHiddenCallbacks = [];
 
         this._disabledWorkspaceStates = new WeakMap();
         this._mosaicDisabledByDefault = false;
@@ -169,6 +170,18 @@ export default class WindowMosaicExtension extends Extension {
         }
     };
 
+    // Flushes every workspace/monitor combo; flushToWindows no-ops on ones with no
+    // recorded slots, so this is cheap even though most combos are empty.
+    _flushMosaicToWindows() {
+        const nWorkspaces = this._workspaceManager.get_n_workspaces();
+        const nMonitors = global.display.get_n_monitors();
+        for (let i = 0; i < nWorkspaces; i++) {
+            const workspace = this._workspaceManager.get_workspace_by_index(i);
+            for (let j = 0; j < nMonitors; j++)
+                this.mosaicRenderer?.flushToWindows(workspace, j);
+        }
+    }
+
     _workspaceSwitchedHandler = () => {
         const newWorkspace = this._workspaceManager.get_active_workspace();
         const newIndex = newWorkspace.index();
@@ -217,7 +230,6 @@ export default class WindowMosaicExtension extends Extension {
         this._disabledWorkspaceStates = new WeakMap();
         this._mosaicDisabledByDefault = false;
         this._timeoutRegistry = new TimeoutRegistry();
-        this._pendingOverviewHiddenCallbacks = [];
         this._workspaceManager = global.workspace_manager;
 
         // SettingsOverrider already handles a stale override from a previous
@@ -233,6 +245,7 @@ export default class WindowMosaicExtension extends Extension {
         this.swappingManager = new SwappingManager();
         this.drawingManager = new DrawingManager();
         this.animationsManager = new AnimationsManager();
+        this.mosaicRenderer = new MosaicRenderer();
         this.windowingManager = new WindowingManager();
 
         this.windowingManager.setEdgeTilingManager(this.edgeTilingManager);
@@ -473,6 +486,7 @@ export default class WindowMosaicExtension extends Extension {
                 }
 
                 Logger.log(`Overview: Using MOSAIC Strategy for monitor ${this._monitorIndex}`);
+                extension.mosaicRenderer?.registerOverviewLayout(workspace, this._monitorIndex, this);
                 this._layoutStrategy = new MosaicLayoutStrategy({
                     monitor: Main.layoutManager.monitors[this._monitorIndex],
                 });
@@ -515,14 +529,19 @@ export default class WindowMosaicExtension extends Extension {
             this.animationsManager.setOverviewActive(true);
             this.miniatureManager?.setOverviewActive(true);
         });
+        // Mutter already accepts move_resize_frame here, so real windows are in place
+        // before the closing animation finishes and nothing flashes untiled.
+        this._onOverviewHidingId = Main.overview.connect('hiding', () => {
+            Logger.log('[FLUSH] triggered by hiding');
+            this._flushMosaicToWindows();
+        });
         this._onOverviewHiddenId = Main.overview.connect('hidden', () => {
             this.animationsManager.setOverviewActive(false);
             this.miniatureManager?.setOverviewActive(false);
-            this.windowHandler.onOverviewHidden();
-            // Runs last so the deferred tiling sees the state the handlers above settled.
-            const deferred = this._pendingOverviewHiddenCallbacks;
-            this._pendingOverviewHiddenCallbacks = [];
-            for (const cb of deferred) cb();
+            // A slot can get recomputed between 'hiding' and 'hidden'; this catches that window's final value.
+            Logger.log('[FLUSH] triggered by hidden');
+            this._flushMosaicToWindows();
+            this.mosaicRenderer?.clearOverviewLayouts();
         });
 
         this._workspaceManEventIds.push(global.workspace_manager.connect('active-workspace-changed', this._workspaceSwitchedHandler));
@@ -807,15 +826,7 @@ export default class WindowMosaicExtension extends Extension {
             }
         };
 
-        // Mutter discards move_resize_frame while the overview is open, so tiling now
-        // would compute the layout and apply none of it. Waiting for 'hidden' also
-        // keeps the cascade animated instead of snapping into place.
-        if (Main.overview.visible) {
-            Logger.log('Deferring miniature restore tiling until the overview hides');
-            this._pendingOverviewHiddenCallbacks.push(doTile);
-        } else {
-            doTile();
-        }
+        doTile();
     }
 
     _onDndEnter() {
@@ -1055,6 +1066,10 @@ export default class WindowMosaicExtension extends Extension {
             Main.overview.disconnect(this._onOverviewShowingId);
             this._onOverviewShowingId = 0;
         }
+        if (this._onOverviewHidingId) {
+            Main.overview.disconnect(this._onOverviewHidingId);
+            this._onOverviewHidingId = 0;
+        }
         if (this._onOverviewHiddenId) {
             Main.overview.disconnect(this._onOverviewHiddenId);
             this._onOverviewHiddenId = 0;
@@ -1092,9 +1107,10 @@ export default class WindowMosaicExtension extends Extension {
         this.swappingManager = null;
         this.drawingManager = null;
         this.animationsManager = null;
+        this.mosaicRenderer?.destroy();
+        this.mosaicRenderer = null;
         this.windowingManager = null;
         this._timeoutRegistry = null;
-        this._pendingOverviewHiddenCallbacks = [];
         this._mutterSettings = null;
         this._settingsOverrider = null;
         this._injectionManager = null;
