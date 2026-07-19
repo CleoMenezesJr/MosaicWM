@@ -448,11 +448,13 @@ export default class WindowMosaicExtension extends Extension {
                 this._mosaicIconLift = (1 - t) * (iconH * (PREVIEW_ICON_OVERLAP - 0.5) - visualH / 2);
                 this._icon.set({ scale_x: 1, scale_y: 1 });
 
-                // Offsetting an empty box lands NaN in the overlay's translation, and the
-                // shell runs this again on the first allocation anyway, where the lift
-                // stored above gets picked up.
+                // Offsetting an empty box lands NaN in the overlay's translation. The lift still
+                // has to land now, since the icon is already at scale 1 and the shell's next pass
+                // is a frame too late; the term that pass adds is zero at scale 1 anyway.
                 if (allocH > 0)
                     this._adjustOverlayOffsets();
+                else
+                    this._icon.translation_y = this._mosaicIconLift;
                 return undefined;
             };
         });
