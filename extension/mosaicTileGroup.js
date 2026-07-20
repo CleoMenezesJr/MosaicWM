@@ -5,6 +5,16 @@
 // Mirrors what a MetaTileGroup would carry, so migrating this upstream is a move rather
 // than a rewrite. No gi:// import here on purpose; the partition is pure geometry.
 
+// Two regions splitting the work area along one axis. Callers used to write the "who goes
+// first" if/else by hand; here the order is just the order of the arguments.
+export function splitAlongAxis(workArea, axis, firstSize, secondSize) {
+    const sizeKey = axis === 'x' ? 'width' : 'height';
+    return [
+        { ...workArea, [axis]: workArea[axis], [sizeKey]: firstSize },
+        { ...workArea, [axis]: workArea[axis] + firstSize, [sizeKey]: secondSize },
+    ];
+}
+
 export class MosaicTileGroup {
     constructor(workspaceIndex, monitor, workArea) {
         this.workspaceIndex = workspaceIndex;

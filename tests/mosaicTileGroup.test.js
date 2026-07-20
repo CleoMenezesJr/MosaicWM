@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MosaicTileGroup, MosaicTileGroupStore } from '../extension/mosaicTileGroup.js';
+import { MosaicTileGroup, MosaicTileGroupStore, splitAlongAxis } from '../extension/mosaicTileGroup.js';
 
 const WA = { x: 0, y: 32, width: 1920, height: 1048 };
 
@@ -140,4 +140,28 @@ test('mover a janela de grupo nao a deixa nos dois', () => {
 
     assert.equal(store.ensureGroup(0, 0, WA).size, 0);
     assert.equal(store.groupOfWindow(7).workspaceIndex, 1);
+});
+
+test('splitAlongAxis particiona a work area no eixo x', () => {
+    const wa = { x: 100, y: 50, width: 1000, height: 600 };
+    const [a, b] = splitAlongAxis(wa, 'x', 400, 600);
+
+    assert.deepEqual(a, { x: 100, y: 50, width: 400, height: 600 });
+    assert.deepEqual(b, { x: 500, y: 50, width: 600, height: 600 });
+});
+
+test('splitAlongAxis particiona a work area no eixo y', () => {
+    const wa = { x: 100, y: 50, width: 1000, height: 600 };
+    const [a, b] = splitAlongAxis(wa, 'y', 200, 400);
+
+    assert.deepEqual(a, { x: 100, y: 50, width: 1000, height: 200 });
+    assert.deepEqual(b, { x: 100, y: 250, width: 1000, height: 400 });
+});
+
+test('splitAlongAxis nao deixa lacuna nem sobreposicao', () => {
+    const wa = { x: 0, y: 0, width: 900, height: 700 };
+    const [a, b] = splitAlongAxis(wa, 'x', 300, 600);
+
+    assert.equal(a.width + b.width, wa.width);
+    assert.equal(a.x + a.width, b.x);
 });
