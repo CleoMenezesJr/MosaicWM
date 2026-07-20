@@ -100,6 +100,10 @@ export const DrawingManager = GObject.registerClass({
         }
     }
 
+    getTilePreviewActor() {
+        return this._tilePreview;
+    }
+
     hideTilePreview() {
         if (this._tilePreview) {
             this._tilePreview.hide();

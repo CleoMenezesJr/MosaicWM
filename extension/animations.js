@@ -37,6 +37,25 @@ export const AnimationsManager = GObject.registerClass({
         this._membershipChangeBounce = false;
     }
 
+    // Runs even with animations off: it's the only signal that the drop will be refused, and
+    // honouring the preference here would turn the refusal into nothing happening at all.
+    shakeRefusal(actor) {
+        if (!actor || actor.is_destroyed?.()) return;
+
+        const step = Math.ceil(constants.REFUSAL_SHAKE_MS / 4);
+        const home = actor.translation_x;
+        actor.remove_all_transitions();
+
+        const hop = (dx, next) => actor.ease({
+            translation_x: home + dx,
+            duration: step,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onComplete: next,
+        });
+
+        hop(-8, () => hop(8, () => hop(-4, () => hop(0, null))));
+    }
+
     setMembershipChangeBounce(active) {
         this._membershipChangeBounce = active;
     }

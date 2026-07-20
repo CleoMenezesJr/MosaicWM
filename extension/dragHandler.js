@@ -27,6 +27,7 @@ export const DragHandler = GObject.registerClass({
         this._miniatureCreatedId = 0;
         this._dragMonitorId = null;
         this._currentZone = TileZone.NONE;
+        this._refusalDwellId = null;
         this._dragPositionChangedId = 0;
         this._isPositionProcessing = false;
         this._currentGrabOp = null;
@@ -299,6 +300,13 @@ export const DragHandler = GObject.registerClass({
     }
 
     _dropByTiling(window, workArea) {
+        if (!this.edgeTilingManager.quarterFits(window, this._currentZone,
+            window.get_workspace(), window.get_monitor(), workArea)) {
+            Logger.log(`DnD: zone ${this._currentZone} refused, the pair cannot share the column`);
+            this._abandonDrop();
+            return;
+        }
+
         Logger.log(`DnD: zone ${this._currentZone} empty, applying tile`);
 
         this._skipNextTiling = window.get_id();
@@ -316,13 +324,19 @@ export const DragHandler = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             }, 'dragHandler_skipTilingApply');
         } else {
-            this.clearGhostWindows();
-            this._restorePreviewMiniatures();
-            this._skipNextTiling = null;
+            this._abandonDrop();
         }
     }
 
+    // The window keeps whatever the mosaic had for it, which is where it came from.
+    _abandonDrop() {
+        this.clearGhostWindows();
+        this._restorePreviewMiniatures();
+        this._skipNextTiling = null;
+    }
+
     _finishMoveDragCleanup() {
+        this._cancelRefusalDwell();
         this.drawingManager.hideTilePreview();
         this._draggedWindow = null;
         this._currentZone = TileZone.NONE;
@@ -461,11 +475,33 @@ export const DragHandler = GObject.registerClass({
             Logger.log(`Edge tiling: previewing ${mosaicWindows[0].get_id()} as opposite half ${remainingSpace.width}x${remainingSpace.height}`);
             this.drawingManager.showCompanionTilePreview(remainingSpace);
         }
+
+        this._armRefusalDwell(zone, workspace, monitor, workArea);
+    }
+
+    _armRefusalDwell(zone, workspace, monitor, workArea) {
+        this._cancelRefusalDwell();
+        if (this.edgeTilingManager.quarterFits(this._draggedWindow, zone, workspace, monitor, workArea))
+            return;
+
+        this._refusalDwellId = this._timeoutRegistry.add(constants.QUARTER_REFUSAL_DWELL_MS, () => {
+            this._refusalDwellId = null;
+            if (this._currentZone === zone)
+                this.animationsManager?.shakeRefusal(this.drawingManager.getTilePreviewActor());
+            return GLib.SOURCE_REMOVE;
+        }, 'dragHandler_refusalDwell');
+    }
+
+    _cancelRefusalDwell() {
+        if (!this._refusalDwellId) return;
+        this._timeoutRegistry.remove(this._refusalDwellId);
+        this._refusalDwellId = null;
     }
 
     _exitEdgeZone(workspace, monitor) {
         Logger.log('Edge tiling: exiting zone');
         this._currentZone = TileZone.NONE;
+        this._cancelRefusalDwell();
         this.edgeTilingManager.setEdgeTilingActive(false, null);
         this.drawingManager.hideTilePreview();
         this.tilingManager.setDragRemainingSpace(null);

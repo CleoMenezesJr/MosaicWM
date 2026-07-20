@@ -69,6 +69,10 @@ export const ABSOLUTE_MIN_HEIGHT = 100;
 
 export const EDGE_TILING_THRESHOLD = 10;
 
+// Long enough that merely crossing a zone on the way somewhere else doesn't set the preview off.
+export const QUARTER_REFUSAL_DWELL_MS = 450;
+export const REFUSAL_SHAKE_MS = 300;
+
 export const POLL_INTERVAL_MS = 50;
 export const DEBOUNCE_DELAY_MS = 500;
 export const RETILE_DELAY_MS = 100;

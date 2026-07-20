@@ -378,6 +378,20 @@ export const EdgeTilingManager = GObject.registerClass({
         return { window: fullWindow, newZone: ZONE_VERTICAL_PAIR[zone] };
     }
 
+    // Asked before any geometry moves. A side with nobody on it always fits: there is no pair
+    // to squeeze, so the quarter is free.
+    quarterFits(window, zone, workspace, monitor, workArea) {
+        if (!ZONE_HALF[zone]) return true;
+
+        const conversion = this._planFullToQuarterConversion(window, zone, workspace, monitor);
+        if (!conversion) return true;
+
+        const group = MosaicModel.store.groupFor(workspace.index(), monitor);
+        if (!group) return true;
+
+        return group.splitFits(workArea.height, 'y', [window.get_id(), conversion.window.get_id()]);
+    }
+
     calculateRemainingSpaceForZone(zone, workArea) {
         const halfWidth = Math.floor(workArea.width / 2);
 
@@ -429,7 +443,7 @@ export const EdgeTilingManager = GObject.registerClass({
                     const fullRect = this.getZoneRect(fullZone, workArea, adjacentWindow);
 
                     if (fullRect) {
-                        this._setRegion(adjacentWindow, fullRect, workspace, monitor);
+                        MosaicModel.setRegion(adjacentWindow, fullRect, workspace, monitor);
                         adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
 
                         const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
@@ -505,7 +519,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
             const rect = this.getZoneRect(TileZone.LEFT_FULL, workArea, window);
             if (rect) {
-                this._setRegion(window, rect, workspace, monitor);
+                MosaicModel.setRegion(window, rect, workspace, monitor);
                 if (this._animationsManager) {
                     this._animationsManager.animateWindow(window, rect, { subtle: true });
                 } else {
@@ -527,7 +541,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
             const rect = this.getZoneRect(TileZone.RIGHT_FULL, workArea, window);
             if (rect) {
-                this._setRegion(window, rect, workspace, monitor);
+                MosaicModel.setRegion(window, rect, workspace, monitor);
                 if (this._animationsManager) {
                     this._animationsManager.animateWindow(window, rect, { subtle: true });
                 } else {
@@ -675,7 +689,7 @@ export const EdgeTilingManager = GObject.registerClass({
     _placeTiledWindow(window, rect) {
         // Same reason as the quarter split: the animated path never reaches move_resize_frame,
         // and this is where a window first becomes an edge tile.
-        this._setRegion(window, rect, window.get_workspace(), window.get_monitor());
+        MosaicModel.setRegion(window, rect, window.get_workspace(), window.get_monitor());
 
         if (this._animationsManager) {
             this._animationsManager.animateWindow(window, rect, { subtle: true });
@@ -713,8 +727,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
         // Recorded outside the branch on purpose: the animated path never calls
         // move_resize_frame, so recording inside the else would blind the model to the normal case.
-        this._setRegion(conversion.window, convertedRegion, workspace, monitor);
-        this._setRegion(window, windowRegion, workspace, monitor);
+        MosaicModel.setRegion(conversion.window, convertedRegion, workspace, monitor);
+        MosaicModel.setRegion(window, windowRegion, workspace, monitor);
 
         if (this._animationsManager) {
             this._animationsManager.animateWindow(conversion.window, convertedRegion, { subtle: true });
@@ -768,7 +782,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
         // The region recorded here is the real split, not the halved one we asked for.
         const place = (win, region) => {
-            this._setRegion(win, region, workspace, monitor);
+            MosaicModel.setRegion(win, region, workspace, monitor);
             win.move_resize_frame(false, region.x, region.y, region.width, region.height);
         };
 
@@ -894,7 +908,7 @@ export const EdgeTilingManager = GObject.registerClass({
         const fullRect = this.getZoneRect(fullZone, workArea, adjacentWindow);
         if (!fullRect) return;
 
-        this._setRegion(adjacentWindow, fullRect, workspace, monitor);
+        MosaicModel.setRegion(adjacentWindow, fullRect, workspace, monitor);
         adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
         const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
         if (adjacentState) adjacentState.zone = fullZone;
@@ -1118,31 +1132,10 @@ export const EdgeTilingManager = GObject.registerClass({
         }
     }
 
-    _setRegion(window, region, workspace, monitor) {
-        MosaicModel.setRegion(window, region, workspace, monitor);
-        this._probeDivergence(window, region);
-    }
-
-    // Temporary. Handing the commit to the group is only safe once region and frame already
-    // agree, and matches get logged too so a silent run reads as "agreed" and not as "never ran".
-    _probeDivergence(window, region) {
-        const settled = constants.ANIMATION_DURATION_MS + constants.POLL_INTERVAL_MS;
-        this._timeoutRegistry?.add(settled, () => {
-            if (!window.get_compositor_private()) return GLib.SOURCE_REMOVE;
-            const f = window.get_frame_rect();
-            const r = `(${region.x},${region.y},${region.width},${region.height})`;
-            if (f.x !== region.x || f.y !== region.y || f.width !== region.width || f.height !== region.height)
-                Logger.log(`[EDGE-DIVERGE] ${window.get_id()}: region=${r} frame=(${f.x},${f.y},${f.width},${f.height})`);
-            else
-                Logger.log(`[EDGE-MATCH] ${window.get_id()}: ${r}`);
-            return GLib.SOURCE_REMOVE;
-        }, 'edgeTiling_divergenceProbe');
-    }
-
     // The group has to hear about the geometry before Mutter does, otherwise a flush racing
     // the commit would apply whatever stale region the partition still held.
     _applyRegion(window, region, workspace, monitor) {
-        this._setRegion(window, region, workspace, monitor);
+        MosaicModel.setRegion(window, region, workspace, monitor);
         window.move_frame(false, region.x, region.y);
         window.move_resize_frame(false, region.x, region.y, region.width, region.height);
     }
@@ -1307,7 +1300,7 @@ export const EdgeTilingManager = GObject.registerClass({
                     const isLeft = (zone === TileZone.LEFT_FULL);
                     const x = isLeft ? workArea.x : (workArea.x + workArea.width - maxWidth);
                     const region = { x, y: workArea.y, width: maxWidth, height: workArea.height };
-                    this._setRegion(edgeTiledWindow, region, workspace, monitor);
+                    MosaicModel.setRegion(edgeTiledWindow, region, workspace, monitor);
                     edgeTiledWindow.move_resize_frame(false, region.x, region.y, region.width, region.height);
                 } finally {
                     this._timeoutRegistry.add(50, () => {
@@ -1352,7 +1345,7 @@ export const EdgeTilingManager = GObject.registerClass({
             try {
                 const x = isLeft ? workArea.x : (workArea.x + workArea.width - maxEdgeWidth);
                 const region = { x, y: workArea.y, width: maxEdgeWidth, height: workArea.height };
-                this._setRegion(edgeTiledWindow, region, workspace, monitor);
+                MosaicModel.setRegion(edgeTiledWindow, region, workspace, monitor);
                 edgeTiledWindow.move_resize_frame(false, region.x, region.y, region.width, region.height);
             } finally {
                 this._timeoutRegistry.add(50, () => {
