@@ -1648,6 +1648,16 @@ export const TilingManager = GObject.registerClass({
             this._placeVerticalAnimated(tile_info, meta_windows, ctx);
         }
 
+        const group = MosaicModel.store.groupFor(workspace.index(), monitor);
+        if (group) group.workArea = { ...work_area };
+
+        // The clamp upstream should make this unreachable; logging it is how we find out it
+        // did not, instead of discovering it as a window half off the screen.
+        for (const violation of group?.partitionViolations(w => WindowState.get(w, IS_MINIATURE)) ?? []) {
+            const r = violation.region;
+            Logger.error(`[GROUP] Window ${violation.windowId} escapes the work area: region=(${r.x},${r.y} ${r.width}x${r.height}) workArea=(${work_area.x},${work_area.y} ${work_area.width}x${work_area.height})`);
+        }
+
         this._animationsManager.animateReTiling(ctx.windowLayouts, draggedWindow, ctx.miniLayouts);
         this._scheduleWorkspaceUnlock(workspace);
 
@@ -1699,23 +1709,26 @@ export const TilingManager = GObject.registerClass({
         }
 
         if (windowDesc.id === ctx.resizingWindowId) {
+            // The user's own resize owns the size; only the position follows the layout.
+            this._recordSlot(window, slot, ctx);
             window.move_frame(false, tx, ty);
             return;
         }
 
-        this._recordSlot(window, slot, ctx);
-
         if (ctx.pendingMiniIds.has(window.get_id())) {
             // Pending miniature: capture slot, but skip animateReTiling. createMiniature handles
             // all visual animation; a concurrent move_resize_frame would shift the actor mid-animation.
+            this._recordSlot(window, slot, ctx);
             ctx.miniLayouts.push({ window, rect: slot });
             Logger.log(`[LAYOUT] ${orient} pending-mini ${window.get_id()}: slot=(${slot.x},${slot.y}) size=${slot.width}x${slot.height}`);
         } else if (window.get_id() === this._grabbedWindowId) {
             // Mutter's grab wins every frame, so a move_resize_frame here just yanks the window off
             // the cursor and snaps back. Claim the slot; the drop lands in it.
+            this._recordSlot(window, slot, ctx);
             ctx.miniLayouts.push({ window, rect: slot });
             Logger.log(`[LAYOUT] ${orient} grabbed ${window.get_id()}: slot=(${slot.x},${slot.y}) size=${slot.width}x${slot.height}`);
         } else {
+            this._recordSlot(window, slot, ctx);
             Logger.log(`[LAYOUT] ${orient} window ${window.get_id()}: target=(${tx},${ty}) size=${windowDesc.width}x${windowDesc.height}`);
             ctx.windowLayouts.push({ window, rect: slot });
         }
@@ -1739,7 +1752,7 @@ export const TilingManager = GObject.registerClass({
     // ctx carries the workspace/monitor this tile pass is running for, so the model can be
     // flushed later without guessing which workspace a deferred window belongs to.
     _recordSlot(window, slot, ctx) {
-        MosaicModel.setSlot(window, slot, ctx.workspace, ctx.monitor);
+        MosaicModel.setRegion(window, slot, ctx.workspace, ctx.monitor);
         if (ctx.slotsOut) ctx.slotsOut.set(window.get_id(), slot);
     }
 
