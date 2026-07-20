@@ -96,6 +96,72 @@ test('partitionViolations ainda acusa com work area que nao sobrevive a spread',
     assert.deepEqual(group.partitionViolations().map(v => v.windowId), [8]);
 });
 
+const member = (id) => ({ window: { id }, region: { x: 0, y: 32, width: 640, height: 384 } });
+
+test('noteObservedSize guarda o primeiro tamanho visto', () => {
+    const group = new MosaicTileGroup(0, 0, WA);
+    group.setMember(7, member(7));
+    group.noteObservedSize(7, { width: 640, height: 616 });
+
+    assert.deepEqual(group.floorOf(7), { width: 640, height: 616 });
+});
+
+test('o piso desce quando a janela prova que encolhe, e nunca sobe', () => {
+    const group = new MosaicTileGroup(0, 0, WA);
+    group.setMember(7, member(7));
+    group.noteObservedSize(7, { width: 640, height: 616 });
+    group.noteObservedSize(7, { width: 640, height: 768 });
+
+    assert.equal(group.floorOf(7).height, 616);
+
+    group.noteObservedSize(7, { width: 500, height: 400 });
+    assert.deepEqual(group.floorOf(7), { width: 500, height: 400 });
+});
+
+// setMember rebuilds the member, and every retile and every learn() goes through it. Dropping
+// the floor there would silently undo everything the window taught us.
+test('o piso sobrevive a um novo setMember', () => {
+    const group = new MosaicTileGroup(0, 0, WA);
+    group.setMember(7, member(7));
+    group.noteObservedSize(7, { width: 640, height: 616 });
+
+    group.setMember(7, { window: { id: 7 }, region: { x: 0, y: 32, width: 640, height: 768 } });
+
+    assert.deepEqual(group.floorOf(7), { width: 640, height: 616 });
+});
+
+test('splitFits aceita quando os pisos cabem', () => {
+    const group = new MosaicTileGroup(0, 0, WA);
+    group.setMember(7, member(7));
+    group.setMember(8, member(8));
+    group.noteObservedSize(7, { width: 640, height: 300 });
+    group.noteObservedSize(8, { width: 640, height: 200 });
+
+    assert.equal(group.splitFits(768, 'y', [7, 8]), true);
+});
+
+// The measured case: a text editor that would not go under 616 and a calculator that stops at
+// 200, sharing a 768 column. They overlapped by 48px because nobody asked first.
+test('splitFits recusa o par medido que nao cabe', () => {
+    const group = new MosaicTileGroup(0, 0, WA);
+    group.setMember(7, member(7));
+    group.setMember(8, member(8));
+    group.noteObservedSize(7, { width: 640, height: 616 });
+    group.noteObservedSize(8, { width: 640, height: 200 });
+
+    assert.equal(group.splitFits(768, 'y', [7, 8]), false);
+});
+
+// Refusing on ignorance would deny every first encounter, and a denial that is wrong is worse
+// than the overlap it replaces.
+test('splitFits aceita quando nao conhece a janela', () => {
+    const group = new MosaicTileGroup(0, 0, WA);
+    group.setMember(7, member(7));
+    group.noteObservedSize(7, { width: 640, height: 616 });
+
+    assert.equal(group.splitFits(768, 'y', [7, 404]), true);
+});
+
 test('o store devolve o mesmo grupo para o mesmo par workspace/monitor', () => {
     const store = new MosaicTileGroupStore();
     const a = store.ensureGroup(0, 0, WA);
