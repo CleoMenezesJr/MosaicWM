@@ -2,74 +2,71 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Authoritative mosaic geometry: what the layout wants, independent of what Mutter applied
 
-// Keyed by window ID, not the GObject, to survive GI reference churn (same reason
-// windowState.js exists). Each entry carries its workspace/monitor so a flush can
-// target one workspace without asking which is active.
-const _entries = new Map();
+import { MosaicTileGroupStore } from './mosaicTileGroup.js';
+
+// Groups own the regions; this is the window-keyed view onto them that the rest of the
+// extension already speaks. Keyed by window ID, not the GObject, to survive GI reference
+// churn (same reason windowState.js exists).
+const _store = new MosaicTileGroupStore();
 
 function idOf(window) {
     return window?.get_id?.();
 }
 
 export const MosaicModel = {
-    setSlot(window, slot, workspace, monitor) {
+    store: _store,
+
+    setRegion(window, region, workspace, monitor) {
         const id = idOf(window);
         if (id === undefined) return;
-        _entries.set(id, {
-            window,
-            slot: { x: slot.x, y: slot.y, width: slot.width, height: slot.height },
-            workspaceIndex: workspace?.index?.() ?? null,
-            monitor: monitor ?? null,
-        });
+        _store.setMember(workspace?.index?.() ?? null, monitor ?? null, null, id, { window, region });
+    },
+
+    setSlot(window, slot, workspace, monitor) {
+        this.setRegion(window, slot, workspace, monitor);
     },
 
     slotFor(window) {
         const id = idOf(window);
-        return id === undefined ? null : (_entries.get(id)?.slot ?? null);
+        if (id === undefined) return null;
+        return _store.groupOfWindow(id)?.regionOf(id) ?? null;
     },
 
     // The layout's intent beats the live frame: mid-animation the frame is a transient
     // size, and with the overview open Mutter drops our moves entirely.
     geometryOf(window) {
-        const slot = this.slotFor(window);
-        if (slot) return slot;
+        const region = this.slotFor(window);
+        if (region) return region;
         const frame = window?.get_frame_rect?.();
         return frame ? { x: frame.x, y: frame.y, width: frame.width, height: frame.height } : null;
-    },
-
-    entriesFor(workspace, monitor) {
-        const wsIndex = workspace?.index?.();
-        const out = [];
-        for (const entry of _entries.values()) {
-            if (entry.workspaceIndex === wsIndex && entry.monitor === monitor)
-                out.push({ window: entry.window, slot: entry.slot });
-        }
-        return out;
     },
 
     // The client refused or changed the size on its own, so the model takes the real
     // frame as the new intent instead of fighting it back.
     learn(window, frame) {
         const id = idOf(window);
-        const entry = id !== undefined ? _entries.get(id) : undefined;
-        if (!entry) return;
-        entry.slot = { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
+        const group = id !== undefined ? _store.groupOfWindow(id) : null;
+        const member = group?.memberOf(id);
+        if (!member) return;
+        // Store's setMember also updates the reverse index, but this call never moves the
+        // window to a different group, and there's no workspace/monitor to give it here anyway.
+        group.setMember(id, { ...member, region: frame });
     },
 
     forget(window) {
         const id = idOf(window);
-        if (id !== undefined) _entries.delete(id);
+        if (id !== undefined) _store.removeWindow(id);
     },
 
-    forgetById(id) { _entries.delete(id); },
+    forgetById(id) { _store.removeWindow(id); },
 
-    clear() { _entries.clear(); },
+    clear() { _store.clear(); },
 };
 
 // Existing call sites speak this shape; kept so moving the store is not also an API churn.
 export const ComputedLayouts = {
     get(mw) { return MosaicModel.slotFor(mw) ?? undefined; },
-    set(mw, layout) { MosaicModel.setSlot(mw, layout, mw?.get_workspace?.(), mw?.get_monitor?.()); },
+    set(mw, layout) { MosaicModel.setRegion(mw, layout, mw?.get_workspace?.(), mw?.get_monitor?.()); },
     delete(mw) { MosaicModel.forget(mw); },
     deleteById(id) { MosaicModel.forgetById(id); },
     clear() { MosaicModel.clear(); },
