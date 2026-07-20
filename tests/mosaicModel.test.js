@@ -12,18 +12,18 @@ const fakeWindow = (id, frame = null) => ({
     get_monitor: () => 0,
 });
 
-test('setSlot e slotFor mantem o contrato antigo', () => {
+test('setRegion e regionFor mantem o contrato', () => {
     MosaicModel.clear();
     const win = fakeWindow(7);
-    MosaicModel.setSlot(win, { x: 10, y: 20, width: 300, height: 400 }, workspace(0), 0);
+    MosaicModel.setRegion(win, { x: 10, y: 20, width: 300, height: 400 }, workspace(0), 0);
 
-    assert.deepEqual(MosaicModel.slotFor(win), { x: 10, y: 20, width: 300, height: 400 });
+    assert.deepEqual(MosaicModel.regionFor(win), { x: 10, y: 20, width: 300, height: 400 });
 });
 
 test('geometryOf prefere a regiao ao frame vivo', () => {
     MosaicModel.clear();
     const win = fakeWindow(7, { x: 999, y: 999, width: 1, height: 1 });
-    MosaicModel.setSlot(win, { x: 10, y: 20, width: 300, height: 400 }, workspace(0), 0);
+    MosaicModel.setRegion(win, { x: 10, y: 20, width: 300, height: 400 }, workspace(0), 0);
 
     assert.deepEqual(MosaicModel.geometryOf(win), { x: 10, y: 20, width: 300, height: 400 });
 });
@@ -38,26 +38,26 @@ test('geometryOf cai no frame vivo quando nao ha regiao', () => {
 test('learn substitui a regiao pelo frame real', () => {
     MosaicModel.clear();
     const win = fakeWindow(7);
-    MosaicModel.setSlot(win, { x: 10, y: 20, width: 300, height: 400 }, workspace(0), 0);
+    MosaicModel.setRegion(win, { x: 10, y: 20, width: 300, height: 400 }, workspace(0), 0);
     MosaicModel.learn(win, { x: 10, y: 20, width: 320, height: 400 });
 
-    assert.equal(MosaicModel.slotFor(win).width, 320);
+    assert.equal(MosaicModel.regionFor(win).width, 320);
 });
 
 test('learn ignora janela que nao e membro', () => {
     MosaicModel.clear();
     MosaicModel.learn(fakeWindow(7), { x: 0, y: 0, width: 1, height: 1 });
 
-    assert.equal(MosaicModel.slotFor(fakeWindow(7)), null);
+    assert.equal(MosaicModel.regionFor(fakeWindow(7)), null);
 });
 
 test('forget tira a janela do grupo', () => {
     MosaicModel.clear();
     const win = fakeWindow(7);
-    MosaicModel.setSlot(win, { x: 10, y: 20, width: 300, height: 400 }, workspace(0), 0);
+    MosaicModel.setRegion(win, { x: 10, y: 20, width: 300, height: 400 }, workspace(0), 0);
     MosaicModel.forget(win);
 
-    assert.equal(MosaicModel.slotFor(win), null);
+    assert.equal(MosaicModel.regionFor(win), null);
     assert.deepEqual(MosaicModel.store.groupFor(0, 0).members(), []);
 });
 

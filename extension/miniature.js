@@ -129,7 +129,6 @@ const MiniatureEnforceEffect = GObject.registerClass({
     }
 });
 
-// Captures clicks and hovers to restore the window; carries the app icon.
 const MiniatureClickOverlay = GObject.registerClass({
     GTypeName: 'MosaicMiniatureClickOverlay',
 }, class MiniatureClickOverlay extends Clutter.Actor {
@@ -513,14 +512,14 @@ export const MiniatureManager = GObject.registerClass({
         return iconFly;
     }
 
-    createMiniature(window, computedSlot, forcedPreSize = null, { animate = true } = {}) {
+    createMiniature(window, region, forcedPreSize = null, { animate = true } = {}) {
         const windowActor = window.get_compositor_private();
         if (!windowActor) return false;
 
         this._animationsManager?.removeAnimatingWindow(window.get_id());
 
         const { preSize, scale, targetX, targetY, actorBefore_x, actorBefore_y, currentFrame, extLeft, extTop } =
-            this._computeMiniatureGeometry(window, windowActor, computedSlot, forcedPreSize);
+            this._computeMiniatureGeometry(window, windowActor, region, forcedPreSize);
 
         this._storeMiniatureState(window, windowActor, { scale, preSize, targetX, targetY, extLeft, extTop });
 
@@ -557,13 +556,13 @@ export const MiniatureManager = GObject.registerClass({
         return true;
     }
 
-    _computeMiniatureGeometry(window, windowActor, computedSlot, forcedPreSize) {
+    _computeMiniatureGeometry(window, windowActor, region, forcedPreSize) {
         const preSize = forcedPreSize || window.get_frame_rect();
         const scale = constants.MINIATURE_TARGET_SIZE_PX / Math.max(preSize.width, preSize.height);
         Logger.log(`[MINIATURE] createMiniature ${window.get_id()}: preSize=${preSize.width}x${preSize.height} scale=${scale} forced=${!!forcedPreSize}`);
 
-        const targetX = computedSlot.x;
-        const targetY = computedSlot.y;
+        const targetX = region.x;
+        const targetY = region.y;
 
         const [actorBefore_x, actorBefore_y] = windowActor.get_position();
         const currentFrame = window.get_frame_rect();

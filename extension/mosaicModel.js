@@ -22,11 +22,7 @@ export const MosaicModel = {
         _store.setMember(workspace?.index?.() ?? null, monitor ?? null, null, id, { window, region });
     },
 
-    setSlot(window, slot, workspace, monitor) {
-        this.setRegion(window, slot, workspace, monitor);
-    },
-
-    slotFor(window) {
+    regionFor(window) {
         const id = idOf(window);
         if (id === undefined) return null;
         return _store.groupOfWindow(id)?.regionOf(id) ?? null;
@@ -35,7 +31,7 @@ export const MosaicModel = {
     // The layout's intent beats the live frame: mid-animation the frame is a transient
     // size, and with the overview open Mutter drops our moves entirely.
     geometryOf(window) {
-        const region = this.slotFor(window);
+        const region = this.regionFor(window);
         if (region) return region;
         const frame = window?.get_frame_rect?.();
         return frame ? { x: frame.x, y: frame.y, width: frame.width, height: frame.height } : null;
@@ -65,7 +61,7 @@ export const MosaicModel = {
 
 // Existing call sites speak this shape; kept so moving the store is not also an API churn.
 export const ComputedLayouts = {
-    get(mw) { return MosaicModel.slotFor(mw) ?? undefined; },
+    get(mw) { return MosaicModel.regionFor(mw) ?? undefined; },
     set(mw, layout) { MosaicModel.setRegion(mw, layout, mw?.get_workspace?.(), mw?.get_monitor?.()); },
     delete(mw) { MosaicModel.forget(mw); },
     deleteById(id) { MosaicModel.forgetById(id); },
