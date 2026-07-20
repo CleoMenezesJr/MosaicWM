@@ -12,6 +12,7 @@ import * as constants from './constants.js';
 import { TileZone, ZONE_SIDE } from './constants.js';
 import * as WindowState from './windowState.js';
 import { ComputedLayouts, MosaicModel } from './mosaicModel.js';
+import { rectOf } from './mosaicTileGroup.js';
 import {
     IS_MINIATURE,
     MINIATURE_SCALE,
@@ -1646,7 +1647,7 @@ export const TilingManager = GObject.registerClass({
         }
 
         const group = MosaicModel.store.groupFor(workspace.index(), monitor);
-        if (group) group.workArea = { ...work_area };
+        if (group) group.workArea = rectOf(work_area);
 
         // The clamp upstream should make this unreachable; logging it is how we find out it
         // did not, instead of discovering it as a window half off the screen.

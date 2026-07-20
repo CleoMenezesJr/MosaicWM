@@ -86,6 +86,16 @@ test('o predicado isenta quem ele diz', () => {
     assert.deepEqual(violations.map(v => v.windowId), [7]);
 });
 
+// Fed a work area that spreads to {}, every bound became undefined and the check passed
+// everything, so this guards the detector itself rather than the geometry.
+test('partitionViolations ainda acusa com work area que nao sobrevive a spread', () => {
+    const wa = Object.create({ x: 0, y: 32, width: 1920, height: 1048 });
+    const group = new MosaicTileGroup(0, 0, wa);
+    group.setMember(8, { window: { id: 8 }, region: { x: 1800, y: 32, width: 400, height: 1048 } });
+
+    assert.deepEqual(group.partitionViolations().map(v => v.windowId), [8]);
+});
+
 test('o store devolve o mesmo grupo para o mesmo par workspace/monitor', () => {
     const store = new MosaicTileGroupStore();
     const a = store.ensureGroup(0, 0, WA);
@@ -156,6 +166,18 @@ test('splitAlongAxis particiona a work area no eixo y', () => {
 
     assert.deepEqual(a, { x: 100, y: 50, width: 1000, height: 200 });
     assert.deepEqual(b, { x: 100, y: 250, width: 1000, height: 400 });
+});
+
+// A Mtk.Rectangle keeps x/y/width/height on the prototype, so spreading one yields {} and
+// every field silently becomes undefined. Anything reading a work area has to go field by field.
+test('splitAlongAxis le uma work area que nao sobrevive a spread', () => {
+    const wa = Object.create({ x: 0, y: 32, width: 1280, height: 768 });
+    assert.deepEqual({ ...wa }, {});
+
+    const [a, b] = splitAlongAxis(wa, 'y', 384, 384);
+
+    assert.deepEqual(a, { x: 0, y: 32, width: 1280, height: 384 });
+    assert.deepEqual(b, { x: 0, y: 416, width: 1280, height: 384 });
 });
 
 test('splitAlongAxis nao deixa lacuna nem sobreposicao', () => {

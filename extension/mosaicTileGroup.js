@@ -7,19 +7,30 @@
 
 // Two regions splitting the work area along one axis. Callers used to write the "who goes
 // first" if/else by hand; here the order is just the order of the arguments.
+//
+// Read field by field, never spread: a work area straight from Mutter is an Mtk.Rectangle whose
+// geometry lives on the prototype, so {...workArea} is {} and every field turns undefined.
 export function splitAlongAxis(workArea, axis, firstSize, secondSize) {
+    const base = { x: workArea.x, y: workArea.y, width: workArea.width, height: workArea.height };
     const sizeKey = axis === 'x' ? 'width' : 'height';
     return [
-        { ...workArea, [axis]: workArea[axis], [sizeKey]: firstSize },
-        { ...workArea, [axis]: workArea[axis] + firstSize, [sizeKey]: secondSize },
+        { ...base, [sizeKey]: firstSize },
+        { ...base, [axis]: base[axis] + firstSize, [sizeKey]: secondSize },
     ];
+}
+
+// Same reason splitAlongAxis reads field by field: an Mtk.Rectangle spreads to {}, and a work
+// area of undefined makes every partition check quietly pass.
+export function rectOf(rect) {
+    if (!rect) return { x: 0, y: 0, width: 0, height: 0 };
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
 export class MosaicTileGroup {
     constructor(workspaceIndex, monitor, workArea) {
         this.workspaceIndex = workspaceIndex;
         this.monitor = monitor;
-        this.workArea = { ...workArea };
+        this.workArea = rectOf(workArea);
         this._members = new Map();
     }
 
@@ -89,7 +100,7 @@ export class MosaicTileGroupStore {
             group = new MosaicTileGroup(workspaceIndex, monitor, workArea);
             this._groups.set(key, group);
         } else if (workArea) {
-            group.workArea = { ...workArea };
+            group.workArea = rectOf(workArea);
         }
         return group;
     }
