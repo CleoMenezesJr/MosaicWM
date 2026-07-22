@@ -27,7 +27,6 @@ export const DragHandler = GObject.registerClass({
         this._miniatureCreatedId = 0;
         this._dragMonitorId = null;
         this._currentZone = TileZone.NONE;
-        this._refusalDwellId = null;
         this._dragPositionChangedId = 0;
         this._isPositionProcessing = false;
         this._currentGrabOp = null;
@@ -300,9 +299,8 @@ export const DragHandler = GObject.registerClass({
     }
 
     _dropByTiling(window, workArea) {
-        if (!this.edgeTilingManager.quarterFits(window, this._currentZone,
-            window.get_workspace(), window.get_monitor(), workArea)) {
-            Logger.log(`DnD: zone ${this._currentZone} refused, the pair cannot share the column`);
+        if (!this.edgeTilingManager.zoneFits(window, this._currentZone, workArea)) {
+            Logger.log(`DnD: zone ${this._currentZone} refused, the window cannot live in it`);
             this._abandonDrop();
             return;
         }
@@ -336,7 +334,6 @@ export const DragHandler = GObject.registerClass({
     }
 
     _finishMoveDragCleanup() {
-        this._cancelRefusalDwell();
         this.drawingManager.hideTilePreview();
         this._draggedWindow = null;
         this._currentZone = TileZone.NONE;
@@ -447,7 +444,7 @@ export const DragHandler = GObject.registerClass({
         }
         this._lastReorderMonitor = monitor;
         this.edgeTilingManager.setEdgeTilingActive(true, this._draggedWindow);
-        this.drawingManager.showTilePreview(zone, workArea, this._draggedWindow);
+        this._refreshZonePreview(zone, workArea);
 
         const remainingSpace = this.edgeTilingManager.calculateRemainingSpaceForZone(zone, workArea);
         this.tilingManager.setDragRemainingSpace(remainingSpace);
@@ -476,32 +473,22 @@ export const DragHandler = GObject.registerClass({
             this.drawingManager.showCompanionTilePreview(remainingSpace);
         }
 
-        this._armRefusalDwell(zone, workspace, monitor, workArea);
     }
 
-    _armRefusalDwell(zone, workspace, monitor, workArea) {
-        this._cancelRefusalDwell();
-        if (this.edgeTilingManager.quarterFits(this._draggedWindow, zone, workspace, monitor, workArea))
-            return;
+    // The square just says which half it takes; whether the window can actually live there is a
+    // separate question, and a shake is how a no gets said before the drop.
+    _refreshZonePreview(zone, workArea) {
+        this.drawingManager.showTilePreview(zone, workArea, this._draggedWindow);
 
-        this._refusalDwellId = this._timeoutRegistry.add(constants.QUARTER_REFUSAL_DWELL_MS, () => {
-            this._refusalDwellId = null;
-            if (this._currentZone === zone)
-                this.animationsManager?.shakeRefusal(this.drawingManager.getTilePreviewActor());
-            return GLib.SOURCE_REMOVE;
-        }, 'dragHandler_refusalDwell');
-    }
+        if (this.edgeTilingManager.zoneFits(this._draggedWindow, zone, workArea)) return;
 
-    _cancelRefusalDwell() {
-        if (!this._refusalDwellId) return;
-        this._timeoutRegistry.remove(this._refusalDwellId);
-        this._refusalDwellId = null;
+        Logger.log(`Edge tiling: zone ${zone} cannot hold the dragged window`);
+        this.animationsManager?.shakeRefusal(this.drawingManager.getTilePreviewActor());
     }
 
     _exitEdgeZone(workspace, monitor) {
         Logger.log('Edge tiling: exiting zone');
         this._currentZone = TileZone.NONE;
-        this._cancelRefusalDwell();
         this.edgeTilingManager.setEdgeTilingActive(false, null);
         this.drawingManager.hideTilePreview();
         this.tilingManager.setDragRemainingSpace(null);

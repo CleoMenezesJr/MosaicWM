@@ -218,7 +218,6 @@ export const EdgeTilingManager = GObject.registerClass({
         const workspace = windowToTile?.get_workspace();
         const monitor = windowToTile?.get_monitor();
         const halfWidth = Math.floor(workArea.width / 2);
-        const halfHeight = Math.floor(workArea.height / 2);
 
         const side = ZONE_SIDE[zone];
         const width = this._getExistingSideWidth(workspace, monitor, side) || halfWidth;
@@ -226,21 +225,20 @@ export const EdgeTilingManager = GObject.registerClass({
 
         // The quarter stacked against us already picked its height; we take what's left.
         const stackedHeight = this._getExistingQuarterHeight(workspace, monitor, ZONE_VERTICAL_PAIR[zone]);
+        const height = stackedHeight
+            ? workArea.height - stackedHeight
+            : this._plannedQuarterHeight(windowToTile, zone, workArea, workspace, monitor);
 
-        if (ZONE_HALF[zone] === 'top') {
-            return {
-                x,
-                y: workArea.y,
-                width,
-                height: stackedHeight ? (workArea.height - stackedHeight) : halfHeight
-            };
-        }
-        return {
-            x,
-            y: stackedHeight ? (workArea.y + stackedHeight) : (workArea.y + halfHeight),
-            width,
-            height: stackedHeight ? (workArea.height - stackedHeight) : (workArea.height - halfHeight)
-        };
+        // Measured off the far edge rather than from the split point, so an uneven split still
+        // ends flush with the bottom of the work area.
+        const y = ZONE_HALF[zone] === 'top' ? workArea.y : workArea.y + workArea.height - height;
+        return { x, y, width, height };
+    }
+
+    // A refused split still has to draw something, and the shake is what says it won't happen.
+    _plannedQuarterHeight(windowToTile, zone, workArea, workspace, monitor) {
+        const plan = this.planQuarterSplit(windowToTile, zone, workArea, workspace, monitor);
+        return plan ? plan.ownHeight : Math.floor(workArea.height / 2);
     }
 
     saveWindowState(window) {
@@ -378,18 +376,31 @@ export const EdgeTilingManager = GObject.registerClass({
         return { window: fullWindow, newZone: ZONE_VERTICAL_PAIR[zone] };
     }
 
-    // Asked before any geometry moves. A side with nobody on it always fits: there is no pair
-    // to squeeze, so the quarter is free.
-    quarterFits(window, zone, workspace, monitor, workArea) {
-        if (!ZONE_HALF[zone]) return true;
+    // The split is even at drop time; whatever a client refuses gets settled afterwards, which
+    // is the only moment the real answer exists.
+    planQuarterSplit(window, zone, workArea, workspace, monitor) {
+        const even = Math.floor(workArea.height / 2);
+        const alone = { partner: null, ownHeight: even, partnerHeight: even };
+        if (!ZONE_HALF[zone] || !window || !workspace) return alone;
 
         const conversion = this._planFullToQuarterConversion(window, zone, workspace, monitor);
-        if (!conversion) return true;
+        if (!conversion) return alone;
 
-        const group = MosaicModel.store.groupFor(workspace.index(), monitor);
-        if (!group) return true;
+        return {
+            partner: conversion.window,
+            newZone: conversion.newZone,
+            ownHeight: even,
+            partnerHeight: workArea.height - even,
+        };
+    }
 
-        return group.splitFits(workArea.height, 'y', [window.get_id(), conversion.window.get_id()]);
+    // Both halves of the question: whether the squeezed tile left any room, and whether the window
+    // arriving can live in what's left. Asking only the first lets a window snap into a space it
+    // will refuse the moment it lands.
+    zoneFits(window, zone, workArea) {
+        const rect = this.getZoneRect(zone, workArea, window);
+        if (!rect || rect.height <= 0 || rect.width <= 0) return false;
+        return this._canResize(window, rect.width, rect.height);
     }
 
     calculateRemainingSpaceForZone(zone, workArea) {
@@ -599,7 +610,7 @@ export const EdgeTilingManager = GObject.registerClass({
         this._miniatureManager = miniatureManager;
     }
 
-    _canResize(window, _targetWidth, _targetHeight) {
+    _canResize(window, targetWidth, targetHeight) {
         if (window.window_type !== 0) { // Meta.WindowType.NORMAL
             Logger.log(`Window type ${window.window_type} is not suitable for edge tiling`);
             return false;
@@ -609,7 +620,20 @@ export const EdgeTilingManager = GObject.registerClass({
             Logger.log('Window does not allow resize');
             return false;
         }
-        return true;
+
+        return this._fitsDeclaredMinimum(window, targetWidth, targetHeight);
+    }
+
+    // The window arriving can't be probed the way a sitting tile can, so what it declares is all
+    // we get. Skipping this hands a window a space it refuses the moment it lands.
+    _fitsDeclaredMinimum(window, targetWidth, targetHeight) {
+        if (targetWidth === undefined || targetHeight === undefined) return true;
+
+        const [known, minWidth, minHeight] = window.get_min_size?.() ?? [false, 0, 0];
+        if (!known || (minWidth <= targetWidth && minHeight <= targetHeight)) return true;
+
+        Logger.log(`Window ${window.get_id()} needs ${minWidth}x${minHeight}, zone offers ${targetWidth}x${targetHeight}`);
+        return false;
     }
 
     applyTile(window, zone, workArea, skipOverflowCheck = false) {
@@ -720,10 +744,17 @@ export const EdgeTilingManager = GObject.registerClass({
         convertedRect.x = x;
         rect.x = x;
 
-        const halfHeight = Math.floor(workArea.height / 2);
+        const plan = this.planQuarterSplit(window, zone, workArea, workspace, monitor);
+        const ownHeight = plan ? plan.ownHeight : Math.floor(workArea.height / 2);
+        const partnerHeight = workArea.height - ownHeight;
 
-        const convertedRegion = { x: convertedRect.x, y: convertedRect.y, width: convertedRect.width, height: halfHeight };
-        const windowRegion = { x: rect.x, y: rect.y, width: rect.width, height: halfHeight };
+        // The converted tile takes whatever the incoming one didn't, so the pair covers the
+        // column exactly even when a proven minimum pushed the split off centre.
+        const convertedY = ZONE_HALF[zone] === 'top' ? workArea.y + ownHeight : workArea.y;
+        const ownY = ZONE_HALF[zone] === 'top' ? workArea.y : workArea.y + partnerHeight;
+
+        const convertedRegion = { x: convertedRect.x, y: convertedY, width: convertedRect.width, height: partnerHeight };
+        const windowRegion = { x: rect.x, y: ownY, width: rect.width, height: ownHeight };
 
         // Recorded outside the branch on purpose: the animated path never calls
         // move_resize_frame, so recording inside the else would blind the model to the normal case.
@@ -738,7 +769,7 @@ export const EdgeTilingManager = GObject.registerClass({
             window.move_resize_frame(false, windowRegion.x, windowRegion.y, windowRegion.width, windowRegion.height);
         }
 
-        Logger.log(`Applied quarter tiles with halfHeight=${halfHeight}px, width=${savedFullTileWidth}px`);
+        Logger.log(`Applied quarter tiles ${ownHeight}px/${partnerHeight}px, width=${savedFullTileWidth}px`);
 
         const convertedState = WindowState.get(conversion.window, 'edgeTilingState');
         if (convertedState) {
@@ -749,12 +780,13 @@ export const EdgeTilingManager = GObject.registerClass({
         this.emit('edge-tiling-changed', window, zone);
         this.emit('edge-tiling-changed', conversion.window, conversion.newZone);
 
-        this._settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, halfHeight);
+        this._settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, ownHeight, partnerHeight);
     }
 
-    // An app can refuse the halved height. Whoever won that argument dictates where the
-    // other one starts, so the pair still covers the side with no gap between them.
-    _settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, halfHeight) {
+    // The drop always asks for an even split, so this is where a client that won't take its half
+    // gets accommodated. Read rather than signalled because a refusal is silence: the frame simply
+    // doesn't change and nothing fires.
+    _settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, ownHeight, partnerHeight) {
         this._timeoutRegistry.add(constants.POLL_INTERVAL_MS, () => {
             if (!window.get_compositor_private() ||
                 !conversion.window.get_compositor_private()) {
@@ -764,9 +796,9 @@ export const EdgeTilingManager = GObject.registerClass({
             const actualConvertedFrame = conversion.window.get_frame_rect();
             const actualNewFrame = window.get_frame_rect();
 
-            if (actualConvertedFrame.height !== halfHeight || actualNewFrame.height !== halfHeight) {
+            if (actualConvertedFrame.height !== partnerHeight || actualNewFrame.height !== ownHeight) {
                 this._realignQuarterPair(window, zone, rect, convertedRect, workArea, conversion,
-                    actualNewFrame, actualConvertedFrame, halfHeight);
+                    actualNewFrame, actualConvertedFrame, ownHeight);
             }
 
             if (this._tilingManager) {
@@ -776,39 +808,38 @@ export const EdgeTilingManager = GObject.registerClass({
         });
     }
 
-    _realignQuarterPair(window, zone, rect, convertedRect, workArea, conversion, actualNewFrame, actualConvertedFrame, halfHeight) {
+    _realignQuarterPair(window, zone, rect, convertedRect, workArea, conversion, actualNewFrame, actualConvertedFrame, ownHeight) {
         const workspace = window.get_workspace();
         const monitor = window.get_monitor();
 
-        // The region recorded here is the real split, not the halved one we asked for.
+        // The region recorded here is the real split, not the one we asked for. Eased rather
+        // than snapped since this lands a beat after the tile animation the user is watching.
         const place = (win, region) => {
             MosaicModel.setRegion(win, region, workspace, monitor);
-            win.move_resize_frame(false, region.x, region.y, region.width, region.height);
+            if (this._animationsManager)
+                this._animationsManager.animateWindow(win, region, { subtle: true });
+            else
+                win.move_resize_frame(false, region.x, region.y, region.width, region.height);
         };
 
-        if (ZONE_HALF[zone] === 'bottom') {
-            if (actualNewFrame.height > halfHeight) {
-                const topHeight = workArea.height - actualNewFrame.height;
-                const bottomY = workArea.y + topHeight;
-                place(conversion.window, { x: convertedRect.x, y: workArea.y, width: convertedRect.width, height: topHeight });
-                place(window, { x: rect.x, y: bottomY, width: rect.width, height: actualNewFrame.height });
-            } else {
-                const bottomY = actualConvertedFrame.y + actualConvertedFrame.height;
-                const bottomHeight = (workArea.y + workArea.height) - bottomY;
-                place(window, { x: rect.x, y: bottomY, width: rect.width, height: bottomHeight });
-            }
-            return;
-        }
+        // Whoever turned down the height it was handed decides where the divider sits; the other
+        // absorbs the remainder. Handing the refuser back the very size it just rejected is what
+        // used to push it past the edge of its own column.
+        const partnerHeight = workArea.height - ownHeight;
+        let ownFinal = actualNewFrame.height;
+        if (actualNewFrame.height <= ownHeight && actualConvertedFrame.height > partnerHeight)
+            ownFinal = workArea.height - actualConvertedFrame.height;
 
-        if (actualNewFrame.height > halfHeight) {
-            const bottomHeight = workArea.height - actualNewFrame.height;
-            const bottomY = workArea.y + actualNewFrame.height;
-            place(conversion.window, { x: convertedRect.x, y: bottomY, width: convertedRect.width, height: bottomHeight });
-        } else {
-            const bottomY = actualNewFrame.y + actualNewFrame.height;
-            const bottomHeight = (workArea.y + workArea.height) - bottomY;
-            place(conversion.window, { x: convertedRect.x, y: bottomY, width: convertedRect.width, height: bottomHeight });
-        }
+        ownFinal = Math.max(0, Math.min(ownFinal, workArea.height));
+        const partnerFinal = workArea.height - ownFinal;
+
+        const ownIsTop = ZONE_HALF[zone] === 'top';
+        const ownY = ownIsTop ? workArea.y : workArea.y + partnerFinal;
+        const partnerY = ownIsTop ? workArea.y + ownFinal : workArea.y;
+
+        Logger.log(`Settled quarter pair at ${ownFinal}px/${partnerFinal}px`);
+        place(window, { x: rect.x, y: ownY, width: rect.width, height: ownFinal });
+        place(conversion.window, { x: convertedRect.x, y: partnerY, width: convertedRect.width, height: partnerFinal });
     }
 
     removeTile(window, callback = null, placeAtCursor = false) {
