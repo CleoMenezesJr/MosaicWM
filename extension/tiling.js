@@ -313,14 +313,6 @@ export const TilingManager = GObject.registerClass({
         }
     }
 
-    // Mid-drag the frame carries preview sizes, and a floor learned from one of those would claim
-    // a window shrinks further than it does, which is the direction that ends in overlap.
-    _observeFloors(meta_windows) {
-        if (this.isDragging) return;
-        for (const win of meta_windows)
-            MosaicModel.observe(win);
-    }
-
     getMask(window) {
         const id = window.id !== undefined ? window.id : (window.get_id ? window.get_id() : null);
         if(id !== null && this.masks.has(id))
@@ -1586,8 +1578,6 @@ export const TilingManager = GObject.registerClass({
             if (this._windowingManager.isMaximizedOrFullscreen(win))
                 return false;
         }
-
-        this._observeFloors(meta_windows);
 
         const _windows = this.windowsToDescriptors(windowsForSwaps, current_monitor, window);
 

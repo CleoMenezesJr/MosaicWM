@@ -38,15 +38,11 @@ export class MosaicTileGroup {
         return this._members.size;
     }
 
-    // The floor is what the client taught us, not part of this placement, so it outlives every
-    // retile that rewrites the region.
     setMember(windowId, { window, region }) {
-        const floor = this._members.get(windowId)?.floor;
         this._members.set(windowId, {
             windowId,
             window,
             region: { x: region.x, y: region.y, width: region.width, height: region.height },
-            ...(floor ? { floor } : {}),
         });
     }
 
@@ -60,35 +56,6 @@ export class MosaicTileGroup {
 
     members() {
         return [...this._members.values()];
-    }
-
-    // The smallest size a window has actually held. Clients declare a minimum that reads higher
-    // than what they really accept (measured: an editor declaring 666 sitting at 616), and a
-    // floor that overestimates refuses layouts that would have worked.
-    noteObservedSize(windowId, size) {
-        const member = this._members.get(windowId);
-        if (!member) return;
-        const floor = member.floor;
-        member.floor = floor
-            ? { width: Math.min(floor.width, size.width), height: Math.min(floor.height, size.height) }
-            : { width: size.width, height: size.height };
-    }
-
-    floorOf(windowId) {
-        return this._members.get(windowId)?.floor ?? null;
-    }
-
-    // An unknown window answers yes: denying on ignorance would reject every first encounter,
-    // and a wrong denial is worse than the overlap it replaces.
-    splitFits(available, axis, windowIds) {
-        const sizeKey = axis === 'x' ? 'width' : 'height';
-        let needed = 0;
-        for (const id of windowIds) {
-            const floor = this._members.get(id)?.floor;
-            if (!floor) return true;
-            needed += floor[sizeKey];
-        }
-        return needed <= available;
     }
 
     removeMember(windowId) {

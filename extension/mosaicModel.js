@@ -47,17 +47,6 @@ export const MosaicModel = {
         // Store's setMember also updates the reverse index, but this call never moves the
         // window to a different group, and there's no workspace/monitor to give it here anyway.
         group.setMember(id, { ...member, region: frame });
-        group.noteObservedSize(id, frame);
-    },
-
-    // Any honest look at a frame tightens what we know the window can shrink to, so the floor
-    // fills in from reads that already happen instead of needing a watcher of its own.
-    observe(window) {
-        const id = idOf(window);
-        const group = id !== undefined ? _store.groupOfWindow(id) : null;
-        if (!group) return;
-        const frame = window?.get_frame_rect?.();
-        if (frame) group.noteObservedSize(id, { width: frame.width, height: frame.height });
     },
 
     forget(window) {
