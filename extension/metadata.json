@@ -4,7 +4,7 @@
   "uuid": "mosaicwm@cleomenezesjr.github.io",
   "url": "https://github.com/CleoMenezesJr/MosaicWM",
   "shell-version": [
-    "50"
+    "51"
   ],
   "session-modes": ["user", "unlock-dialog"]
 }
