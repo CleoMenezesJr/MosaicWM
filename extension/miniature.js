@@ -42,8 +42,6 @@ export function applyMiniatureActorState(actor, scale, extLeft, extTop, targetX,
     Logger.log(`[MINIATURE] applyMiniatureActorState: actor=( ${ax},${ay} ${actorW}x${actorH}) target=(${targetX},${targetY}) scale=${scale} tx=${tx} ty=${ty} FINAL_SIZE=${Math.round(actorW * scale)}x${Math.round(actorH * scale)}`);
 }
 
-// Handles three cases: create/restore in-flight (update target, let onStopped settle),
-// move in-flight (cancel + redirect from current visual), idle (fresh animation).
 export function animateMiniatureToTarget(actor, window, scale, extLeft, extTop, targetX, targetY, duration) {
     const kind = WindowState.get(window, MINIATURE_ANIM_KIND);
 
@@ -407,8 +405,9 @@ export const MiniatureManager = GObject.registerClass({
         this._animationsManager = animationsManager;
     }
 
-    // Shared onStopped for both shrink paths: clear anim flags and re-apply the latest
-    // target, since the layout may have recomputed the slot while the ease ran.
+    // Layout may have recomputed the slot while the ease ran; the final onStopped
+    // has to re-apply the freshly written target instead of leaving the actor on a
+    // stale position.
     _finishMiniatureAnim(window, windowActor) {
         WindowState.remove(window, ANIMATING_MINIATURE);
         WindowState.remove(window, MINIATURE_ANIM_KIND);

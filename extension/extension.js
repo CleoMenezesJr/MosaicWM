@@ -194,8 +194,6 @@ export default class WindowMosaicExtension extends Extension {
 
         this._currentWorkspaceIndex = newIndex;
 
-        // Wait for workspace switch animation to complete before any tiling operations
-        // This prevents race conditions where tiling starts while animation is still running
         afterAnimations(this.animationsManager, () => {
             Logger.log(`Workspace animation complete - ready for operations on workspace ${newIndex}`);
         }, this._timeoutRegistry);
@@ -308,8 +306,6 @@ export default class WindowMosaicExtension extends Extension {
             new GLib.Variant('b', false)
         );
 
-        // Disable attach-modal-dialogs to prevent squashed Overview previews
-        // When enabled, attached dialogs expand the window bounding box causing layout issues
         this._settingsOverrider.add(
             this._mutterSettings,
             'attach-modal-dialogs',

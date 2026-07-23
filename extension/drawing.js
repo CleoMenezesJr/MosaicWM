@@ -33,7 +33,7 @@ export const DrawingManager = GObject.registerClass({
         } else {
             box = new St.Widget({
                 style_class: 'mosaic-preview',
-                opacity: 200 // Ensure it's visible
+                opacity: 200
             });
             Main.uiGroup.add_child(box);
         }

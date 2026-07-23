@@ -97,7 +97,6 @@ export const AnimationsManager = GObject.registerClass({
         }
     }
 
-    // Used by async utilities to wait for animations to complete
     hasActiveAnimations() {
         this._pruneStaleAnimations();
         return this._animatingWindows.size > 0;
@@ -115,7 +114,6 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     setDragging(dragging) {
-        // If ending drag, set flag for smooth drop animation
         if (this._isDragging && !dragging) {
             this._justEndedDrag = true;
             this._timeoutRegistry.add(constants.DEBOUNCE_DELAY_MS, () => {

@@ -649,7 +649,6 @@ export const ResizeHandler = GObject.registerClass({
             return;
         }
 
-        // GHOST MODE: Reduce opacity to signal that the window no longer fits.
         this._resizeInOverflow = true;
         this._resizeOverflowWindow = window;
         const actor = window.get_compositor_private();

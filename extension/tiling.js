@@ -1647,14 +1647,17 @@ export const TilingManager = GObject.registerClass({
             this._placeVerticalAnimated(tile_info, meta_windows, ctx);
         }
 
+        // work_area is only the mosaic's leftover once edge tiles claimed their side, but the
+        // group holds those tiles too, so bounding it by the leftover flags every one of them.
+        const bounds = this._clampedWorkArea(workspace, monitor) ?? work_area;
         const group = MosaicModel.store.groupFor(workspace.index(), monitor);
-        if (group) group.workArea = rectOf(work_area);
+        if (group) group.workArea = rectOf(bounds);
 
         // The clamp upstream should make this unreachable; logging it is how we find out it
         // did not, instead of discovering it as a window half off the screen.
         for (const violation of group?.partitionViolations(w => WindowState.get(w, IS_MINIATURE)) ?? []) {
             const r = violation.region;
-            Logger.error(`[GROUP] Window ${violation.windowId} escapes the work area: region=(${r.x},${r.y} ${r.width}x${r.height}) workArea=(${work_area.x},${work_area.y} ${work_area.width}x${work_area.height})`);
+            Logger.error(`[GROUP] Window ${violation.windowId} escapes the work area: region=(${r.x},${r.y} ${r.width}x${r.height}) workArea=(${bounds.x},${bounds.y} ${bounds.width}x${bounds.height})`);
         }
 
         this._animationsManager.animateReTiling(ctx.windowLayouts, draggedWindow, ctx.miniLayouts);

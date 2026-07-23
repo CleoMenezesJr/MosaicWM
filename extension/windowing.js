@@ -206,7 +206,6 @@ export const WindowingManager = GObject.registerClass({
             const workspaceManager = global.workspace_manager;
             const monitor = window.get_monitor();
 
-            // Notify that overflow is starting
             if (this._overflowStartCallback) {
                 this._overflowStartCallback();
             }
@@ -245,7 +244,6 @@ export const WindowingManager = GObject.registerClass({
 
             window.change_workspace(target_workspace);
 
-            // Defer activation to next idle (no artificial delay)
             this._timeoutRegistry.addIdle(() => {
                 const workspaceIndex = target_workspace.index();
                 if (workspaceIndex < 0 || workspaceIndex >= workspaceManager.get_n_workspaces()) {
@@ -268,7 +266,6 @@ export const WindowingManager = GObject.registerClass({
                 if (this._tilingManager) {
                     Logger.log('moveOversizedWindow: workspace switch done, retiling immediately and then waiting for animations');
 
-                    // First, repair any aborted smart-resize corruption in the origin workspace before the window was ejected
                     if (previous_workspace.index() !== target_workspace.index()) {
                         this._tilingManager.tileWorkspaceWindows(previous_workspace, null, monitor);
                     }

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Centralized window state management using WeakMap
 
-// WeakMap to store state associated with Meta.Window objects
-// This avoids polluting native objects with custom properties
 const windowStates = new WeakMap();
 
 export function get(window, property) {
