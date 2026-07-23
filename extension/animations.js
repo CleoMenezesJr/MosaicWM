@@ -10,6 +10,7 @@ import * as constants from './constants.js';
 import * as WindowState from './windowState.js';
 import { MINIATURE_ANIM_KIND } from './windowState.js';
 import { getAnimationsEnabled, getSlowDownFactor } from './timing.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 
 import GObject from 'gi://GObject';
 
@@ -210,7 +211,7 @@ export const AnimationsManager = GObject.registerClass({
         // resize itself takes to land. The size mismatch in the meantime is already
         // covered by the scale animation below, which doesn't depend on this.
         window.move_frame(userOp, targetRect.x, targetRect.y);
-        window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        MosaicConstraints.commitRegion(window, targetRect, userOp);
 
         windowActor.set_translation(initialTx, initialTy, 0);
         if (!skipScale) {
@@ -243,7 +244,7 @@ export const AnimationsManager = GObject.registerClass({
         }
 
         WindowState.set(window, 'isMosaicResizing', true);
-        window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        MosaicConstraints.commitRegion(window, targetRect, userOp);
         this._clearMosaicResizingSoon(window);
         if (firstPlacement) {
             WindowState.remove(window, 'pendingFirstPlacement');
@@ -256,7 +257,7 @@ export const AnimationsManager = GObject.registerClass({
     _applyNoActor(window, targetRect, { firstPlacement, onComplete }) {
         Logger.log(`No actor for window ${window.get_id()}, skipping animation`);
         WindowState.set(window, 'isMosaicResizing', true);
-        window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        MosaicConstraints.commitRegion(window, targetRect);
         this._clearMosaicResizingSoon(window);
         if (firstPlacement) WindowState.remove(window, 'pendingFirstPlacement');
         if (onComplete) onComplete();
@@ -413,7 +414,7 @@ export const AnimationsManager = GObject.registerClass({
             // the raw spawn position happens to already match the target, since it
             // owns clearing the opacity=0 onWindowAdded left it at and the slide-in offset.
             if (!needsMove && !isFirstPlacement) {
-                window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+                MosaicConstraints.commitRegion(window, rect);
                 continue;
             }
 

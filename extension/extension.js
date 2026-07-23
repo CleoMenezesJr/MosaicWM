@@ -30,6 +30,7 @@ import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
 import { MosaicLayoutStrategy } from './overviewLayout.js';
 import { MosaicRenderer } from './mosaicRenderer.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 import { TimeoutRegistry, createDebounced, afterAnimations } from './timing.js';
 import { WindowHandler } from './windowHandler.js';
 import { DragHandler } from './dragHandler.js';
@@ -1111,6 +1112,7 @@ export default class WindowMosaicExtension extends Extension {
         this.animationsManager = null;
         this.mosaicRenderer?.destroy();
         this.mosaicRenderer = null;
+        MosaicConstraints.destroy();
         this.windowingManager = null;
         this._timeoutRegistry = null;
         this._mutterSettings = null;

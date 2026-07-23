@@ -14,6 +14,7 @@ import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
 import { IS_MINIATURE } from './windowState.js';
 import { ComputedLayouts, MosaicModel } from './mosaicModel.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 import { isWindowAlive } from './liveness.js';
 import { afterWorkspaceSwitch, afterAnimations, afterWindowClose, monotonicNow } from './timing.js';
 
@@ -233,6 +234,7 @@ export const WindowHandler = GObject.registerClass({
         }
 
         ComputedLayouts.delete(window);
+        MosaicConstraints.detach(window);
 
         WindowState.remove(window, 'previousExclusionState');
         WindowState.remove(window, 'previousWorkspace');
@@ -942,7 +944,7 @@ export const WindowHandler = GObject.registerClass({
         const targetW = Math.min(preferredSize.width, wa.width - constants.WINDOW_SPACING * 2);
         const targetH = Math.min(preferredSize.height, wa.height - constants.WINDOW_SPACING * 2);
         Logger.log(`DnD Solo: Fully restoring window to ${targetW}x${targetH}`);
-        win.move_resize_frame(true, currentRect.x, currentRect.y, targetW, targetH);
+        MosaicConstraints.commitRegion(win, { x: currentRect.x, y: currentRect.y, width: targetW, height: targetH }, true);
     }
 
     _dndRestoreExpansion(monitorWindows, workspace, monitor) {

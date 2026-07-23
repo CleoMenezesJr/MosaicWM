@@ -11,6 +11,7 @@ import * as WindowState from './windowState.js';
 import { IS_MINIATURE, ANIMATING_MINIATURE, MINIATURE_ANIM_KIND } from './windowState.js';
 import { getMiniatureSize } from './miniature.js';
 import { MosaicModel } from './mosaicModel.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 import { splitAlongAxis } from './mosaicTileGroup.js';
 
 import GObject from 'gi://GObject';
@@ -455,7 +456,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
                     if (fullRect) {
                         MosaicModel.setRegion(adjacentWindow, fullRect, workspace, monitor);
-                        adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
+                        MosaicConstraints.commitRegion(adjacentWindow, fullRect);
 
                         const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
                         if (adjacentState) adjacentState.zone = fullZone;
@@ -534,7 +535,7 @@ export const EdgeTilingManager = GObject.registerClass({
                 if (this._animationsManager) {
                     this._animationsManager.animateWindow(window, rect, { subtle: true });
                 } else {
-                    window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+                    MosaicConstraints.commitRegion(window, rect);
                 }
             }
         }
@@ -556,7 +557,7 @@ export const EdgeTilingManager = GObject.registerClass({
                 if (this._animationsManager) {
                     this._animationsManager.animateWindow(window, rect, { subtle: true });
                 } else {
-                    window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+                    MosaicConstraints.commitRegion(window, rect);
                 }
             }
         }
@@ -727,7 +728,7 @@ export const EdgeTilingManager = GObject.registerClass({
             actor.set_scale(1, 1);
             actor.set_translation(0, 0, 0);
         }
-        window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+        MosaicConstraints.commitRegion(window, rect);
     }
 
     // The sitting full tile keeps its width so the split lands where the user had already
@@ -765,8 +766,8 @@ export const EdgeTilingManager = GObject.registerClass({
             this._animationsManager.animateWindow(conversion.window, convertedRegion, { subtle: true });
             this._animationsManager.animateWindow(window, windowRegion);
         } else {
-            conversion.window.move_resize_frame(false, convertedRegion.x, convertedRegion.y, convertedRegion.width, convertedRegion.height);
-            window.move_resize_frame(false, windowRegion.x, windowRegion.y, windowRegion.width, windowRegion.height);
+            MosaicConstraints.commitRegion(conversion.window, convertedRegion);
+            MosaicConstraints.commitRegion(window, windowRegion);
         }
 
         Logger.log(`Applied quarter tiles ${ownHeight}px/${partnerHeight}px, width=${savedFullTileWidth}px`);
@@ -819,7 +820,7 @@ export const EdgeTilingManager = GObject.registerClass({
             if (this._animationsManager)
                 this._animationsManager.animateWindow(win, region, { subtle: true });
             else
-                win.move_resize_frame(false, region.x, region.y, region.width, region.height);
+                MosaicConstraints.commitRegion(win, region);
         };
 
         // Whoever turned down the height it was handed decides where the divider sits; the other
@@ -940,7 +941,7 @@ export const EdgeTilingManager = GObject.registerClass({
         if (!fullRect) return;
 
         MosaicModel.setRegion(adjacentWindow, fullRect, workspace, monitor);
-        adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
+        MosaicConstraints.commitRegion(adjacentWindow, fullRect);
         const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
         if (adjacentState) adjacentState.zone = fullZone;
     }
@@ -963,7 +964,7 @@ export const EdgeTilingManager = GObject.registerClass({
         }
 
         Logger.log(`removeTile: Restoring window ${window.get_id()} to size ${savedWidth}x${savedHeight} at (${restoredX}, ${restoredY})`);
-        window.move_resize_frame(false, restoredX, restoredY, savedWidth, savedHeight);
+        MosaicConstraints.commitRegion(window, { x: restoredX, y: restoredY, width: savedWidth, height: savedHeight });
     }
 
     _evacuateMosaicToNewWorkspace(mosaicWindows, workspace, monitor) {
@@ -1168,7 +1169,7 @@ export const EdgeTilingManager = GObject.registerClass({
     _applyRegion(window, region, workspace, monitor) {
         MosaicModel.setRegion(window, region, workspace, monitor);
         window.move_frame(false, region.x, region.y);
-        window.move_resize_frame(false, region.x, region.y, region.width, region.height);
+        MosaicConstraints.commitRegion(window, region);
     }
 
     _applyPair(windowA, regionA, windowB, regionB, workspace, monitor) {
@@ -1332,7 +1333,7 @@ export const EdgeTilingManager = GObject.registerClass({
                     const x = isLeft ? workArea.x : (workArea.x + workArea.width - maxWidth);
                     const region = { x, y: workArea.y, width: maxWidth, height: workArea.height };
                     MosaicModel.setRegion(edgeTiledWindow, region, workspace, monitor);
-                    edgeTiledWindow.move_resize_frame(false, region.x, region.y, region.width, region.height);
+                    MosaicConstraints.commitRegion(edgeTiledWindow, region);
                 } finally {
                     this._timeoutRegistry.add(50, () => {
                         this._isResizing = false;
@@ -1377,7 +1378,7 @@ export const EdgeTilingManager = GObject.registerClass({
                 const x = isLeft ? workArea.x : (workArea.x + workArea.width - maxEdgeWidth);
                 const region = { x, y: workArea.y, width: maxEdgeWidth, height: workArea.height };
                 MosaicModel.setRegion(edgeTiledWindow, region, workspace, monitor);
-                edgeTiledWindow.move_resize_frame(false, region.x, region.y, region.width, region.height);
+                MosaicConstraints.commitRegion(edgeTiledWindow, region);
             } finally {
                 this._timeoutRegistry.add(50, () => {
                     this._isResizing = false;

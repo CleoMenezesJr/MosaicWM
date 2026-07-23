@@ -12,6 +12,7 @@ import { afterWorkspaceSwitch } from './timing.js';
 import { TileZone, ZONE_SIDE, SIDE_ZONES } from './constants.js';
 import * as WindowState from './windowState.js';
 import { isWindowAlive } from './liveness.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 
 const BLACKLISTED_WM_CLASSES = [
     'org.gnome.Screenshot',
@@ -155,7 +156,7 @@ export const WindowingManager = GObject.registerClass({
             this._edgeTilingManager.saveWindowState(window);
 
             window.unmaximize();
-            window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+            MosaicConstraints.commitRegion(window, rect);
 
             const zone = SIDE_ZONES[direction].full;
             const state = this._edgeTilingManager.getWindowState(window);

@@ -4,6 +4,7 @@
 
 import * as Logger from './logger.js';
 import { MosaicModel } from './mosaicModel.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 import { isWindowAlive } from './liveness.js';
 import * as WindowState from './windowState.js';
 import { IS_MINIATURE } from './windowState.js';
@@ -62,7 +63,7 @@ export class MosaicRenderer {
             // frame here would compound on top of it.
             if (WindowState.get(member.window, IS_MINIATURE)) continue;
             const r = member.region;
-            member.window.move_resize_frame(false, r.x, r.y, r.width, r.height);
+            MosaicConstraints.commitRegion(member.window, r);
             applied++;
         }
         Logger.log(`[FLUSH] Applied ${applied} region(s) to WS-${workspace.index()} monitor ${monitor}`);

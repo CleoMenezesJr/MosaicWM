@@ -12,6 +12,7 @@ import * as constants from './constants.js';
 import { TileZone, ZONE_SIDE } from './constants.js';
 import * as WindowState from './windowState.js';
 import { ComputedLayouts, MosaicModel } from './mosaicModel.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 import { rectOf } from './mosaicTileGroup.js';
 import {
     IS_MINIATURE,
@@ -531,7 +532,7 @@ export const TilingManager = GObject.registerClass({
         const visualY = alive ? actor.y + actor.translation_y : 0;
         Logger.log(`applyDragLayout: id=${pos.id}, target=(${pos.x},${pos.y}), current=(${currentRect.x},${currentRect.y})`);
         window.move_frame(false, pos.x, pos.y);
-        window.move_resize_frame(false, pos.x, pos.y, pos.width, pos.height);
+        MosaicConstraints.commitRegion(window, { x: pos.x, y: pos.y, width: pos.width, height: pos.height });
         if (actor && !actor.is_destroyed()) {
             actor.set_translation(visualX - actor.x, visualY - actor.y, 0);
             actor.ease({
@@ -2621,7 +2622,7 @@ export const TilingManager = GObject.registerClass({
         if (preferredSize) {
             Logger.log(`restorePreferredSize: Restoring window ${window.get_id()} to ${preferredSize.width}x${preferredSize.height}`);
             const frame = window.get_frame_rect();
-            window.move_resize_frame(false, frame.x, frame.y, preferredSize.width, preferredSize.height);
+            MosaicConstraints.commitRegion(window, { x: frame.x, y: frame.y, width: preferredSize.width, height: preferredSize.height });
 
             WindowState.set(window, 'isSmartResizing', false);
             WindowState.set(window, 'targetSmartResizeSize', null);
@@ -3541,7 +3542,7 @@ class WindowDescriptor {
         const visualX = windowActor.x + cpx * actorW * (1 - currentScale) + windowActor.translation_x + extLeft * currentScale;
         const visualY = windowActor.y + cpy * actorH * (1 - currentScale) + windowActor.translation_y + extTop * currentScale;
         WindowState.set(window, 'isConstrainedByMosaic', true);
-        window.move_resize_frame(false, x, y, this.width, this.height);
+        MosaicConstraints.commitRegion(window, { x, y, width: this.width, height: this.height });
         const actor_x_new = x - extLeft;
         const actor_y_new = y - extTop;
         const dw = actorW * (1 - currentScale);
@@ -3580,7 +3581,7 @@ class WindowDescriptor {
         // actor carries the position the window really got, which is not x,y when the target
         // doesn't fit and mutter clamps it.
         window.move_frame(false, x, y);
-        window.move_resize_frame(false, x, y, this.width, this.height);
+        MosaicConstraints.commitRegion(window, { x, y, width: this.width, height: this.height });
         if (alive) {
             windowActor.set_translation(visualX - windowActor.x, visualY - windowActor.y, 0);
             windowActor.ease({
@@ -3599,7 +3600,7 @@ class WindowDescriptor {
             return;
         }
         WindowState.set(window, 'isConstrainedByMosaic', true);
-        window.move_resize_frame(false, x, y, this.width, this.height);
+        MosaicConstraints.commitRegion(window, { x, y, width: this.width, height: this.height });
         Logger.log(`[LAYOUT] draw ${window.get_id()}: target=(${x},${y}) size=${this.width}x${this.height}`);
     }
 
