@@ -237,6 +237,13 @@ export const AnimationsManager = GObject.registerClass({
         // the flush places this window for real once it hides, so skip entirely rather than
         // snapping to a position that never took effect and losing the animation.
         if (Main.overview.visible) {
+            // The map-time opacity=0 still has to be cleared here: no ease is running to do it,
+            // so the window would sit invisible until the 1s failsafe pops it in.
+            if (firstPlacement) {
+                WindowState.remove(window, 'pendingFirstPlacement');
+                const actor = window.get_compositor_private();
+                if (actor && !actor.is_destroyed()) actor.opacity = 255;
+            }
             if (onComplete) onComplete();
             return;
         }
