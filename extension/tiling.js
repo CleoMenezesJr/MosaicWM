@@ -1647,8 +1647,17 @@ export const TilingManager = GObject.registerClass({
             this._placeVerticalAnimated(tile_info, meta_windows, ctx);
         }
 
-        // work_area is only the mosaic's leftover once edge tiles claimed their side, but the
-        // group holds those tiles too, so bounding it by the leftover flags every one of them.
+        this._syncGroupBounds(workspace, monitor, work_area);
+
+        this._animationsManager.animateReTiling(ctx.windowLayouts, draggedWindow, ctx.miniLayouts);
+        this._scheduleWorkspaceUnlock(workspace);
+
+        return true;
+    }
+
+    // work_area is only the mosaic's leftover once edge tiles claimed their side, but the
+    // group holds those tiles too, so bounding it by the leftover flags every one of them.
+    _syncGroupBounds(workspace, monitor, work_area) {
         const bounds = this._clampedWorkArea(workspace, monitor) ?? work_area;
         const group = MosaicModel.store.groupFor(workspace.index(), monitor);
         if (group) group.workArea = rectOf(bounds);
@@ -1659,11 +1668,6 @@ export const TilingManager = GObject.registerClass({
             const r = violation.region;
             Logger.error(`[GROUP] Window ${violation.windowId} escapes the work area: region=(${r.x},${r.y} ${r.width}x${r.height}) workArea=(${bounds.x},${bounds.y} ${bounds.width}x${bounds.height})`);
         }
-
-        this._animationsManager.animateReTiling(ctx.windowLayouts, draggedWindow, ctx.miniLayouts);
-        this._scheduleWorkspaceUnlock(workspace);
-
-        return true;
     }
 
     _placeHorizontalAnimated(tile_info, work_area, meta_windows, ctx) {
