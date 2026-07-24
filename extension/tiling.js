@@ -952,7 +952,9 @@ export const TilingManager = GObject.registerClass({
         const forced = this._tryForcedShape(windows, work_area, spacing, useVerticalShelves, isSimulation, hash);
         if (forced) return forced;
 
-        const result = this._chooseTileResult(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation);
+        let result = this._chooseTileResult(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation);
+        if (result.overflow)
+            result = this._tryOppositeOrientation(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation, result);
 
         if (!isSimulation && !this.isDragging) {
             this._lastLayoutHash = hash;
@@ -960,6 +962,25 @@ export const TilingManager = GObject.registerClass({
         }
 
         return result;
+    }
+
+    // A window as wide as the work area leaves no room for a second column, yet the same set fits
+    // as rows. Overflow costs a miniaturization or a push to the next workspace, so it's worth a
+    // second pass in the other orientation before paying that.
+    _tryOppositeOrientation(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation, primary) {
+        if (this.isDragging && !isSimulation) return primary;
+
+        const altVertical = !useVerticalShelves;
+        const altFn = altVertical ? this._verticalShelves : this._horizontalShelves;
+        const alt = this._chooseTileResult(windows, work_area, spacing, altFn, altVertical, isSimulation);
+        if (!alt.overflow) {
+            Logger.log(`_tile: overflow on vertical=${useVerticalShelves}, switched to vertical=${altVertical}`);
+            return alt;
+        }
+
+        // The alt pass wrote its own targets onto the descriptors, and the preferred result's
+        // levels point at those same objects, so replay it before handing it back.
+        return tilingFn.call(this, primary.windows, work_area, spacing);
     }
 
     // Skip cache during drag (order changes but hash doesn't) and while a pin is active, since
