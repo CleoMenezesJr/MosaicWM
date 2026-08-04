@@ -877,18 +877,6 @@ export default class WindowMosaicExtension extends Extension {
         Main.wm.addKeybinding('tile-right', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
             () => this._tileActiveWindow(TileZone.RIGHT_FULL));
 
-        Main.wm.addKeybinding('tile-top-left', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
-            () => this._tileActiveWindow(TileZone.TOP_LEFT));
-
-        Main.wm.addKeybinding('tile-top-right', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
-            () => this._tileActiveWindow(TileZone.TOP_RIGHT));
-
-        Main.wm.addKeybinding('tile-bottom-left', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
-            () => this._tileActiveWindow(TileZone.BOTTOM_LEFT));
-
-        Main.wm.addKeybinding('tile-bottom-right', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
-            () => this._tileActiveWindow(TileZone.BOTTOM_RIGHT));
-
         Logger.log('Registering swap-left keybinding');
         Main.wm.addKeybinding('swap-left', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
             () => this._swapActiveWindow('left'));
@@ -1001,10 +989,6 @@ export default class WindowMosaicExtension extends Extension {
     _removeKeybindings() {
         Main.wm.removeKeybinding('tile-left');
         Main.wm.removeKeybinding('tile-right');
-        Main.wm.removeKeybinding('tile-top-left');
-        Main.wm.removeKeybinding('tile-top-right');
-        Main.wm.removeKeybinding('tile-bottom-left');
-        Main.wm.removeKeybinding('tile-bottom-right');
         Main.wm.removeKeybinding('swap-left');
         Main.wm.removeKeybinding('swap-right');
         Main.wm.removeKeybinding('swap-up');
