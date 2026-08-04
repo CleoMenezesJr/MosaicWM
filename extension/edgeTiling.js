@@ -141,6 +141,22 @@ export const EdgeTilingManager = GObject.registerClass({
         return zones.full;
     }
 
+    // Same question _sideZone answers for the pointer, minus the cursor: with no Y to read,
+    // the side's own occupancy picks the zone. Excluding the window matters because one
+    // maximized off a tile still carries that tile's zone in its state.
+    keyboardZoneForSide(side, workspace, monitor, excludeWindow) {
+        const occupied = this._tileableWindows(workspace, monitor, excludeWindow)
+            .map(w => this.getWindowState(w)?.zone)
+            .filter(zone => zone && ZONE_SIDE[zone] === side);
+
+        if (occupied.length === 0) return SIDE_ZONES[side].full;
+        if (occupied.length > 1) return null;
+
+        // A lone quarter leaves its pair free; a full tile gets split, and the newcomer
+        // taking the bottom is what pushes the sitting one into the top.
+        return ZONE_VERTICAL_PAIR[occupied[0]] ?? SIDE_ZONES[side].bottom;
+    }
+
     _getExistingSideWidth(workspace, monitor, side) {
         if (!workspace || monitor === undefined) return null;
 
@@ -489,6 +505,50 @@ export const EdgeTilingManager = GObject.registerClass({
         if (!window) return false;
         const state = WindowState.get(window, 'edgeTilingState');
         return state && state.zone !== TileZone.NONE;
+    }
+
+    // The whole keyboard contract, top to bottom. Maximized is answered before the zone is
+    // even read, since a window maximized off a tile keeps that tile's zone in its state.
+    resolveArrowIntent(window, direction) {
+        const zone = this.getWindowState(window)?.zone ?? TileZone.NONE;
+
+        if (window.is_maximized()) {
+            if (direction === 'up') return { kind: 'none' };
+            if (direction === 'down') return { kind: 'restore' };
+            return this._keyboardTileIntent(window, direction);
+        }
+
+        return direction === 'up' || direction === 'down'
+            ? this._verticalArrowIntent(window, zone, direction)
+            : this._horizontalArrowIntent(window, zone, direction);
+    }
+
+    _horizontalArrowIntent(window, zone, direction) {
+        if (ZONE_SIDE[zone] === direction) return { kind: 'none' };
+        if (zone !== TileZone.NONE) return { kind: 'restore' };
+        return this._keyboardTileIntent(window, direction);
+    }
+
+    // With no pair to trade with, up maximizes instead of climbing to the top half.
+    _verticalArrowIntent(window, zone, direction) {
+        const half = ZONE_HALF[zone];
+        if (this._hasVerticalPair(window, zone) &&
+            ((half === 'top' && direction === 'down') || (half === 'bottom' && direction === 'up')))
+            return { kind: 'swap', direction };
+
+        if (direction === 'up') return { kind: 'maximize' };
+        return zone === TileZone.NONE ? { kind: 'none' } : { kind: 'restore' };
+    }
+
+    _keyboardTileIntent(window, side) {
+        const zone = this.keyboardZoneForSide(
+            side, window.get_workspace(), window.get_monitor(), window);
+        return zone ? { kind: 'tile', zone } : { kind: 'none' };
+    }
+
+    _hasVerticalPair(window, zone) {
+        const pair = ZONE_VERTICAL_PAIR[zone];
+        return pair ? !!this._findWindowInZone(pair, window.get_workspace()) : false;
     }
 
     // Can this window be resized to fill a zone? A max-size cap below the zone means it can't,
