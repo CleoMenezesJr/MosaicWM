@@ -21,7 +21,6 @@ import * as constants from './constants.js';
 import { SettingsOverrider } from './settingsOverrider.js';
 
 import { EdgeTilingManager } from './edgeTiling.js';
-import { TileZone } from './constants.js';
 import { TilingManager } from './tiling.js';
 import { isWindowAlive, isWorkspaceAlive } from './liveness.js';
 import { ReorderingManager } from './reordering.js';
@@ -858,10 +857,10 @@ export default class WindowMosaicExtension extends Extension {
         const settings = this.getSettings('org.gnome.shell.extensions.mosaic-wm');
 
         Main.wm.addKeybinding('tile-left', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
-            () => this._tileActiveWindow(TileZone.LEFT_FULL));
+            () => this._onArrowShortcut('left'));
 
         Main.wm.addKeybinding('tile-right', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
-            () => this._tileActiveWindow(TileZone.RIGHT_FULL));
+            () => this._onArrowShortcut('right'));
 
         Logger.log('Registering swap-left keybinding');
         Main.wm.addKeybinding('swap-left', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
@@ -883,29 +882,45 @@ export default class WindowMosaicExtension extends Extension {
         Logger.log('Keyboard shortcuts registered');
     }
 
-    _tileActiveWindow(zone) {
+    _onArrowShortcut(direction) {
         const window = global.display.focus_window;
-        if (!window) {
-            Logger.log('No active window to tile');
+        if (!window) return;
+
+        if (this.windowingManager.isExcluded(window) ||
+            !this.isMosaicEnabledForWorkspace(window.get_workspace()))
+            return;
+
+        const intent = this.edgeTilingManager.resolveArrowIntent(window, direction);
+        Logger.log(`Arrow ${direction} on window ${window.get_id()}: intent=${intent.kind}${intent.zone ? ` zone=${intent.zone}` : ''}`);
+
+        switch (intent.kind) {
+            case 'tile': {
+                const workArea = window.get_workspace()
+                    .get_work_area_for_monitor(window.get_monitor());
+                this.edgeTilingManager.applyTile(window, intent.zone, workArea);
+                break;
+            }
+            case 'restore':
+                this._restoreWindow(window);
+                break;
+            case 'swap':
+                this.swappingManager.swapWindow(window, intent.direction);
+                break;
+            case 'maximize':
+                window.maximize();
+                break;
+        }
+    }
+
+    _restoreWindow(window) {
+        if (this.edgeTilingManager.isEdgeTiled(window)) {
+            this.edgeTilingManager.removeTile(window, () => {
+                this.tilingManager.tileWorkspaceWindows(
+                    window.get_workspace(), null, window.get_monitor());
+            });
             return;
         }
-
-        if (this.windowingManager.isExcluded(window)) {
-            Logger.log('Window is excluded from tiling');
-            return;
-        }
-
-        const workspace = window.get_workspace();
-        if (!this.isMosaicEnabledForWorkspace(workspace)) {
-            Logger.log('Mosaic disabled for workspace - ignoring tile shortcut');
-            return;
-        }
-
-        const monitor = window.get_monitor();
-        const workArea = workspace.get_work_area_for_monitor(monitor);
-
-        Logger.log(`Keyboard shortcut: tiling window ${window.get_id()} to zone ${zone}`);
-        this.edgeTilingManager.applyTile(window, zone, workArea);
+        if (window.is_maximized()) window.unmaximize();
     }
 
     _swapActiveWindow(direction) {
