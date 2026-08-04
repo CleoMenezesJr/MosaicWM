@@ -867,6 +867,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
         // Back to a normal window: restore the pre-tiling preferred size and drop any mosaic-learned minimum.
         WindowState.set(window, 'preferredSize', { width: savedWidth, height: savedHeight });
+        // The layout reads this before the frame, so the size survives a retile landing before the frame settles.
+        WindowState.set(window, 'targetRestoredSize', { width: savedWidth, height: savedHeight });
         WindowState.remove(window, 'actualMinWidth');
         WindowState.remove(window, 'actualMinHeight');
         WindowState.remove(window, 'targetSmartResizeSize');
@@ -890,6 +892,11 @@ export const EdgeTilingManager = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             }, 'edgeTiling_removeTileCallback');
         }
+
+        this._timeoutRegistry.add(constants.RETILE_DELAY_MS + constants.RESIZE_SETTLE_DELAY_MS, () => {
+            WindowState.remove(window, 'targetRestoredSize');
+            return GLib.SOURCE_REMOVE;
+        }, 'edgeTiling_removeTileSizeSettle');
     }
 
     // An untiled window drags its auto-tiled dependents out with it, and stops counting
