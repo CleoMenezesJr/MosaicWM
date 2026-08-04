@@ -11,26 +11,6 @@
       <summary>Tile window to right</summary>
       <description>Tile the active window to the right half of the screen</description>
     </key>
-    <key name="tile-top-left" type="as">
-      <default>['&lt;Super&gt;&lt;Ctrl&gt;Left']</default>
-      <summary>Tile window to top-left quarter</summary>
-      <description>Tile the active window to the top-left quarter of the screen</description>
-    </key>
-    <key name="tile-top-right" type="as">
-      <default>['&lt;Super&gt;&lt;Ctrl&gt;Right']</default>
-      <summary>Tile window to top-right quarter</summary>
-      <description>Tile the active window to the top-right quarter of the screen</description>
-    </key>
-    <key name="tile-bottom-left" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;Left']</default>
-      <summary>Tile window to bottom-left quarter</summary>
-      <description>Tile the active window to the bottom-left quarter of the screen</description>
-    </key>
-    <key name="tile-bottom-right" type="as">
-      <default>['&lt;Super&gt;&lt;Shift&gt;Right']</default>
-      <summary>Tile window to bottom-right quarter</summary>
-      <description>Tile the active window to the bottom-right quarter of the screen</description>
-    </key>
     <key name="swap-left" type="as">
       <default>['&lt;Super&gt;&lt;Alt&gt;Left']</default>
       <summary>Swap window to the left</summary>
