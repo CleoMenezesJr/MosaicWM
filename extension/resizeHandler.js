@@ -304,6 +304,8 @@ export const ResizeHandler = GObject.registerClass({
                         monitor: currentMonitor,
                         preMaxSize: preMaxSize
                     });
+                    // The companion only holds that half because this window was tiled beside it.
+                    this.edgeTilingManager.releaseAutoTileDependents(window);
                     this.tilingManager.tileWorkspaceWindows(currentWorkspace, null, currentMonitor, false);
                 }
             }).catch(e => Logger.error(`Sacred isolation failed: ${e}`));
