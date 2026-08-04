@@ -850,6 +850,10 @@ export const ResizeHandler = GObject.registerClass({
                 this.tilingManager.tileWorkspaceWindows(oldWorkspace, null, monitor, true);
             }
 
+            // The exile handed the companion back to the mosaic, so the half this
+            // window reclaims has to be paired up again.
+            this.edgeTilingManager.tryPairMosaicIntoOppositeHalf(window);
+
             // Same clamp protection as above, so this window doesn't get
             // rebalanced right after it just landed.
             this._resizeGracePeriod = monotonicNow();

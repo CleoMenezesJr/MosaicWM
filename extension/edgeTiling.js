@@ -1018,6 +1018,26 @@ export const EdgeTilingManager = GObject.registerClass({
         this._windowingManager.showWorkspaceSwitcher(newWorkspace, monitor);
     }
 
+    // Same pairing applyTile makes, minus the overflow check around it: a window that returns
+    // from its sacred workspace still carries its zone, so no tile ever lands to trigger one.
+    tryPairMosaicIntoOppositeHalf(tiledWindow) {
+        const zone = this.getWindowState(tiledWindow)?.zone;
+        if (!zone) return false;
+
+        // Still maximized means no free half, and its frame would size the pair down to nothing.
+        if (tiledWindow.is_maximized()) return false;
+
+        const workspace = tiledWindow.get_workspace();
+        if (!workspace) return false;
+        const monitor = tiledWindow.get_monitor();
+
+        const mosaicWindows = this.getNonEdgeTiledWindows(workspace, monitor);
+        if (mosaicWindows.length !== 1) return false;
+
+        return this._tryPairIntoOppositeHalf(mosaicWindows[0], tiledWindow, zone,
+            workspace.get_work_area_for_monitor(monitor));
+    }
+
     _tryPairIntoOppositeHalf(mosaicWindow, tiledWindow, zone, workArea) {
         if (zone !== TileZone.LEFT_FULL && zone !== TileZone.RIGHT_FULL) return false;
 
@@ -1027,7 +1047,7 @@ export const EdgeTilingManager = GObject.registerClass({
         // A window that can't fill the half (max-size capped) falls through to the miniature path.
         if (!oppositeRect || !this.isEdgeTileable(mosaicWindow, oppositeRect)) return false;
 
-        Logger.log(`_handleMosaicOverflow: auto-tiling single window ${mosaicWindow.get_id()} to opposite zone ${oppositeZone}`);
+        Logger.log(`Auto-tiling single window ${mosaicWindow.get_id()} to opposite zone ${oppositeZone}`);
 
         // Reserve the zone and drop any miniature synchronously so the trigger's size-changed
         // retile treats this window as tiled before applyTile positions it, with no race.
