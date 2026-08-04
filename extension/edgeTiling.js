@@ -671,13 +671,19 @@ export const EdgeTilingManager = GObject.registerClass({
         this._miniatureManager = miniatureManager;
     }
 
-    _canResize(window, targetWidth, targetHeight) {
+    _canResize(window, targetWidth, targetHeight, aboutToUnmaximize = false) {
         if (window.window_type !== 0) { // Meta.WindowType.NORMAL
             Logger.log(`Window type ${window.window_type} is not suitable for edge tiling`);
             return false;
         }
 
-        if (window.allows_resize && !window.allows_resize()) {
+        // allows_resize() folds in the current maximized state, so it vetoes a window
+        // applyTile is about to unmaximize. resizeable is the same hint minus that state.
+        const resizable = aboutToUnmaximize && window.is_maximized()
+            ? window.resizeable
+            : !window.allows_resize || window.allows_resize();
+
+        if (!resizable) {
             Logger.log('Window does not allow resize');
             return false;
         }
@@ -725,7 +731,7 @@ export const EdgeTilingManager = GObject.registerClass({
             return false;
         }
 
-        if (!this._canResize(window, rect.width, rect.height)) return false;
+        if (!this._canResize(window, rect.width, rect.height, true)) return false;
 
         const workspace = window.get_workspace();
         const monitor = window.get_monitor();
