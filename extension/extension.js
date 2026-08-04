@@ -950,6 +950,7 @@ export default class WindowMosaicExtension extends Extension {
     _restoreWindow(window) {
         if (this.edgeTilingManager.isEdgeTiled(window)) {
             this.edgeTilingManager.removeTile(window, () => {
+                if (!isWindowAlive(window)) return;
                 this.tilingManager.tileWorkspaceWindows(
                     window.get_workspace(), null, window.get_monitor());
             });
