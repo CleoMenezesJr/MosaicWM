@@ -11,6 +11,16 @@
       <summary>Tile window to right</summary>
       <description>Tile the active window to the right half of the screen</description>
     </key>
+    <key name="maximize-window" type="as">
+      <default>['&lt;Super&gt;Up']</default>
+      <summary>Maximize window</summary>
+      <description>Maximize the active window, or move it up the tiling stack</description>
+    </key>
+    <key name="restore-window" type="as">
+      <default>['&lt;Super&gt;Down']</default>
+      <summary>Restore window</summary>
+      <description>Move the active window down the tiling stack, back to the mosaic</description>
+    </key>
     <key name="swap-left" type="as">
       <default>['&lt;Super&gt;&lt;Alt&gt;Left']</default>
       <summary>Swap window to the left</summary>
