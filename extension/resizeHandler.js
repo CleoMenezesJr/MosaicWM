@@ -736,10 +736,17 @@ export const ResizeHandler = GObject.registerClass({
         if (this.tilingManager.isDragging) {
             return true;
         }
-        if (this._ext.dragHandler?._restoringFromEdgeTile) {
+        if (this._isEdgeTileRestoreSettling(now)) {
             return true;
         }
         return false;
+    }
+
+    // The drag flag and the edge-tiling stamp both mean the same thing here, just raised by
+    // different callers (mouse drag vs. every removeTile caller including the keyboard path).
+    _isEdgeTileRestoreSettling(now) {
+        return this._ext.dragHandler?._restoringFromEdgeTile ||
+            this.edgeTilingManager.isRestoringFromEdgeTile(now);
     }
 
     // Returns true when the window was ejected (or the attempt was aborted), so the caller stops.

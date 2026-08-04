@@ -13,6 +13,7 @@ import { getMiniatureSize } from './miniature.js';
 import { MosaicModel } from './mosaicModel.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
 import { splitAlongAxis } from './mosaicTileGroup.js';
+import { monotonicNow } from './timing.js';
 
 import GObject from 'gi://GObject';
 
@@ -32,6 +33,7 @@ export const EdgeTilingManager = GObject.registerClass({
         this._windowingManager = null;
         this._miniatureManager = null;
         this._timeoutRegistry = null;
+        this._lastRemoveTileAt = null;
     }
 
     setAnimationsManager(manager) {
@@ -922,6 +924,10 @@ export const EdgeTilingManager = GObject.registerClass({
         Logger.log(`removeTile: Removing tile from window ${winId}, zone=${savedState.zone}`);
         Logger.log(`removeTile: Saved state to restore: ${savedState.width}x${savedState.height} at (${savedState.x}, ${savedState.y})`);
 
+        // Stamped here, not in a per-caller flag, so mouse drag, keyboard shortcut and
+        // auto-tile dependent cleanup all suppress the same settled-resize ejection window.
+        this._lastRemoveTileAt = monotonicNow();
+
         this._removeResizeListener(window);
 
         const savedWidth = savedState.width;
@@ -964,6 +970,13 @@ export const EdgeTilingManager = GObject.registerClass({
             WindowState.remove(window, 'targetRestoredSize');
             return GLib.SOURCE_REMOVE;
         }, 'edgeTiling_removeTileSizeSettle');
+    }
+
+    // Mirrors the targetRestoredSize bridge above: while it's live, a settling resize is
+    // that restore's tail, not a window that's genuinely too big for the workspace.
+    isRestoringFromEdgeTile(now) {
+        return this._lastRemoveTileAt !== null &&
+            (now - this._lastRemoveTileAt) < constants.EDGE_TILE_EXIT_SUPPRESSION_MS;
     }
 
     // An untiled window drags its auto-tiled dependents out with it, and stops counting
