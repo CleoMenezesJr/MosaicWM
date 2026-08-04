@@ -480,8 +480,8 @@ export const EdgeTilingManager = GObject.registerClass({
         return state && state.zone !== TileZone.NONE;
     }
 
-    // The whole keyboard contract, top to bottom. Maximized is answered before the zone is
-    // even read, since a window maximized off a tile keeps that tile's zone in its state.
+    // Entry of the keyboard contract, split between the two arrow axes below. Maximized is
+    // answered before the zone is even read, since a window maximized off a tile keeps its zone.
     resolveArrowIntent(window, direction) {
         const zone = this.getWindowState(window)?.zone ?? TileZone.NONE;
 
@@ -519,9 +519,12 @@ export const EdgeTilingManager = GObject.registerClass({
         return zone ? { kind: 'tile', zone } : { kind: 'none' };
     }
 
+    // Zones repeat per monitor, so without narrowing, a window holding the pair zone on
+    // another screen would answer here and turn the arrow into a swap across monitors.
     _hasVerticalPair(window, zone) {
         const pair = ZONE_VERTICAL_PAIR[zone];
-        return pair ? !!this._findWindowInZone(pair, window.get_workspace()) : false;
+        if (!pair) return false;
+        return !!this._findWindowInZone(pair, window.get_workspace(), window.get_monitor());
     }
 
     // Can this window be resized to fill a zone? A max-size cap below the zone means it can't,
@@ -621,9 +624,11 @@ export const EdgeTilingManager = GObject.registerClass({
         }
     }
 
-    _findWindowInZone(zone, workspace) {
+    // monitor is optional; the drag callers already work from a single monitor's work area.
+    _findWindowInZone(zone, workspace, monitor = null) {
         const windows = workspace.list_windows();
         for (const win of windows) {
+            if (monitor !== null && win.get_monitor() !== monitor) continue;
             const state = WindowState.get(win, 'edgeTilingState');
             if (state && state.zone === zone) return win;
         }

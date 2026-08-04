@@ -599,6 +599,16 @@ export default class WindowMosaicExtension extends Extension {
         this._dndLeaveId = this._dnd.connect('dnd-leave', this._onDndLeave.bind(this));
     }
 
+    // Take only our combo off GNOME's list. Clearing the key would take its other bindings
+    // with it, and unmaximize also carries Alt+F5.
+    _releaseBinding(settings, key, combo) {
+        const bindings = settings.get_strv(key);
+        if (!bindings.includes(combo)) return;
+
+        const remaining = bindings.filter(binding => binding !== combo);
+        this._settingsOverrider.add(settings, key, new GLib.Variant('as', remaining));
+    }
+
     // Clear the stock GNOME shortcuts that collide with ours, but only when they still hold
     // their default combo, so a user who rebound them keeps their choice.
     _overrideConflictingKeybindings() {
@@ -621,6 +631,10 @@ export default class WindowMosaicExtension extends Extension {
         if (shellKeybindings.get_strv('shift-overview-down').includes('<Super><Alt>Down')) {
             this._settingsOverrider.add(shellKeybindings, 'shift-overview-down', emptyArray);
         }
+
+        const wmKeybindings = new Gio.Settings({ schema_id: 'org.gnome.desktop.wm.keybindings' });
+        this._releaseBinding(wmKeybindings, 'maximize', '<Super>Up');
+        this._releaseBinding(wmKeybindings, 'unmaximize', '<Super>Down');
     }
 
     // A straight run to the app grid is one transition from 0 to 2, so currentState alone
@@ -862,6 +876,12 @@ export default class WindowMosaicExtension extends Extension {
         Main.wm.addKeybinding('tile-right', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
             () => this._onArrowShortcut('right'));
 
+        Main.wm.addKeybinding('maximize-window', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
+            () => this._onArrowShortcut('up'));
+
+        Main.wm.addKeybinding('restore-window', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
+            () => this._onArrowShortcut('down'));
+
         Logger.log('Registering swap-left keybinding');
         Main.wm.addKeybinding('swap-left', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
             () => this._swapActiveWindow('left'));
@@ -886,17 +906,25 @@ export default class WindowMosaicExtension extends Extension {
         const window = global.display.focus_window;
         if (!window) return;
 
-        if (this.windowingManager.isExcluded(window) ||
-            !this.isMosaicEnabledForWorkspace(window.get_workspace()))
+        const workspace = window.get_workspace();
+
+        // Super+Up/Down are GNOME's for every window we don't manage, so swallowing the key
+        // here would strip maximize from dialogs and from mosaic-disabled workspaces.
+        if (!workspace || this.windowingManager.isExcluded(window) ||
+            !this.isMosaicEnabledForWorkspace(workspace)) {
+            this._applyStockVertical(window, direction);
             return;
+        }
 
         const intent = this.edgeTilingManager.resolveArrowIntent(window, direction);
         Logger.log(`Arrow ${direction} on window ${window.get_id()}: intent=${intent.kind}${intent.zone ? ` zone=${intent.zone}` : ''}`);
+        this._applyArrowIntent(window, workspace, intent);
+    }
 
+    _applyArrowIntent(window, workspace, intent) {
         switch (intent.kind) {
             case 'tile': {
-                const workArea = window.get_workspace()
-                    .get_work_area_for_monitor(window.get_monitor());
+                const workArea = workspace.get_work_area_for_monitor(window.get_monitor());
                 this.edgeTilingManager.applyTile(window, intent.zone, workArea);
                 break;
             }
@@ -910,6 +938,13 @@ export default class WindowMosaicExtension extends Extension {
                 window.maximize();
                 break;
         }
+    }
+
+    // Mirrors the stock handlers we replaced, which never force a window that says it can't.
+    // The side arrows come through here too, so both branches have to name their direction.
+    _applyStockVertical(window, direction) {
+        if (direction === 'up' && window.can_maximize()) window.maximize();
+        else if (direction === 'down' && window.is_maximized()) window.unmaximize();
     }
 
     _restoreWindow(window) {
@@ -990,6 +1025,8 @@ export default class WindowMosaicExtension extends Extension {
     _removeKeybindings() {
         Main.wm.removeKeybinding('tile-left');
         Main.wm.removeKeybinding('tile-right');
+        Main.wm.removeKeybinding('maximize-window');
+        Main.wm.removeKeybinding('restore-window');
         Main.wm.removeKeybinding('swap-left');
         Main.wm.removeKeybinding('swap-right');
         Main.wm.removeKeybinding('swap-up');
