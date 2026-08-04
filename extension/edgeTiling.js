@@ -862,8 +862,9 @@ export const EdgeTilingManager = GObject.registerClass({
         const savedHeight = savedState.height;
         const savedZone = savedState.zone;
 
-        // Clear our own zone first so a cascading dependent measures free space without counting this tile.
-        savedState.zone = TileZone.NONE;
+        // Drop the whole state, not just the zone: a leftover width/height would make the
+        // next saveWindowState preserve it and freeze the restore size for the window's life.
+        WindowState.remove(window, 'edgeTilingState');
 
         // Back to a normal window: restore the pre-tiling preferred size and drop any mosaic-learned minimum.
         WindowState.set(window, 'preferredSize', { width: savedWidth, height: savedHeight });
@@ -931,7 +932,7 @@ export const EdgeTilingManager = GObject.registerClass({
         const adjacentWindow = this._findWindowInZone(adjacentZone, window.get_workspace());
         if (!adjacentWindow) return;
 
-        // Our own zone is already cleared to NONE by now, so the side has to come from the
+        // Our own state is already gone by now, so the side has to come from the
         // saved copy; reading it back would resolve to RIGHT_FULL for a left quarter.
         const fullZone = this._getFullZoneFromQuarter(savedZone);
         const workspace = window.get_workspace();
