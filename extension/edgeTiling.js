@@ -979,25 +979,28 @@ export const EdgeTilingManager = GObject.registerClass({
             (now - this._lastRemoveTileAt) < constants.EDGE_TILE_EXIT_SUPPRESSION_MS;
     }
 
+    // A window leaving the workspace takes its auto-tiled companions back to the mosaic with it.
+    // Maximizing never untiles, so the sacred path has to ask for this on its own.
+    releaseAutoTileDependents(window) {
+        const dependents = WindowState.get(window, 'autoTileDependents');
+        if (!dependents || dependents.size === 0) return;
+
+        Logger.log(`Releasing ${dependents.size} auto-tile dependents of ${window.get_id()}`);
+        // Copy set to avoid modification during iteration
+        for (const dependent of Array.from(dependents)) {
+            this.removeTile(dependent);
+
+            // Cleanup refs
+            WindowState.remove(dependent, 'autoTileMaster');
+        }
+        dependents.clear();
+        WindowState.remove(window, 'autoTileDependents');
+    }
+
     // An untiled window drags its auto-tiled dependents out with it, and stops counting
     // against whatever master pulled it in.
     _releaseAutoTileLinks(window) {
-        Logger.log(`removeTile: Checking dependencies for master=${window.get_id()}`);
-
-        const dependents = WindowState.get(window, 'autoTileDependents');
-        if (dependents && dependents.size > 0) {
-            Logger.log(`removeTile: Found ${dependents.size} dependents`);
-            // Copy set to avoid modification during iteration
-            for (const dependent of Array.from(dependents)) {
-                Logger.log(`removeTile: Calling removeTile on dependent ${dependent.get_id()}`);
-                this.removeTile(dependent);
-
-                // Cleanup refs
-                WindowState.remove(dependent, 'autoTileMaster');
-            }
-            dependents.clear();
-            WindowState.remove(window, 'autoTileDependents');
-        }
+        this.releaseAutoTileDependents(window);
 
         // If this window is a dependent, remove itself from master
         const master = WindowState.get(window, 'autoTileMaster');
