@@ -516,7 +516,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
         if (window.is_maximized()) {
             if (direction === 'up') return { kind: 'none' };
-            if (direction === 'down') return { kind: 'restore' };
+            // Only unmaximize; the sacred path repositions it once the maximized flag clears.
+            if (direction === 'down') return { kind: 'unmaximize' };
             return this._keyboardTileIntent(window, direction);
         }
 
