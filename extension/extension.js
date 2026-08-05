@@ -938,7 +938,7 @@ export default class WindowMosaicExtension extends Extension {
                 this.swappingManager.swapWindow(window, intent.direction);
                 break;
             case 'maximize':
-                window.maximize();
+                if (window.can_maximize()) window.maximize();
                 break;
         }
     }

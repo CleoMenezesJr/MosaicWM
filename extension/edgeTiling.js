@@ -987,13 +987,13 @@ export const EdgeTilingManager = GObject.registerClass({
         if (!adjacentZone) return;
 
         const workspace = this._tilingWorkspace(window);
-        const adjacentWindow = this._findWindowInZone(adjacentZone, workspace);
+        const monitor = window.get_monitor();
+        const adjacentWindow = this._findWindowInZone(adjacentZone, workspace, monitor);
         if (!adjacentWindow) return;
 
         // The side comes from the zone we were handed, since on the untile path our own
         // state is already gone and reading it back would say RIGHT_FULL for a left quarter.
         const fullZone = this._getFullZoneFromQuarter(savedZone);
-        const monitor = window.get_monitor();
         const workArea = workspace.get_work_area_for_monitor(monitor);
         const fullRect = this.getZoneRect(fullZone, workArea, adjacentWindow);
         if (!fullRect) return;
