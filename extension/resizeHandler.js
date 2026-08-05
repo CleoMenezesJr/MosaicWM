@@ -894,6 +894,12 @@ export const ResizeHandler = GObject.registerClass({
             WindowState.set(window, 'preferredSize', preMaxSize);
         }
 
+        // Its zone is reserved, so the fit below would shrink the neighbours for room it never takes.
+        if (this.edgeTilingManager.getWindowState(window)?.zone) {
+            this._deferSacredReturn(window, origIndex, preMaxSize, false, []);
+            return;
+        }
+
         const { canFit, resizeNeeded, pendingMiniatures } =
             this._tryFitForUndo(window, targetWorkspace, monitor, preMaxSize);
 
