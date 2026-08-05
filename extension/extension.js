@@ -609,9 +609,9 @@ export default class WindowMosaicExtension extends Extension {
     // with it, and unmaximize also carries Alt+F5.
     _releaseBinding(settings, key, combo) {
         const bindings = settings.get_strv(key);
-        if (!bindings.includes(combo)) return;
-
         const remaining = bindings.filter(binding => binding !== combo);
+        // Registered even when the combo is already gone, since that means a run took it and died
+        // before disable(); bailing out here is what leaves the key without it for good.
         this._settingsOverrider.add(settings, key, new GLib.Variant('as', remaining));
     }
 
