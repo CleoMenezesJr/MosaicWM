@@ -931,6 +931,9 @@ export default class WindowMosaicExtension extends Extension {
             case 'restore':
                 this._restoreWindow(window);
                 break;
+            case 'unmaximize':
+                window.unmaximize();
+                break;
             case 'swap':
                 this.swappingManager.swapWindow(window, intent.direction);
                 break;
@@ -954,9 +957,7 @@ export default class WindowMosaicExtension extends Extension {
                 this.tilingManager.tileWorkspaceWindows(
                     window.get_workspace(), null, window.get_monitor());
             });
-            return;
         }
-        if (window.is_maximized()) window.unmaximize();
     }
 
     _swapActiveWindow(direction) {
