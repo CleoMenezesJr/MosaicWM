@@ -655,6 +655,17 @@ export const EdgeTilingManager = GObject.registerClass({
         }
     }
 
+    // A window exiled as sacred sits on its own workspace while its tiling stays behind on the
+    // one it came from, and that's where the windows it was tiled against are still waiting.
+    _tilingWorkspace(window) {
+        const originIndex = WindowState.get(window, 'maximizedUndoInfo')?.originalWorkspace;
+        if (originIndex === undefined) return window.get_workspace();
+
+        const wsManager = global.workspace_manager;
+        if (originIndex < 0 || originIndex >= wsManager.get_n_workspaces()) return window.get_workspace();
+        return wsManager.get_workspace_by_index(originIndex) ?? window.get_workspace();
+    }
+
     // monitor is optional; the drag callers already work from a single monitor's work area.
     _findWindowInZone(zone, workspace, monitor = null) {
         const windows = workspace.list_windows();
@@ -1023,13 +1034,13 @@ export const EdgeTilingManager = GObject.registerClass({
         const adjacentZone = this._getAdjacentQuarterZone(savedZone);
         if (!adjacentZone) return;
 
-        const adjacentWindow = this._findWindowInZone(adjacentZone, window.get_workspace());
+        const workspace = this._tilingWorkspace(window);
+        const adjacentWindow = this._findWindowInZone(adjacentZone, workspace);
         if (!adjacentWindow) return;
 
-        // Our own state is already gone by now, so the side has to come from the
-        // saved copy; reading it back would resolve to RIGHT_FULL for a left quarter.
+        // The side comes from the zone we were handed, since on the untile path our own
+        // state is already gone and reading it back would say RIGHT_FULL for a left quarter.
         const fullZone = this._getFullZoneFromQuarter(savedZone);
-        const workspace = window.get_workspace();
         const monitor = window.get_monitor();
         const workArea = workspace.get_work_area_for_monitor(monitor);
         const fullRect = this.getZoneRect(fullZone, workArea, adjacentWindow);
