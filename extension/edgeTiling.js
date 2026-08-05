@@ -1027,9 +1027,17 @@ export const EdgeTilingManager = GObject.registerClass({
         }
     }
 
+    // Maximizing never untiles, so without this the vacated quarter stays dead space: the mosaic
+    // only ever gets the opposite side, and the window stacked against it can't reach it either.
+    expandQuarterPartner(window) {
+        const zone = this.getWindowState(window)?.zone;
+        if (!zone || !this._isQuarterZone(zone)) return;
+        this._expandAdjacentQuarterToFull(window, zone);
+    }
+
     // The quarter stacked against the one leaving has the whole side to itself now.
     _expandAdjacentQuarterToFull(window, savedZone) {
-        Logger.log(`Quarter tile ${window.get_id()} being removed from zone ${savedZone}`);
+        Logger.log(`Quarter tile ${window.get_id()} leaving zone ${savedZone}`);
 
         const adjacentZone = this._getAdjacentQuarterZone(savedZone);
         if (!adjacentZone) return;
@@ -1110,6 +1118,26 @@ export const EdgeTilingManager = GObject.registerClass({
 
         return this._tryPairIntoOppositeHalf(mosaicWindows[0], tiledWindow, zone,
             workspace.get_work_area_for_monitor(monitor));
+    }
+
+    // Counterpart of the expansion on exile: the quarter this window was stacked against took the
+    // whole side while it was away, so reclaiming the tile means splitting that side in two again.
+    tryRestoreQuarterPartner(returningWindow) {
+        const zone = this.getWindowState(returningWindow)?.zone;
+        if (!zone || !this._isQuarterZone(zone)) return false;
+
+        // Still sacred means the safety timeout forced the return before the unmaximize landed.
+        if (returningWindow.is_maximized() || returningWindow.is_fullscreen()) return false;
+
+        const workspace = returningWindow.get_workspace();
+        if (!workspace) return false;
+        const monitor = returningWindow.get_monitor();
+
+        const fullZone = this._getFullZoneFromQuarter(zone);
+        if (!this._findWindowInZone(fullZone, workspace, monitor)) return false;
+
+        Logger.log(`Re-splitting zone ${fullZone} to give ${returningWindow.get_id()} its quarter back`);
+        return this.applyTile(returningWindow, zone, workspace.get_work_area_for_monitor(monitor), true);
     }
 
     _tryPairIntoOppositeHalf(mosaicWindow, tiledWindow, zone, workArea) {

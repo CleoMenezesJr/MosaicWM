@@ -306,6 +306,7 @@ export const ResizeHandler = GObject.registerClass({
                     });
                     // The companion only holds that half because this window was tiled beside it.
                     this.edgeTilingManager.releaseAutoTileDependents(window);
+                    this.edgeTilingManager.expandQuarterPartner(window);
                     this.tilingManager.tileWorkspaceWindows(currentWorkspace, null, currentMonitor, false);
                 }
             }).catch(e => Logger.error(`Sacred isolation failed: ${e}`));
@@ -849,9 +850,10 @@ export const ResizeHandler = GObject.registerClass({
                 this.tilingManager.tileWorkspaceWindows(oldWorkspace, null, monitor, true);
             }
 
-            // The exile handed the companion back to the mosaic, so the half this
-            // window reclaims has to be paired up again.
+            // The exile dissolved whatever this window was paired with, so reclaiming
+            // its half (or its quarter) has to put that pairing back together.
             this.edgeTilingManager.tryPairMosaicIntoOppositeHalf(window);
+            this.edgeTilingManager.tryRestoreQuarterPartner(window);
 
             // Same clamp protection as above, so this window doesn't get
             // rebalanced right after it just landed.
