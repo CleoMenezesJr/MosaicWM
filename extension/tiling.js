@@ -3199,6 +3199,8 @@ export const TilingManager = GObject.registerClass({
             const candidates = buildSimulated(lo).filter(sim => {
                 const d = windowData.get(sim.id);
                 if (!this._isMiniaturizationCandidate(d?.window, d, focusedId, resizingWindowId)) return false;
+                // The threshold falls back to the work area, so a window still at its preferred size trips it.
+                if (sim.width >= d.current.width && sim.height >= d.current.height) return false;
                 const { thresholdW, thresholdH } = this._miniatureThreshold(d.window, workArea);
                 return sim.width < thresholdW || sim.height < thresholdH;
             });
