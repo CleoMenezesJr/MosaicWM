@@ -682,24 +682,26 @@ export const EdgeTilingManager = GObject.registerClass({
         return true;
     }
 
-    applyTile(window, zone, workArea, skipOverflowCheck = false) {
-        this.saveWindowState(window);
+    _breakAutoTilePairing(window) {
+        const oldMaster = WindowState.get(window, 'autoTileMaster');
+        if (!oldMaster) return;
 
+        Logger.log(`Manual retile breaks auto-tile dependency for ${window.get_id()}`);
+        const deps = WindowState.get(oldMaster, 'autoTileDependents');
+        if (deps) deps.delete(window);
+        WindowState.remove(window, 'autoTileMaster');
+    }
+
+    applyTile(window, zone, workArea, skipOverflowCheck = false) {
         const winId = window.get_id();
 
-        const oldMaster = WindowState.get(window, 'autoTileMaster');
-        if (oldMaster) {
-            Logger.log(`Manual retile breaks auto-tile dependency for ${winId}`);
-            const deps = WindowState.get(oldMaster, 'autoTileDependents');
-            if (deps) deps.delete(window);
-            WindowState.remove(window, 'autoTileMaster');
-        }
-
         if (zone === TileZone.FULLSCREEN) {
+            this.saveWindowState(window);
+            this._breakAutoTilePairing(window);
             window.maximize();
             const state = WindowState.get(window, 'edgeTilingState');
             if (state) state.zone = zone;
-            Logger.log(`Maximized window ${window.get_id()}`);
+            Logger.log(`Maximized window ${winId}`);
             this.emit('edge-tiling-changed', window, zone);
             return true;
         }
@@ -711,6 +713,11 @@ export const EdgeTilingManager = GObject.registerClass({
         }
 
         if (!this._canResize(window, rect.width, rect.height, true)) return false;
+
+        // A zone the window can't take must leave its saved geometry and its auto-tile
+        // pairing untouched, so both refusals are settled above.
+        this.saveWindowState(window);
+        this._breakAutoTilePairing(window);
 
         const workspace = window.get_workspace();
         const monitor = window.get_monitor();
