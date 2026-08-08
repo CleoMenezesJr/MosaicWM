@@ -43,9 +43,12 @@ export const AnimationsManager = GObject.registerClass({
     shakeRefusal(actor) {
         if (!actor || actor.is_destroyed?.()) return;
 
+        // home has to be a resting value. While another ease owns translation_x, reading it
+        // would capture a frame and the hops below would park the actor on that frame.
+        if (actor.get_transition('translation-x')) return;
+
         const step = Math.ceil(constants.REFUSAL_SHAKE_MS / 4);
         const home = actor.translation_x;
-        actor.remove_all_transitions();
 
         const hop = (dx, next) => actor.ease({
             translation_x: home + dx,
