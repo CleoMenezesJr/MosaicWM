@@ -429,8 +429,23 @@ export const WindowHandler = GObject.registerClass({
         // reverse smart resize back into tiling forever. stopDrag retiles the source.
         if (this._ext.dragHandler._draggedWindow) return;
 
+        const windowId = window.get_id();
+
         this._timeoutRegistry.add(constants.RETILE_DELAY_MS, () => {
             this.windowingManager.invalidateWindowsCache();
+
+            // A monitor change on its own never reaches onWindowRemoved, so the miniatures this
+            // window was crowding would stay shrunk. Restoring retiles on its own.
+            if (!WindowState.get(window, 'movedByOverflow')) {
+                const remainingWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
+                    .filter(w => w.get_id() !== windowId &&
+                                 !this._ext.edgeTilingManager.isEdgeTiled(w) &&
+                                 !this.windowingManager.isExcluded(w));
+
+                if (this._tryAutoRestoreMiniature(remainingWindows, workspace, monitor))
+                    return GLib.SOURCE_REMOVE;
+            }
+
             this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
             return GLib.SOURCE_REMOVE;
         }, 'windowHandler_leftMonitorRetile');
