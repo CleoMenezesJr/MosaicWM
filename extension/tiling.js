@@ -1960,6 +1960,29 @@ export const TilingManager = GObject.registerClass({
         return { tile_info: resizeResult.tileInfo, referenceOverflowSkipped: false };
     }
 
+    // Newest goes, matching the victim the smart-resize rebalance already picks. A drag is exempt
+    // for the same reason the reference rung is: the drop decides, not the pass under the cursor.
+    _ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor) {
+        if (!overflow || this.isDragging) return false;
+
+        const candidates = meta_windows.filter(w => !this._windowingManager.isExcluded(w));
+        if (candidates.length <= 1) return false;
+
+        const newest = candidates.reduce((n, w) => {
+            const t1 = WindowState.get(w, 'addedTime') || 0;
+            const t2 = WindowState.get(n, 'addedTime') || 0;
+            return t1 > t2 ? w : n;
+        }, candidates[0]);
+
+        Logger.log(`Overflow survived miniaturization, ejecting newest window ${newest.get_id()}`);
+        this._windowingManager.moveOversizedWindow(newest).then(() => {
+            this.invalidateLayoutCache();
+            this.tileWorkspaceWindows(workspace, null, monitor, true);
+        }).catch(e => Logger.error(`Overflow eject failed: ${e}`));
+
+        return true;
+    }
+
     _expelReferenceWindow(reference_meta_window, windows) {
         // Match by descriptor id, since descriptor.index drifts after edge-tiled/sacred windows filtered.
         const id = reference_meta_window.get_id();
@@ -2154,6 +2177,11 @@ export const TilingManager = GObject.registerClass({
         this._restoreAnchor = null;
         this._recordGroupStability(tile_info);
         Logger.log(`Drawing tiles - isDragging: ${this.isDragging}, using tileArea: x=${tileArea.x}, y=${tileArea.y}`);
+
+        // Ejecting and miniaturizing above can both come back still overflowing, and the packer
+        // force-stacks into the work area rather than refusing, so drawing it piles windows up.
+        if (this._ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor))
+            return { overflow: true, layout: null };
 
         this._positionTiledWindows(workspace, monitor, tile_info, tileArea, meta_windows, reference_meta_window, computedRegions, work_area);
 
