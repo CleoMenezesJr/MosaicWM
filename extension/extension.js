@@ -939,7 +939,8 @@ export default class WindowMosaicExtension extends Extension {
         switch (intent.kind) {
             case 'tile': {
                 const workArea = workspace.get_work_area_for_monitor(window.get_monitor());
-                this.edgeTilingManager.applyTile(window, intent.zone, workArea);
+                if (!this.edgeTilingManager.applyTile(window, intent.zone, workArea))
+                    this._signalRefusal(window);
                 break;
             }
             case 'restore':
@@ -953,8 +954,16 @@ export default class WindowMosaicExtension extends Extension {
                 break;
             case 'maximize':
                 if (window.can_maximize()) window.maximize();
+                else this._signalRefusal(window);
                 break;
         }
+    }
+
+    // A window that refuses the zone, or refuses to maximize, would otherwise eat the keystroke
+    // in silence and read as a dead shortcut.
+    _signalRefusal(window) {
+        Logger.log(`Arrow refused by window ${window.get_id()}`);
+        this.animationsManager?.shakeRefusal(window.get_compositor_private());
     }
 
     // Mirrors the stock handlers we replaced, which never force a window that says it can't.
