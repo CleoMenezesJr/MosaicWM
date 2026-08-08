@@ -1644,7 +1644,7 @@ export const TilingManager = GObject.registerClass({
         }
     }
 
-    _animateTileLayout(workspace, monitor, tile_info, work_area, meta_windows, draggedWindow = null, regionsOut = null) {
+    _animateTileLayout(workspace, monitor, tile_info, work_area, meta_windows, draggedWindow = null, regionsOut = null, bounds = null) {
         // Nothing below can place a window without the manager, so let _drawTile do it.
         if (!this._animationsManager) return false;
 
@@ -1656,6 +1656,7 @@ export const TilingManager = GObject.registerClass({
             resizingWindowId: this._animationsManager.getResizingWindowId(),
             pendingMiniIds: new Set((this._pendingMiniatureWindows ?? []).map(p => p.window.get_id())),
             regionsOut,
+            bounds,
             windowLayouts: [],
             miniLayouts: [],
             workspace,
@@ -1728,6 +1729,11 @@ export const TilingManager = GObject.registerClass({
     // Sort one window into how this pass treats it: miniature (actor transform), grabbed/resizing
     // (leave it to the cursor), pending-mini/grabbed (claim region, don't animate), or normal (animate).
     _placeAnimatedWindow(window, windowDesc, tx, ty, orient, ctx) {
+        // The sibling path gets this clamp from Mutter itself, which never honours an out-of-area
+        // move_resize_frame. Miniatures ride on an actor transform, which Mutter does not police,
+        // so a packed column taller than the work area walks them off the bottom edge.
+        ({ x: tx, y: ty } = clampToWorkArea(tx, ty, windowDesc.width, windowDesc.height, ctx.bounds));
+
         const region = { x: tx, y: ty, width: windowDesc.width, height: windowDesc.height };
 
         if (WindowState.get(window, IS_MINIATURE)) {
@@ -2326,7 +2332,7 @@ export const TilingManager = GObject.registerClass({
                 WindowState.remove(reference_meta_window, 'justReturnedFromExclusion');
             }
 
-            animationsHandledPositioning = this._animateTileLayout(workspace, monitor, tile_info, tileArea, meta_windows, reference_meta_window, computedRegions);
+            animationsHandledPositioning = this._animateTileLayout(workspace, monitor, tile_info, tileArea, meta_windows, reference_meta_window, computedRegions, work_area);
         }
 
         if (!animationsHandledPositioning) {
