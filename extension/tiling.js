@@ -33,14 +33,8 @@ const POSITION_STABILITY_WEIGHT = 40;
 // the previous one, so the unscaled +5 in _scoreOrder only ever breaks an exact tie.
 const GROUP_STABILITY_WEIGHT = 150;
 // Geometry gaps narrower than this are noise, so stability picks instead. Worth 2% of the
-// work area in centre-weighted dead space at DENSITY_WEIGHT 5, about a 200px square.
-const STABILITY_TIE_BAND = 10;
-// Turns weighted slack into score points, which only mean anything next to
-// STABILITY_TIE_BAND. The observed scene stops caring past about 1.5.
-const DENSITY_WEIGHT = 5;
-// Floor of 1.0 on purpose: a hole at the rim still costs full price, it just
-// costs less than the same hole in the middle.
-const RADIAL_CENTRE_BOOST = 1.0;
+// work area in bounding box, about a 200px square.
+const STABILITY_TIE_BAND = 0.4;
 
 // Every ordered composition of n into 1..n groups (n=3 gives [3],[2,1],[1,2],[1,1,1]).
 // A lazy generator on purpose: the count is 2^(n-1), so callers iterate under a time
@@ -814,35 +808,10 @@ export const TilingManager = GObject.registerClass({
 
         const sizeEfficiency = 1 - (bboxArea / (workArea.width * workArea.height));
 
-        let score = centralization * 30 + sizeEfficiency * 20;
-        score -= this._radialSlackPenalty(tileResult, workArea);
-        return score;
-    }
-
-    // bboxArea is blind to holes: two layouts with the same bounding box score
-    // the same however much dead space sits inside the levels.
-    _radialSlackPenalty(tileResult, workArea) {
-        const originX = workArea.x + workArea.width / 2;
-        const originY = workArea.y + workArea.height / 2;
-        const halfDiag = Math.hypot(workArea.width, workArea.height) / 2;
-
-        let weighted = 0;
-        for (const level of tileResult.levels) {
-            let content = 0;
-            for (const w of level.windows)
-                content += w.width * w.height;
-            const slack = level.width * level.height - content;
-            if (slack <= 0) continue;
-
-            const dist = Math.hypot(
-                level.x + level.width / 2 - originX,
-                level.y + level.height / 2 - originY);
-            const r = Math.min(1, dist / halfDiag);
-            weighted += slack * (1 + RADIAL_CENTRE_BOOST * (1 - r));
-        }
-
-        const areaFraction = weighted / (workArea.width * workArea.height);
-        return areaFraction * 100 * DENSITY_WEIGHT;
+        // Don't be tempted to also charge dead space inside a level. The window set is fixed
+        // across the orders being compared, so a tighter box already is less dead space, and an
+        // intra-level charge reads the gap beside a short row as waste when that gap is the point.
+        return centralization * 30 + sizeEfficiency * 20;
     }
 
     // Reward a layout that leaves windows near where they already sat, so a retile doesn't
@@ -1109,8 +1078,14 @@ export const TilingManager = GObject.registerClass({
             return this._simpleCenteredColumn(windows, work_area, spacing);
         }
 
-        const columns = this._binPackColumns(windows, work_area, spacing);
-        const { levels, totalWidth, overflow } = this._buildColumnLevels(columns, work_area, spacing);
+        // First-fit is greedy, so a free row join can starve a later window of the column it
+        // needed. Packing both ways and keeping the tighter box means rows only ever win.
+        const packings = [false, true].map(allowRows => {
+            const columns = this._binPackColumns(windows, work_area, spacing, allowRows);
+            return this._buildColumnLevels(columns, work_area, spacing);
+        });
+
+        const { levels, totalWidth, overflow } = this._tighterPacking(packings);
 
         const startX = Math.max(work_area.x, (work_area.width - totalWidth) / 2 + work_area.x);
         this._positionColumnWindows(levels, work_area, spacing, startX);
@@ -1127,38 +1102,69 @@ export const TilingManager = GObject.registerClass({
 
     // Bin packing without height sorting to preserve swap order. A window that fits no column
     // opens a new one, or (when there's no width left) is forced into the shortest column.
-    _binPackColumns(windows, work_area, spacing) {
+    _binPackColumns(windows, work_area, spacing, allowRows) {
         const columns = [];
 
         for (const w of windows) {
-            let placed = false;
-
-            for (const col of columns) {
-                const newHeight = col.height + (col.height > 0 ? spacing : 0) + w.height;
-                if (newHeight <= work_area.height) {
-                    col.windows.push(w);
-                    col.height = newHeight;
-                    col.width = Math.max(col.width, w.width);
-                    placed = true;
-                    break;
-                }
-            }
-            if (placed) continue;
+            if (this._placeInExistingColumn(columns, w, work_area, spacing, allowRows)) continue;
 
             const totalWidth = columns.reduce((s, c) => s + c.width, 0) +
                                (columns.length > 0 ? columns.length * spacing : 0) + w.width;
 
             if (totalWidth <= work_area.width || columns.length === 0) {
-                columns.push({ windows: [w], height: w.height, width: w.width });
+                const col = { rows: [], height: 0, width: 0 };
+                this._openRow(col, w, spacing);
+                columns.push(col);
             } else {
-                this._forceIntoShortestColumn(columns, w, spacing);
+                this._forceIntoShortestColumn(columns, w, spacing, allowRows);
             }
         }
 
         return columns;
     }
 
-    _forceIntoShortestColumn(columns, w, spacing) {
+    _placeInExistingColumn(columns, w, work_area, spacing, allowRows) {
+        // A join is free while some other column is already taller, but once it makes this one
+        // the tallest, the box grows more in height than a new column would cost in width.
+        const tallest = columns.reduce((h, c) => Math.max(h, c.height), 0);
+
+        for (const col of columns) {
+            if (allowRows && this._joinRow(col, w, spacing, tallest)) return true;
+
+            if (col.height + spacing + w.height <= work_area.height) {
+                this._openRow(col, w, spacing);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Never widening the column is the whole difference between this and a free 2D packer: the
+    // layout stays a shelf model while two miniatures share the vertical space one normal
+    // window would have taken alone.
+    _joinRow(col, w, spacing, maxHeight) {
+        for (const row of col.rows) {
+            if (row.used + spacing + w.width > col.width) continue;
+
+            const grown = Math.max(row.height, w.height);
+            if (col.height - row.height + grown > maxHeight) continue;
+
+            col.height += grown - row.height;
+            row.height = grown;
+            row.used += spacing + w.width;
+            row.windows.push(w);
+            return true;
+        }
+        return false;
+    }
+
+    _openRow(col, w, spacing) {
+        col.height += (col.rows.length > 0 ? spacing : 0) + w.height;
+        col.width = Math.max(col.width, w.width);
+        col.rows.push({ windows: [w], used: w.width, height: w.height });
+    }
+
+    _forceIntoShortestColumn(columns, w, spacing, allowRows) {
         let bestCol = columns[0];
         let minHeight = columns[0].height;
         for (const col of columns) {
@@ -1167,9 +1173,21 @@ export const TilingManager = GObject.registerClass({
                 bestCol = col;
             }
         }
-        bestCol.windows.push(w);
-        bestCol.height += spacing + w.height;
-        bestCol.width = Math.max(bestCol.width, w.width);
+        // The height budget is already blown, so only the never-widen rule still has a say.
+        if (!allowRows || !this._joinRow(bestCol, w, spacing, Infinity))
+            this._openRow(bestCol, w, spacing);
+    }
+
+    // Ties keep the row-free packing, so a layout only ever changes when rows genuinely shrink it.
+    _tighterPacking([plain, rows]) {
+        if (plain.overflow !== rows.overflow)
+            return plain.overflow ? rows : plain;
+
+        return this._packingArea(rows) < this._packingArea(plain) ? rows : plain;
+    }
+
+    _packingArea({ levels, totalWidth }) {
+        return totalWidth * levels.reduce((h, lv) => Math.max(h, lv.height), 0);
     }
 
     _buildColumnLevels(columns, work_area, spacing) {
@@ -1182,13 +1200,15 @@ export const TilingManager = GObject.registerClass({
             const level = new Level(work_area);
 
             let colHeight = 0;
-            for (const w of col.windows) {
-                level.windows.push(w);
+            for (const row of col.rows) {
                 if (colHeight > 0) colHeight += spacing;
-                colHeight += w.height;
-                level.width = Math.max(level.width, w.width);
+                colHeight += row.height;
+                level.width = Math.max(level.width, row.used);
+                for (const w of row.windows)
+                    level.windows.push(w);
             }
             level.height = colHeight;
+            level.rows = col.rows;
 
             if (level.height > work_area.height) {
                 overflow = true;
@@ -1210,28 +1230,28 @@ export const TilingManager = GObject.registerClass({
     }
 
     // Columns fan out from center: those left of center pull right, those right pull left, so
-    // the gap always falls on the outer edges rather than between neighbours.
+    // the gap always falls on the outer edges rather than between neighbours. A row leans the
+    // same way inside its column, and a short window inside its row.
     _positionColumnWindows(levels, work_area, spacing, startX) {
-        const levelCount = levels.length;
-        const origin = work_area.x + work_area.width / 2;
+        const originX = work_area.x + work_area.width / 2;
+        const originY = work_area.y + work_area.height / 2;
 
         let xPos = startX;
-        for (let colIdx = 0; colIdx < levelCount; colIdx++) {
-            const level = levels[colIdx];
+        for (const level of levels) {
             level.x = xPos;
 
-            let totalColHeight = 0;
-            for (const win of level.windows) {
-                totalColHeight += win.height;
-            }
-            totalColHeight += (level.windows.length - 1) * spacing;
+            let yPos = Math.max(work_area.y, (work_area.height - level.height) / 2 + work_area.y);
 
-            let yPos = Math.max(work_area.y, (work_area.height - totalColHeight) / 2 + work_area.y);
+            for (const row of level.rows) {
+                let rowX = xPos + outwardOffset(xPos, level.width, row.used, originX);
 
-            for (const win of level.windows) {
-                win.targetX = xPos + outwardOffset(xPos, level.width, win.width, origin);
-                win.targetY = yPos;
-                yPos += win.height + spacing;
+                for (const win of row.windows) {
+                    win.targetX = rowX;
+                    win.targetY = yPos + outwardOffset(yPos, row.height, win.height, originY);
+                    rowX += win.width + spacing;
+                }
+
+                yPos += row.height + spacing;
             }
 
             xPos += level.width + spacing;
