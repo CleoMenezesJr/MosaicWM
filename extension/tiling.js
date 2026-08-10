@@ -27,9 +27,18 @@ import { isWindowAlive } from './liveness.js';
 import { getSlowDownFactor, monotonicNow } from './timing.js';
 
 const POSITION_STABILITY_WEIGHT = 40;
-// High enough to beat the other terms combined (they max out at 140), so
-// keeping a window's column/shelf wins unless that option would overflow.
+// These two only ever compete with each other. Nothing outscores the layout that reproduces
+// the previous one, so the unscaled +5 in _scoreOrder only ever breaks an exact tie.
 const GROUP_STABILITY_WEIGHT = 150;
+// Geometry gaps narrower than this are noise, so stability picks instead. Worth 2% of the
+// work area in centre-weighted dead space at DENSITY_WEIGHT 5, about a 200px square.
+const STABILITY_TIE_BAND = 10;
+// Turns weighted slack into score points, which only mean anything next to
+// STABILITY_TIE_BAND. The observed scene stops caring past about 1.5.
+const DENSITY_WEIGHT = 5;
+// Floor of 1.0 on purpose: a hole at the rim still costs full price, it just
+// costs less than the same hole in the middle.
+const RADIAL_CENTRE_BOOST = 1.0;
 
 // Every ordered composition of n into 1..n groups (n=3 gives [3],[2,1],[1,2],[1,1,1]).
 // A lazy generator on purpose: the count is 2^(n-1), so callers iterate under a time
@@ -372,7 +381,7 @@ export const TilingManager = GObject.registerClass({
         return this._cachedTileResult?.windows || null;
     }
 
-    _extractLayoutPositions(tile_info, work_area) {
+    _extractLayoutPositions(tile_info) {
         const positions = [];
 
         if (!tile_info.vertical) {
@@ -380,12 +389,10 @@ export const TilingManager = GObject.registerClass({
             for (const level of tile_info.levels) {
                 let x = level.x;
                 for (const win of level.windows) {
-                    const center_offset = (work_area.height / 2 + work_area.y) - (y + win.height / 2);
-                    let y_offset = 0;
-                    if (center_offset > 0)
-                        y_offset = Math.min(center_offset, level.height - win.height);
+                    const drawX = win.targetX !== undefined ? win.targetX : x;
+                    const drawY = win.targetY !== undefined ? win.targetY : y;
 
-                    positions.push({ id: win.id, x: x, y: y + y_offset, width: win.width, height: win.height });
+                    positions.push({ id: win.id, x: drawX, y: drawY, width: win.width, height: win.height });
                     x += win.width + constants.WINDOW_SPACING;
                 }
                 y += level.height + constants.WINDOW_SPACING;
@@ -452,7 +459,7 @@ export const TilingManager = GObject.registerClass({
                 const result = this._placeByShape(ordered, workArea, spacing, shape, useVertical);
                 if (result.overflow) continue;
 
-                const positions = this._extractLayoutPositions(result, workArea);
+                const positions = this._extractLayoutPositions(result);
                 const draggedPos = positions.find(p => p.id === draggedId);
                 if (!draggedPos) continue;
 
@@ -669,7 +676,7 @@ export const TilingManager = GObject.registerClass({
                 ordered.splice(slot, 0, focused);
                 const result = this._placeByShape(ordered, workArea, spacing, shape, useVertical);
                 if (result.overflow) continue;
-                const positions = this._extractLayoutPositions(result, workArea);
+                const positions = this._extractLayoutPositions(result);
                 const fp = positions.find(p => p.id === focusedId);
                 if (!fp) continue;
                 const center = axis === 'x' ? fp.x + fp.width / 2 : fp.y + fp.height / 2;
@@ -775,7 +782,6 @@ export const TilingManager = GObject.registerClass({
         if (!tileResult || tileResult.overflow) return -Infinity;
 
         let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
-        let totalArea = 0;
 
         for (const level of tileResult.levels) {
             for (const w of level.windows) {
@@ -785,7 +791,6 @@ export const TilingManager = GObject.registerClass({
                 minY = Math.min(minY, y);
                 maxX = Math.max(maxX, x + w.width);
                 maxY = Math.max(maxY, y + w.height);
-                totalArea += w.width * w.height;
             }
         }
 
@@ -794,8 +799,6 @@ export const TilingManager = GObject.registerClass({
         const bboxWidth = maxX - minX;
         const bboxHeight = maxY - minY;
         const bboxArea = bboxWidth * bboxHeight;
-
-        const compactness = totalArea / Math.max(bboxArea, 1);
 
         const bboxCenterX = minX + bboxWidth / 2;
         const bboxCenterY = minY + bboxHeight / 2;
@@ -810,10 +813,35 @@ export const TilingManager = GObject.registerClass({
 
         const sizeEfficiency = 1 - (bboxArea / (workArea.width * workArea.height));
 
-        let score = compactness * 50 + centralization * 30 + sizeEfficiency * 20;
-        score += this._positionStabilityBonus(tileResult, workArea);
-        score += this._groupStabilityBonus(tileResult);
+        let score = centralization * 30 + sizeEfficiency * 20;
+        score -= this._radialSlackPenalty(tileResult, workArea);
         return score;
+    }
+
+    // bboxArea is blind to holes: two layouts with the same bounding box score
+    // the same however much dead space sits inside the levels.
+    _radialSlackPenalty(tileResult, workArea) {
+        const originX = workArea.x + workArea.width / 2;
+        const originY = workArea.y + workArea.height / 2;
+        const halfDiag = Math.hypot(workArea.width, workArea.height) / 2;
+
+        let weighted = 0;
+        for (const level of tileResult.levels) {
+            let content = 0;
+            for (const w of level.windows)
+                content += w.width * w.height;
+            const slack = level.width * level.height - content;
+            if (slack <= 0) continue;
+
+            const dist = Math.hypot(
+                level.x + level.width / 2 - originX,
+                level.y + level.height / 2 - originY);
+            const r = Math.min(1, dist / halfDiag);
+            weighted += slack * (1 + RADIAL_CENTRE_BOOST * (1 - r));
+        }
+
+        const areaFraction = weighted / (workArea.width * workArea.height);
+        return areaFraction * 100 * DENSITY_WEIGHT;
     }
 
     // Reward a layout that leaves windows near where they already sat, so a retile doesn't
@@ -840,24 +868,54 @@ export const TilingManager = GObject.registerClass({
         return (1 - normalized) * POSITION_STABILITY_WEIGHT;
     }
 
+    // Pairs, not level indices: a column inserted at the front renumbers everyone and fakes a regroup.
+    _coMembershipPairs(levels, allowed = null) {
+        const pairs = new Set();
+        for (const level of levels) {
+            const ids = level.windows.map(w => w.id)
+                .filter(id => !allowed || allowed.has(id))
+                .sort((a, b) => a - b);
+            for (let i = 0; i < ids.length; i++) {
+                for (let j = i + 1; j < ids.length; j++)
+                    pairs.add(`${ids[i]}:${ids[j]}`);
+            }
+        }
+        return pairs;
+    }
+
+    _survivingPairs(pairs, alive) {
+        const kept = new Set();
+        for (const p of pairs) {
+            const [a, b] = p.split(':');
+            if (alive.has(Number(a)) && alive.has(Number(b))) kept.add(p);
+        }
+        return kept;
+    }
+
     // Prefer permutations where windows stay in the same column/shelf as last time.
     _groupStabilityBonus(tileResult) {
         if (!this._lastGroupAssignment) return 0;
 
-        let regrouped = 0;
-        let trackedCount = 0;
-        for (let levelIdx = 0; levelIdx < tileResult.levels.length; levelIdx++) {
-            for (const w of tileResult.levels[levelIdx].windows) {
-                const prevLevelIdx = this._lastGroupAssignment.get(w.id);
-                if (prevLevelIdx === undefined) continue;
-                trackedCount++;
-                if (prevLevelIdx !== levelIdx) regrouped++;
-            }
-        }
-        if (trackedCount === 0) return 0;
+        // Only windows on both sides can regroup; charging a newcomer's pairs makes the sparsest join cheapest.
+        const tracked = this._lastGroupAssignment.ids;
+        const alive = new Set(tileResult.levels
+            .flatMap(l => l.windows.map(w => w.id))
+            .filter(id => tracked.has(id)));
+        if (alive.size < 2) return 0;
 
-        const regroupedFraction = regrouped / trackedCount;
-        return (1 - regroupedFraction) * GROUP_STABILITY_WEIGHT;
+        const now = this._coMembershipPairs(tileResult.levels, alive);
+        // Nothing closed, so every recorded pair still has both ends and needs no filtering.
+        const prev = alive.size === tracked.size
+            ? this._lastGroupAssignment.pairs
+            : this._survivingPairs(this._lastGroupAssignment.pairs, alive);
+
+        let changed = 0;
+        for (const p of prev) if (!now.has(p)) changed++;
+        for (const p of now) if (!prev.has(p)) changed++;
+
+        // Both sets are subsets of the pairs over alive, so the clamp is just belt and braces.
+        const totalPairs = (alive.size * (alive.size - 1)) / 2;
+        return (1 - Math.min(1, changed / totalPairs)) * GROUP_STABILITY_WEIGHT;
     }
 
     // Distance from the restored window's center to the slot its miniature held (Infinity if absent).
@@ -876,22 +934,25 @@ export const TilingManager = GObject.registerClass({
 
     _scoreOrder(perm, workArea, tilingFn, currentIds) {
         const result = tilingFn.call(this, perm, workArea, constants.WINDOW_SPACING);
-        let score = this._scoreLayout(result, workArea);
-        const fits = score > -Infinity;
+        const geom = this._scoreLayout(result, workArea);
+        const fits = geom > -Infinity;
 
-        // Prefer current order (+5) to avoid unnecessary visual swaps
+        let stability = 0;
         if (fits) {
+            stability = this._positionStabilityBonus(result, workArea) +
+                this._groupStabilityBonus(result);
+            // Prefer current order (+5) to avoid unnecessary visual swaps
             const isSameOrder = perm.length === currentIds.length &&
                 perm.every((w, i) => w.id === currentIds[i]);
-            if (isSameOrder) score += 5;
+            if (isSameOrder) stability += 5;
         }
 
-        // A just-restored window makes proximity the primary pick, with the base score breaking ties inside the tolerance bucket.
+        // A just-restored window makes proximity the primary pick, with geometry and stability breaking ties inside the tolerance bucket.
         const bucket = this._restoreAnchor
             ? Math.round(this._restoreDisplacement(result) / constants.RESTORE_PROXIMITY_TOLERANCE_PX)
             : 0;
 
-        return { score, bucket, fits };
+        return { geom, stability, bucket, fits };
     }
 
     _findOptimalOrder(windows, workArea, tilingFn) {
@@ -901,24 +962,28 @@ export const TilingManager = GObject.registerClass({
         const permutations = this._generatePermutations(windows);
         const currentIds = this._lastTiledOrder ?? windows.map(w => w.id);
 
+        const scored = permutations.map(perm =>
+            ({ perm, ...this._scoreOrder(perm, workArea, tilingFn, currentIds) }));
+
+        // An overflowing pick lands out of bounds and Mutter clamps it onto its neighbor, so anything that fits outranks everything else.
+        const fitting = scored.filter(s => s.fits);
+        const pool = fitting.length > 0 ? fitting : scored;
+
+        // Proximity to where a restored window's miniature sat comes next.
+        const minBucket = Math.min(...pool.map(s => s.bucket));
+        const inBucket = pool.filter(s => s.bucket === minBucket);
+
+        // The band hangs off the best geometry on offer, not off a running best: chained
+        // in-band hops walk the pick downhill and make it depend on the scan order.
+        const floor = Math.max(...inBucket.map(s => s.geom)) - STABILITY_TIE_BAND;
+
         let bestOrder = windows;
-        let bestScore = -Infinity;
-        let bestBucket = Infinity;
-        let bestFits = false;
-
-        for (const perm of permutations) {
-            const { score, bucket, fits } = this._scoreOrder(perm, workArea, tilingFn, currentIds);
-
-            // Proximity outranks the score, but never a fitting layout: an overflowing pick lands out of bounds and Mutter clamps it onto its neighbor.
-            const isBetter = fits !== bestFits
-                ? fits
-                : (bucket < bestBucket || (bucket === bestBucket && score > bestScore));
-
-            if (isBetter) {
-                bestFits = fits;
-                bestBucket = bucket;
-                bestScore = score;
-                bestOrder = perm;
+        let bestStability = -Infinity;
+        for (const s of inBucket) {
+            if (s.geom < floor) continue;
+            if (s.stability > bestStability) {
+                bestStability = s.stability;
+                bestOrder = s.perm;
             }
         }
 
@@ -1143,25 +1208,16 @@ export const TilingManager = GObject.registerClass({
         return { levels, totalWidth, overflow };
     }
 
-    // Columns fan out from center: those left of center right-align, those right left-align, so
+    // Columns fan out from center: those left of center pull right, those right pull left, so
     // the gap always falls on the outer edges rather than between neighbours.
     _positionColumnWindows(levels, work_area, spacing, startX) {
         const levelCount = levels.length;
-        const centerColIndex = (levelCount - 1) / 2;
+        const origin = work_area.x + work_area.width / 2;
 
         let xPos = startX;
         for (let colIdx = 0; colIdx < levelCount; colIdx++) {
             const level = levels[colIdx];
             level.x = xPos;
-
-            let alignMode = 'center';
-            if (levelCount > 1) {
-                if (colIdx < centerColIndex) {
-                    alignMode = 'right';
-                } else if (colIdx > centerColIndex) {
-                    alignMode = 'left';
-                }
-            }
 
             let totalColHeight = 0;
             for (const win of level.windows) {
@@ -1172,13 +1228,7 @@ export const TilingManager = GObject.registerClass({
             let yPos = Math.max(work_area.y, (work_area.height - totalColHeight) / 2 + work_area.y);
 
             for (const win of level.windows) {
-                if (alignMode === 'left') {
-                    win.targetX = xPos;
-                } else if (alignMode === 'right') {
-                    win.targetX = xPos + level.width - win.width;
-                } else {
-                    win.targetX = xPos + (level.width - win.width) / 2;
-                }
+                win.targetX = xPos + outwardOffset(xPos, level.width, win.width, origin);
                 win.targetY = yPos;
                 yPos += win.height + spacing;
             }
@@ -1240,9 +1290,10 @@ export const TilingManager = GObject.registerClass({
         level.x = Math.max(work_area.x, (work_area.width - maxWidth) / 2 + work_area.x);
         level.y = Math.max(work_area.y, (work_area.height - totalHeight) / 2 + work_area.y);
 
+        const origin = work_area.x + work_area.width / 2;
         let yPos = level.y;
         for (const w of level.windows) {
-            w.targetX = level.x + (maxWidth - w.width) / 2;
+            w.targetX = level.x + outwardOffset(level.x, maxWidth, w.width, origin);
             w.targetY = yPos;
             yPos += w.height + spacing;
         }
@@ -1268,7 +1319,7 @@ export const TilingManager = GObject.registerClass({
             this._buildShelfRows(windows, work_area, spacing, numRows, windowsPerRow);
 
         const y = Math.max(work_area.y, (work_area.height - totalHeight) / 2 + work_area.y);
-        this._positionShelfWindows(levels, y, spacing);
+        this._positionShelfWindows(levels, y, spacing, work_area);
 
         return {
             x: work_area.x,
@@ -1318,14 +1369,15 @@ export const TilingManager = GObject.registerClass({
         return { levels, totalHeight, overflow };
     }
 
-    _positionShelfWindows(levels, y, spacing) {
+    _positionShelfWindows(levels, y, spacing, work_area) {
+        const origin = work_area.y + work_area.height / 2;
         let levelY = y;
         for (const level of levels) {
             level.y = levelY;
             let xPos = level.x;
             for (const w of level.windows) {
                 w.targetX = xPos;
-                w.targetY = levelY + (level.height - w.height) / 2;
+                w.targetY = levelY + outwardOffset(levelY, level.height, w.height, origin);
                 xPos += w.width + spacing;
             }
             levelY += level.height + spacing;
@@ -1373,13 +1425,14 @@ export const TilingManager = GObject.registerClass({
         if (totalHeight > work_area.height) overflow = true;
 
         const y = Math.max(work_area.y, (work_area.height - totalHeight) / 2 + work_area.y);
+        const origin = work_area.y + work_area.height / 2;
         let levelY = y;
         for (const level of levels) {
             level.y = levelY;
             let xPos = level.x;
             for (const w of level.windows) {
                 w.targetX = xPos;
-                w.targetY = levelY + (level.height - w.height) / 2;
+                w.targetY = levelY + outwardOffset(levelY, level.height, w.height, origin);
                 xPos += w.width + spacing;
             }
             levelY += level.height + spacing;
@@ -1408,13 +1461,14 @@ export const TilingManager = GObject.registerClass({
         if (totalWidth > work_area.width) overflow = true;
 
         const x = Math.max(work_area.x, (work_area.width - totalWidth) / 2 + work_area.x);
+        const origin = work_area.x + work_area.width / 2;
         let levelX = x;
         for (const level of levels) {
             level.x = levelX;
             const colHeight = level.windows.reduce((s, w, i) => s + w.height + (i > 0 ? spacing : 0), 0);
             let yPos = Math.max(work_area.y, (work_area.height - colHeight) / 2 + work_area.y);
             for (const w of level.windows) {
-                w.targetX = levelX + (level.width - w.width) / 2;
+                w.targetX = levelX + outwardOffset(levelX, level.width, w.width, origin);
                 w.targetY = yPos;
                 yPos += w.height + spacing;
             }
@@ -1442,10 +1496,11 @@ export const TilingManager = GObject.registerClass({
         const y = Math.max(work_area.y, (work_area.height - maxHeight) / 2 + work_area.y);
         level.y = y;
 
+        const origin = work_area.y + work_area.height / 2;
         let xPos = level.x;
         for (const w of level.windows) {
             w.targetX = xPos;
-            w.targetY = y + (maxHeight - w.height) / 2;
+            w.targetY = y + outwardOffset(y, maxHeight, w.height, origin);
             xPos += w.width + spacing;
         }
 
@@ -1624,7 +1679,7 @@ export const TilingManager = GObject.registerClass({
         };
     }
 
-    _drawTile(workspace, monitor, tile_info, work_area, meta_windows, dryRun = false, slotsOut = null, bounds = null) {
+    _drawTile(workspace, monitor, tile_info, meta_windows, dryRun = false, slotsOut = null, bounds = null) {
         const levels = tile_info.levels;
         const _x = tile_info.x;
         const _y = tile_info.y;
@@ -1632,7 +1687,7 @@ export const TilingManager = GObject.registerClass({
             let y = _y;
             for(const level of levels) {
                 Logger.log(`Drawing horizontal level at y=${y}, width=${level.width}, height=${level.height}`);
-                level.draw_horizontal(workspace, monitor, meta_windows, work_area, y, this.masks, this.isDragging, this._drawingManager, dryRun, slotsOut, bounds);
+                level.draw_horizontal(workspace, monitor, meta_windows, y, this.masks, this.isDragging, this._drawingManager, dryRun, slotsOut, bounds);
                 y += level.height + constants.WINDOW_SPACING;
             }
         } else {
@@ -1665,7 +1720,7 @@ export const TilingManager = GObject.registerClass({
         };
 
         if (!tile_info.vertical) {
-            this._placeHorizontalAnimated(tile_info, work_area, meta_windows, ctx);
+            this._placeHorizontalAnimated(tile_info, meta_windows, ctx);
         } else {
             this._placeVerticalAnimated(tile_info, meta_windows, ctx);
         }
@@ -1676,18 +1731,16 @@ export const TilingManager = GObject.registerClass({
         return true;
     }
 
-    _placeHorizontalAnimated(tile_info, work_area, meta_windows, ctx) {
+    _placeHorizontalAnimated(tile_info, meta_windows, ctx) {
         let y = tile_info.y;
         for (const level of tile_info.levels) {
             let x = level.x;
             for (const windowDesc of level.windows) {
-                const center_offset = (work_area.height / 2 + work_area.y) - (y + windowDesc.height / 2);
-                let y_offset = 0;
-                if (center_offset > 0)
-                    y_offset = Math.min(center_offset, level.height - windowDesc.height);
+                const targetX = windowDesc.targetX !== undefined ? windowDesc.targetX : x;
+                const targetY = windowDesc.targetY !== undefined ? windowDesc.targetY : y;
 
                 const window = meta_windows.find(w => w.get_id() === windowDesc.id);
-                if (window) this._placeAnimatedWindow(window, windowDesc, x, y + y_offset, 'H', ctx);
+                if (window) this._placeAnimatedWindow(window, windowDesc, targetX, targetY, 'H', ctx);
                 x += windowDesc.width + constants.WINDOW_SPACING;
             }
             y += level.height + constants.WINDOW_SPACING;
@@ -2324,12 +2377,14 @@ export const TilingManager = GObject.registerClass({
     _recordGroupStability(tile_info) {
         if (!(tile_info?.levels?.length > 0)) return;
         this._lastTiledOrder = tile_info.levels.flatMap(l => l.windows).map(w => w.id);
-        const newGroupAssignment = new Map();
-        tile_info.levels.forEach((level, levelIdx) => {
-            for (const w of level.windows) newGroupAssignment.set(w.id, levelIdx);
-        });
+        const newGroupAssignment = {
+            pairs: this._coMembershipPairs(tile_info.levels),
+            ids: new Set(tile_info.levels.flatMap(l => l.windows.map(w => w.id))),
+        };
         this._lastGroupAssignment = newGroupAssignment;
-        Logger.log(`[GROUP STABILITY] Recorded assignment: ${[...newGroupAssignment].map(([id, idx]) => `${id}->col${idx}`).join(', ')}`);
+        // Partition rather than the pair set, which is quadratic and fires on every drag retile.
+        const partition = tile_info.levels.map(l => `[${l.windows.map(w => w.id).join(',')}]`).join('');
+        Logger.log(`[GROUP STABILITY] Recorded ${newGroupAssignment.pairs.size} pairs over ${partition}`);
     }
 
     _positionTiledWindows(workspace, monitor, tile_info, tileArea, meta_windows, reference_meta_window, computedSlots, work_area) {
@@ -2346,7 +2401,7 @@ export const TilingManager = GObject.registerClass({
 
         if (!animationsHandledPositioning) {
             Logger.log('Animations did not handle positioning, calling drawTile');
-            this._drawTile(workspace, monitor, tile_info, tileArea, meta_windows, false, computedSlots, work_area);
+            this._drawTile(workspace, monitor, tile_info, meta_windows, false, computedSlots, work_area);
             // _animateTileLayout owns the deferred unlock; since it didn't run,
             // release the lock now that positioning is done synchronously.
             this._unlockWorkspaceEarlyReturn(workspace);
@@ -3668,6 +3723,15 @@ class WindowDescriptor {
     }
 }
 
+// Slack inside a level belongs on the outer side, never between two neighbours,
+// so the mosaic densifies toward the middle. Clamping keeps a level that straddles
+// the origin from pushing its window past its own edge.
+function outwardOffset(levelStart, levelExtent, windowExtent, origin) {
+    const slack = levelExtent - windowExtent;
+    if (slack <= 0) return 0;
+    return Math.min(Math.max(origin - windowExtent / 2 - levelStart, 0), slack);
+}
+
 class Level {
     constructor(work_area) {
         this.x = 0;
@@ -3694,16 +3758,11 @@ class Level {
         window.draw(meta_windows, drawX, drawY, masks, isDragging, drawingManager, dryRun);
     }
 
-    draw_horizontal(workspace, monitor, meta_windows, work_area, y, masks, isDragging, drawingManager, dryRun = false, slotsOut = null, bounds = null) {
+    draw_horizontal(workspace, monitor, meta_windows, y, masks, isDragging, drawingManager, dryRun = false, slotsOut = null, bounds = null) {
         let x = this.x;
         for(const window of this.windows) {
-            const center_offset = (work_area.height / 2 + work_area.y) - (y + window.height / 2);
-            let y_offset = 0;
-            if(center_offset > 0)
-                y_offset = Math.min(center_offset, this.height - window.height);
-
             const rawX = window.targetX !== undefined ? window.targetX : x;
-            const rawY = window.targetY !== undefined ? window.targetY : y + y_offset;
+            const rawY = window.targetY !== undefined ? window.targetY : y;
             this._placeWindow(workspace, monitor, window, meta_windows, rawX, rawY, masks, isDragging, drawingManager, dryRun, slotsOut, bounds);
             x += window.width + constants.WINDOW_SPACING;
         }
