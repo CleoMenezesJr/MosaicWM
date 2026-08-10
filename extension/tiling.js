@@ -1015,14 +1015,21 @@ export const TilingManager = GObject.registerClass({
 
         // The alt pass wrote its own targets onto the descriptors, and the preferred result's
         // levels point at those same objects, so replay it before handing it back.
-        return tilingFn.call(this, primary.windows, work_area, spacing);
+        const replay = tilingFn.call(this, primary.windows, work_area, spacing);
+        replay.orderOptimized = primary.orderOptimized;
+        return replay;
     }
 
     // Skip cache during drag (order changes but hash doesn't) and while a pin is active, since
     // the hash ignores shape so a new pin would hit a stale cached layout and revert.
     _isTileCacheHit(hash, isSimulation) {
-        return this._cachedTileResult && this._lastLayoutHash === hash &&
-            !isSimulation && !this.isDragging && !this._activePinnedShape;
+        if (!this._cachedTileResult || this._lastLayoutHash !== hash) return false;
+        if (isSimulation || this.isDragging || this._activePinnedShape) return false;
+
+        // The hash covers ids and sizes, not how hard we looked for an order. Without this the
+        // fit check, which runs first and can't rank, gets to decide the layout for good.
+        return this._cachedTileResult.orderOptimized === true ||
+            !this._ranksOrders(this._cachedTileResult.overflow, isSimulation);
     }
 
     // A pinned composition or an in-flight drag hint wins over the auto-chosen grid, but only
@@ -1052,24 +1059,27 @@ export const TilingManager = GObject.registerClass({
         return null;
     }
 
+    // Simulations (binary-search in tryFitWithResize) skip stability scoring for performance.
+    // canFitWindow runs before _prepareTilePass takes the snapshot, so it ranks nothing either.
+    _ranksOrders(overflow, isSimulation) {
+        return overflow || (!!this._positionSnapshot && !isSimulation);
+    }
+
     _chooseTileResult(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation) {
         const currentResult = tilingFn.call(this, windows, work_area, spacing);
+        const wantOptimal = this._ranksOrders(currentResult.overflow, isSimulation);
 
-        // Simulations (binary-search in tryFitWithResize) skip stability scoring for performance.
-        const shouldOptimize = currentResult.overflow || (this._positionSnapshot && !isSimulation);
-
-        if (!shouldOptimize) {
-            Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, stable order`);
-            return currentResult;
-        }
-        if (this.isDragging && !isSimulation) {
-            Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, overflow (drag, no permute)`);
+        if (!wantOptimal || (this.isDragging && !isSimulation)) {
+            const reason = wantOptimal ? 'overflow (drag, no permute)' : 'stable order';
+            Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, ${reason}`);
+            currentResult.orderOptimized = false;
             return currentResult;
         }
 
         const optimalWindows = this._findOptimalOrder(windows, work_area, tilingFn);
         const result = tilingFn.call(this, optimalWindows, work_area, spacing);
         Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, ${currentResult.overflow ? 'reordered (overflow fallback)' : 'stability-checked'}`);
+        result.orderOptimized = true;
         return result;
     }
 
