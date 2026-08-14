@@ -125,3 +125,8 @@ export const RESTORE_PROXIMITY_TOLERANCE_PX = 100;
 // Compact the per-workspace swap history into a single canonical order op
 // once it grows past this many entries (keeps replay cost bounded)
 export const SWAP_OPS_COMPACT_THRESHOLD = 8;
+
+// Canvas is the tiling surface the viewport can slide over: workarea width plus
+// CANVAS_SIDE_MARGIN_RATIO of slack on each side. Centered = scrollOffset 0.
+export const CANVAS_EXPANSION_RATIO = 1.5;
+export const CANVAS_SIDE_MARGIN_RATIO = 0.25;

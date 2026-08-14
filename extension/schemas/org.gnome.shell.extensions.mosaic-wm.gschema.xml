@@ -41,5 +41,15 @@
       <summary>Swap window downward</summary>
       <description>Swap the active window with its lower neighbor (quarter tiles only)</description>
     </key>
+    <key name="canvas-scroll-left" type="as">
+      <default>['&lt;Ctrl&gt;&lt;Super&gt;&lt;Alt&gt;Left']</default>
+      <summary>Scroll canvas left</summary>
+      <description>Scroll the mosaic canvas one viewport width to the left</description>
+    </key>
+    <key name="canvas-scroll-right" type="as">
+      <default>['&lt;Ctrl&gt;&lt;Super&gt;&lt;Alt&gt;Right']</default>
+      <summary>Scroll canvas right</summary>
+      <description>Scroll the mosaic canvas one viewport width to the right</description>
+    </key>
   </schema>
 </schemalist>
