@@ -21,6 +21,7 @@ import * as constants from './constants.js';
 import { SettingsOverrider } from './settingsOverrider.js';
 
 import { EdgeTilingManager } from './edgeTiling.js';
+import { CanvasManager } from './canvas.js';
 import { TilingManager } from './tiling.js';
 import { isWindowAlive, isWorkspaceAlive } from './liveness.js';
 import { ReorderingManager } from './reordering.js';
@@ -58,6 +59,7 @@ export default class WindowMosaicExtension extends Extension {
 
         this.edgeTilingManager = null;
         this.tilingManager = null;
+        this.canvasManager = null;
         this.reorderingManager = null;
         this.swappingManager = null;
         this.drawingManager = null;
@@ -74,6 +76,8 @@ export default class WindowMosaicExtension extends Extension {
         this._lastFocusedWindowId  = null;
         this._focusWindowChangedId = 0;
         this._miniatureRestoredId  = 0;
+        this._canvasScrollEventId = 0;
+        this._canvasWorkspaceRemovedId = 0;
 
         this._dnd = null;
         this._dndEnterId = 0;
@@ -241,6 +245,10 @@ export default class WindowMosaicExtension extends Extension {
         this.edgeTilingManager = new EdgeTilingManager();
         this.tilingManager = new TilingManager();
         this.tilingManager.setExtension(this);
+        this.canvasManager = new CanvasManager();
+        this.canvasManager.setTilingManager(this.tilingManager);
+        this.canvasManager.setEdgeTilingManager(this.edgeTilingManager);
+        this.tilingManager.setCanvasManager(this.canvasManager);
         this.reorderingManager = new ReorderingManager();
         this.swappingManager = new SwappingManager();
         this.drawingManager = new DrawingManager();
@@ -580,6 +588,12 @@ export default class WindowMosaicExtension extends Extension {
 
         this._setupKeybindings();
 
+        this._canvasScrollEventId = global.stage.connect('scroll-event',
+            (_actor, event) => this._onCanvasScrollEvent(event));
+
+        this._canvasWorkspaceRemovedId = global.workspace_manager.connect('workspace-removed',
+            (_wm, workspace) => this.canvasManager?.onWorkspaceRemoved(workspace));
+
         this._tileTimeout = this._timeoutRegistry.add(constants.STARTUP_TILE_DELAY_MS, () => {
             this._tileAllWorkspaces();
             this._tileTimeout = null;
@@ -740,6 +754,20 @@ export default class WindowMosaicExtension extends Extension {
 
         this.miniatureManager.restoreMiniature(window, null);
         // 'miniature-restored' signal fires synchronously → _onMiniatureRestored runs next
+
+        this._canvasCenterOnFocus();
+    }
+
+    _canvasCenterOnFocus() {
+        const focused = global.display.focus_window;
+        if (!focused || !this.canvasManager) return;
+        const ws = focused.get_workspace();
+        const mon = focused.get_monitor();
+        if (ws && mon !== undefined &&
+            this.isMosaicEnabledForWorkspace(ws) &&
+            !this.windowingManager.isMaximizedOrFullscreen(focused)) {
+            this.canvasManager.centerOnWindow(focused);
+        }
     }
 
     // Only a miniature that the user could sensibly want back qualifies; a maximized,
@@ -896,6 +924,12 @@ export default class WindowMosaicExtension extends Extension {
         Main.wm.addKeybinding('restore-window', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
             () => this._onArrowShortcut('down'));
 
+        Main.wm.addKeybinding('canvas-scroll-left', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
+            () => this._onCanvasScroll('left'));
+
+        Main.wm.addKeybinding('canvas-scroll-right', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
+            () => this._onCanvasScroll('right'));
+
         Logger.log('Registering swap-left keybinding');
         Main.wm.addKeybinding('swap-left', settings, Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
             () => this._swapActiveWindow('left'));
@@ -914,6 +948,38 @@ export default class WindowMosaicExtension extends Extension {
 
         Logger.log('All swap keybindings registered successfully');
         Logger.log('Keyboard shortcuts registered');
+    }
+
+    _onCanvasScroll(direction) {
+        const window = global.display.focus_window;
+        if (!window) return;
+        const workspace = window.get_workspace();
+        const monitor = window.get_monitor();
+        if (!workspace || !this.isMosaicEnabledForWorkspace(workspace)) return;
+        if (Main.overview.visible) return;
+        if (this.tilingManager.isDragging) return;
+        const width = this.canvasManager.getViewportWidth(workspace, monitor);
+        const delta = direction === 'left' ? -width : width;
+        this.canvasManager.stepScroll(workspace, monitor, delta);
+    }
+
+    _onCanvasScrollEvent(event) {
+        const mask = event.get_state();
+        const ctrl = (mask & Clutter.ModifierType.CONTROL_MASK) !== 0;
+        const superMask = (mask & Clutter.ModifierType.SUPER_MASK) !== 0;
+        const alt = (mask & Clutter.ModifierType.MOD1_MASK) !== 0;
+        if (!ctrl || !superMask || !alt) return Clutter.EVENT_PROPAGATE;
+
+        const direction = event.get_scroll_direction();
+        if (direction === Clutter.ScrollDirection.UP) {
+            this._onCanvasScroll('left');
+            return Clutter.EVENT_STOP;
+        }
+        if (direction === Clutter.ScrollDirection.DOWN) {
+            this._onCanvasScroll('right');
+            return Clutter.EVENT_STOP;
+        }
+        return Clutter.EVENT_PROPAGATE;
     }
 
     _onArrowShortcut(direction) {
@@ -1015,6 +1081,18 @@ export default class WindowMosaicExtension extends Extension {
 
         this._teardownOverrides();
         this._removeKeybindings();
+
+        if (this._canvasScrollEventId) {
+            global.stage.disconnect(this._canvasScrollEventId);
+            this._canvasScrollEventId = null;
+        }
+        if (this._canvasWorkspaceRemovedId) {
+            global.workspace_manager.disconnect(this._canvasWorkspaceRemovedId);
+            this._canvasWorkspaceRemovedId = null;
+        }
+        this.canvasManager?.destroy();
+        this.canvasManager = null;
+
         this._teardownEarlyManagers();
         this._teardownDnd();
         this._teardownMiniatures();
@@ -1052,6 +1130,8 @@ export default class WindowMosaicExtension extends Extension {
         Main.wm.removeKeybinding('tile-right');
         Main.wm.removeKeybinding('maximize-window');
         Main.wm.removeKeybinding('restore-window');
+        Main.wm.removeKeybinding('canvas-scroll-left');
+        Main.wm.removeKeybinding('canvas-scroll-right');
         Main.wm.removeKeybinding('swap-left');
         Main.wm.removeKeybinding('swap-right');
         Main.wm.removeKeybinding('swap-up');
