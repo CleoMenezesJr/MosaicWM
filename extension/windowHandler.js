@@ -32,9 +32,17 @@ export const WindowHandler = GObject.registerClass({
         this._overflowInProgress = false;
         this._windowSignals = new WeakMap(); // WeakMap so signal IDs are released when the window is GC'd
         this._readinessWaiters = new Set();
+
+        // Clicking an off-screen tiled window reveals it before the click reaches it.
+        this._canvasClickId = global.stage.connect('button-press-event',
+            (_actor, event) => this._onCanvasClick(event));
     }
 
     destroy() {
+        if (this._canvasClickId) {
+            global.stage.disconnect(this._canvasClickId);
+            this._canvasClickId = null;
+        }
         for (const entry of this._evaluationQueue)
             WindowState.remove(entry.window, 'pendingInQueue');
         this._evaluationQueue = [];
@@ -43,6 +51,45 @@ export const WindowHandler = GObject.registerClass({
             for (const id of waiter.ids) waiter.window.disconnect(id);
         }
         this._readinessWaiters.clear();
+    }
+
+    _onCanvasClick(event) {
+        if (event.get_button() !== 1) return Clutter.EVENT_PROPAGATE;
+        const target = event.get_source();
+        const window = target?.meta_window;
+        if (!window) return Clutter.EVENT_PROPAGATE;
+
+        const { workspace, monitor } = this._canvasClickContext(window) ?? {};
+        if (!workspace || monitor === undefined) return Clutter.EVENT_PROPAGATE;
+        if (!this._canvasClickEligible(window, workspace, monitor)) return Clutter.EVENT_PROPAGATE;
+
+        const cm = this._ext.canvasManager;
+        const frame = window.get_frame_rect();
+        const area = workspace.get_work_area_for_monitor(monitor);
+        const w = cm.getViewportWidth(workspace, monitor);
+        const centered = Math.round(frame.x + frame.width / 2 - (area.x + w / 2)) ===
+            cm.getScrollOffset(workspace, monitor);
+        if (!centered) {
+            cm.centerOnWindow(window);
+        }
+        window.activate(global.get_current_time());
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    _canvasClickContext(window) {
+        const workspace = window.get_workspace();
+        const monitor = window.get_monitor();
+        if (!workspace || monitor === undefined) return null;
+        return { workspace, monitor };
+    }
+
+    _canvasClickEligible(window, workspace, monitor) {
+        if (!this._ext.isMosaicEnabledForWorkspace(workspace)) return false;
+        if (this._ext.windowingManager.isExcluded(window)) return false;
+        if (this._ext.windowingManager.isMaximizedOrFullscreen(window)) return false;
+        if (this._ext.edgeTilingManager?.isEdgeTiled(window)) return false;
+        if (!this._ext.canvasManager?.canvasEnabled(workspace, monitor)) return false;
+        return true;
     }
 
     // Some windows aren't identifiable at map time (wm_class can arrive seconds
