@@ -4,7 +4,7 @@
 
 import * as Workspace from 'resource:///org/gnome/shell/ui/workspace.js';
 import { ComputedLayouts } from './mosaicModel.js';
-import { WINDOW_SPACING } from './constants.js';
+import { WINDOW_SPACING, CANVAS_EXPANSION_RATIO, CANVAS_SIDE_MARGIN_RATIO } from './constants.js';
 
 // Scales down the layout instead of reorganizing windows (preserves spatial memory)
 // Overview clones expose the window directly or behind .source depending on where the
@@ -17,6 +17,7 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
     constructor(props) {
         super(props);
         this._calculating = false;
+        this._canvasManager = props?.canvasManager;
     }
 
     computeLayout(windows, _params) {
@@ -51,12 +52,30 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
             return [];
         }
 
-        const scale = Math.min(area.width / workArea.width, area.height / workArea.height, 1.0);
+        const scaleBase = this._scaleBase(workspace, monitorIndex, workArea);
 
-        const offsetX = (area.width - (workArea.width * scale)) / 2;
-        const offsetY = (area.height - (workArea.height * scale)) / 2;
+        const scale = Math.min(area.width / scaleBase.width, area.height / scaleBase.height, 1.0);
 
-        return this._buildSlots(filteredClones, { workArea, area, scale, offsetX, offsetY });
+        const offsetX = (area.width - (scaleBase.width * scale)) / 2;
+        const offsetY = (area.height - (scaleBase.height * scale)) / 2;
+
+        return this._buildSlots(filteredClones, { scaleBase, area, scale, offsetX, offsetY });
+    }
+
+    // The overview must show the whole canvas, not just the visible slice. Since
+    // ComputedLayouts rects already live in shifted screen coords (offset baked
+    // into scaleBase.x), subtracting scaleBase.x maps each straight onto the grid.
+    _scaleBase(workspace, monitorIndex, workArea) {
+        const cm = this._canvasManager;
+        if (!cm || !cm.canvasEnabled(workspace, monitorIndex)) return workArea;
+        const margin = Math.round(workArea.width * CANVAS_SIDE_MARGIN_RATIO);
+        const offset = cm.getScrollOffset(workspace, monitorIndex);
+        return {
+            x: workArea.x - margin - offset,
+            y: workArea.y,
+            width: Math.round(workArea.width * CANVAS_EXPANSION_RATIO),
+            height: workArea.height,
+        };
     }
 
     _firstWorkspace(clones) {
@@ -68,7 +87,7 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
         return null;
     }
 
-    _buildSlots(clones, { workArea, area, scale, offsetX, offsetY }) {
+    _buildSlots(clones, { scaleBase, area, scale, offsetX, offsetY }) {
         const gap = WINDOW_SPACING / 2;
         const slots = [];
 
@@ -83,8 +102,8 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
             // subtraction below would turn into a negative size. The next pass republishes it.
             if (!rect || rect.width <= 0 || rect.height <= 0) continue;
 
-            const x = (rect.x - workArea.x) * scale + area.x + offsetX + gap;
-            const y = (rect.y - workArea.y) * scale + area.y + offsetY + gap;
+            const x = (rect.x - scaleBase.x) * scale + area.x + offsetX + gap;
+            const y = (rect.y - scaleBase.y) * scale + area.y + offsetY + gap;
             const w = rect.width * scale - gap * 2;
             const h = rect.height * scale - gap * 2;
 

@@ -497,6 +497,7 @@ export default class WindowMosaicExtension extends Extension {
                 extension.mosaicRenderer?.registerOverviewLayout(workspace, this._monitorIndex, this);
                 this._layoutStrategy = new MosaicLayoutStrategy({
                     monitor: Main.layoutManager.monitors[this._monitorIndex],
+                    canvasManager: extension.canvasManager,
                 });
                 return this._layoutStrategy.computeLayout(this._sortedWindows, ...args);
             };
