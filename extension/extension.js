@@ -736,6 +736,8 @@ export default class WindowMosaicExtension extends Extension {
         const prevFocusedId = this._lastFocusedWindowId;
         this._lastFocusedWindowId = window.get_id();
 
+        this._canvasCenterOnFocus();
+
         if (!this._focusEligibleForRestore(window)) return;
 
         const windowId = window.get_id();
@@ -754,8 +756,6 @@ export default class WindowMosaicExtension extends Extension {
 
         this.miniatureManager.restoreMiniature(window, null);
         // 'miniature-restored' signal fires synchronously → _onMiniatureRestored runs next
-
-        this._canvasCenterOnFocus();
     }
 
     _canvasCenterOnFocus() {
