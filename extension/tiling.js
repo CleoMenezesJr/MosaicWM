@@ -9,7 +9,7 @@ import Meta from 'gi://Meta';
 
 import * as Logger from './logger.js';
 import * as constants from './constants.js';
-import { TileZone, ZONE_SIDE } from './constants.js';
+import { TileZone, ZONE_SIDE, CANVAS_EXPANSION_RATIO, CANVAS_SIDE_MARGIN_RATIO } from './constants.js';
 import * as WindowState from './windowState.js';
 import { ComputedLayouts, MosaicModel } from './mosaicModel.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
@@ -95,6 +95,7 @@ export const TilingManager = GObject.registerClass({
         this._drawingManager = null;
         this._animationsManager = null;
         this._windowingManager = null;
+        this._canvasManager = null;
         this._extension = null;
 
         this._isSmartResizingBlocked = false;
@@ -166,6 +167,10 @@ export const TilingManager = GObject.registerClass({
 
     setWindowingManager(manager) {
         this._windowingManager = manager;
+    }
+
+    setCanvasManager(manager) {
+        this._canvasManager = manager;
     }
 
     // Effective size: pending async sizes → model region → frame rect → saved sizes → fallback
@@ -1697,7 +1702,7 @@ export const TilingManager = GObject.registerClass({
         for(const w of _windows)
             windows.push(this.getMask(w));
 
-        const work_area = this._clampedWorkArea(workspace, current_monitor);
+        const work_area = this._clampedWorkArea(workspace, current_monitor, true);
         if(!work_area) return false;
 
         return {
@@ -1765,7 +1770,7 @@ export const TilingManager = GObject.registerClass({
     // work_area is only the mosaic's leftover once edge tiles claimed their side, but the
     // group holds those tiles too, so bounding it by the leftover flags every one of them.
     _syncGroupBounds(workspace, monitor, work_area) {
-        const bounds = this._clampedWorkArea(workspace, monitor) ?? work_area;
+        const bounds = this._clampedWorkArea(workspace, monitor, true) ?? work_area;
         const group = MosaicModel.store.groupFor(workspace.index(), monitor);
         if (group) group.workArea = rectOf(bounds);
 
@@ -3052,9 +3057,23 @@ export const TilingManager = GObject.registerClass({
     }
 
     // get_work_area_for_monitor can overshoot physical bounds in some display setups.
-    _clampedWorkArea(workspace, monitor) {
+    // Canvas mode instead EXPANDS past the monitor on purpose: the whole point is a
+    // surface wider than the screen. The external constraint outranks Mutter's clamp,
+    // so the expanded rect is authoritative for the windows we place.
+    _clampedWorkArea(workspace, monitor, useCanvas = false) {
         const area = workspace.get_work_area_for_monitor(monitor);
         if (!area) return null;
+        if (useCanvas && this._canvasManager?.canvasEnabled(workspace, monitor)) {
+            const w = area.width;
+            const margin = Math.round(w * CANVAS_SIDE_MARGIN_RATIO);
+            const offset = this._canvasManager.getScrollOffset(workspace, monitor);
+            return {
+                x: area.x - margin - offset,
+                y: area.y,
+                width: Math.round(w * CANVAS_EXPANSION_RATIO),
+                height: area.height,
+            };
+        }
         const geom = global.display.get_monitor_geometry(monitor);
         const maxW = geom.x + geom.width - area.x;
         const maxH = geom.y + geom.height - area.y;
@@ -3062,7 +3081,7 @@ export const TilingManager = GObject.registerClass({
         return { x: area.x, y: area.y, width: Math.min(area.width, maxW), height: Math.min(area.height, maxH) };
     }
 
-    getUsableWorkArea(workspace, monitor) {
+    getUsableWorkArea(workspace, monitor, useCanvas = false) {
         if (this._edgeTilingManager) {
             const edgeTiledWindows = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
             if (edgeTiledWindows.length > 0) {
@@ -3078,7 +3097,7 @@ export const TilingManager = GObject.registerClass({
                 return this._edgeTilingManager.calculateRemainingSpace(workspace, monitor);
             }
         }
-        return this._clampedWorkArea(workspace, monitor);
+        return this._clampedWorkArea(workspace, monitor, useCanvas);
     }
 
     tryFitWithResize(newWindow, windows, workArea, workspace, focusedWindowOverride = null) {
@@ -3578,6 +3597,7 @@ export const TilingManager = GObject.registerClass({
         this._drawingManager = null;
         this._animationsManager = null;
         this._windowingManager = null;
+        this._canvasManager = null;
         this._extension = null;
     }
 });
