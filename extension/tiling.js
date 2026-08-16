@@ -3929,11 +3929,12 @@ class WindowDescriptor {
         const sc = WindowState.get(window, MINIATURE_SCALE) ?? 1;
         const extL = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
         const extT = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
-        // Mid-flight the running ease owns the actor, so only stash the new target; a settled
-        // miniature gets the transform applied now.
-        if (!WindowState.get(window, ANIMATING_MINIATURE)) {
+        // Mid-flight the running ease owns the actor, so retarget it rather than cutting in with
+        // a hard transform; a settled miniature gets the transform applied now.
+        if (!WindowState.get(window, ANIMATING_MINIATURE))
             applyMiniatureActorState(windowActor, sc, extL, extT, x, y);
-        }
+        else
+            redirectMiniatureEase(windowActor, window, x, y);
         WindowState.set(window, MINIATURE_TARGET_POS, { x, y });
         WindowState.get(window, MINIATURE_OVERLAY)?.updatePosition();
         Logger.log(`[MINIATURE] draw ${window.get_id()}: target=(${x},${y}) scale=${sc.toFixed(4)} extLeft=${extL} extTop=${extT} size=${this.width}x${this.height}`);

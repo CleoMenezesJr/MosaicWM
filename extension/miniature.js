@@ -42,11 +42,81 @@ export function applyMiniatureActorState(actor, scale, extLeft, extTop, targetX,
     Logger.log(`[MINIATURE] applyMiniatureActorState: actor=( ${ax},${ay} ${actorW}x${actorH}) target=(${targetX},${targetY}) scale=${scale} tx=${tx} ty=${ty} FINAL_SIZE=${Math.round(actorW * scale)}x${Math.round(actorH * scale)}`);
 }
 
+// Replacing the translation transition stops the old one synchronously, and that stop must
+// not be read as the animation finishing: the settle would slam the actor onto the target
+// and the redirect would never get to animate anywhere.
+let redirectingWindow = null;
+
+export function isRedirectingMiniature(window) {
+    return redirectingWindow === window;
+}
+
+// Layout can move the slot while the entrance ease is still flying, and letting the ease land
+// on the stale slot means correcting it afterwards, which reads as a jump. Retarget in place
+// instead. Scale rides its own transition, so only translation is re-issued, and the pivot is
+// whatever the running ease chose.
+export function redirectMiniatureEase(actor, window, targetX, targetY) {
+    const scale = WindowState.get(window, MINIATURE_SCALE);
+    const running = actor.get_transition('translation-x');
+    if (!scale || !running) {
+        Logger.log(`[MINIATURE] redirect bail ${window.get_id()}: kind=${WindowState.get(window, MINIATURE_ANIM_KIND)} scale=${scale} running=${!!running} wanted=(${targetX},${targetY})`);
+        return false;
+    }
+
+    const prev = WindowState.get(window, MINIATURE_TARGET_POS);
+    // Recorded either way, so the settle still lands exact; what a pixel doesn't earn is
+    // restarting the ease, which rubber-bands the miniature when passes come in bursts.
+    WindowState.set(window, MINIATURE_TARGET_POS, { x: targetX, y: targetY });
+    if (prev && Math.abs(prev.x - targetX) < 2 && Math.abs(prev.y - targetY) < 2) return true;
+
+    const extL = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
+    const extT = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
+    const [ax, ay] = actor.get_position();
+    const [aw, ah] = actor.get_size();
+    const [px, py] = actor.get_pivot_point();
+    const tx = targetX - ax - px * aw * (1 - scale) - extL * scale;
+    const ty = targetY - ay - py * ah * (1 - scale) - extT * scale;
+
+    // Finishing with the transitions it started alongside keeps scale and translation in step.
+    const remaining = Math.max(1, running.get_duration() - running.get_elapsed_time());
+
+    redirectingWindow = window;
+    try {
+        actor.ease({
+            translation_x: tx,
+            translation_y: ty,
+            duration: remaining,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onStopped: (isFinished) => {
+                if (!isFinished || isRedirectingMiniature(window)) return;
+                settleMiniature(actor, window);
+            },
+        });
+    } finally {
+        redirectingWindow = null;
+    }
+    Logger.log(`[MINIATURE] redirect ${window.get_id()} -> (${targetX},${targetY}) over ${remaining}ms`);
+    return true;
+}
+
+function settleMiniature(actor, window) {
+    WindowState.remove(window, ANIMATING_MINIATURE);
+    WindowState.remove(window, MINIATURE_ANIM_KIND);
+    const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
+    const sc = WindowState.get(window, MINIATURE_SCALE);
+    Logger.log(`[MINIATURE] settle ${window.get_id()}: target=${tgt ? `(${tgt.x},${tgt.y})` : 'none'} scale=${sc ?? 'none'}`);
+    if (!tgt || !sc) return;
+    const eL = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
+    const eT = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
+    applyMiniatureActorState(actor, sc, eL, eT, tgt.x, tgt.y);
+}
+
 export function animateMiniatureToTarget(actor, window, scale, extLeft, extTop, targetX, targetY, duration) {
     const kind = WindowState.get(window, MINIATURE_ANIM_KIND);
 
     if (kind === 'create' || kind === 'restore') {
-        WindowState.set(window, MINIATURE_TARGET_POS, { x: targetX, y: targetY });
+        if (!redirectMiniatureEase(actor, window, targetX, targetY))
+            WindowState.set(window, MINIATURE_TARGET_POS, { x: targetX, y: targetY });
         return;
     }
 
@@ -69,16 +139,8 @@ export function animateMiniatureToTarget(actor, window, scale, extLeft, extTop, 
         duration,
         mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         onStopped: (isFinished) => {
-            if (!isFinished) return;
-            WindowState.remove(window, ANIMATING_MINIATURE);
-            WindowState.remove(window, MINIATURE_ANIM_KIND);
-            const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
-            const sc = WindowState.get(window, MINIATURE_SCALE);
-            if (tgt && sc) {
-                const eL = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
-                const eT = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
-                applyMiniatureActorState(actor, sc, eL, eT, tgt.x, tgt.y);
-            }
+            if (!isFinished || isRedirectingMiniature(window)) return;
+            settleMiniature(actor, window);
         },
     });
 }
@@ -409,6 +471,7 @@ export const MiniatureManager = GObject.registerClass({
     // has to re-apply the freshly written target instead of leaving the actor on a
     // stale position.
     _finishMiniatureAnim(window, windowActor) {
+        if (isRedirectingMiniature(window)) return;
         WindowState.remove(window, ANIMATING_MINIATURE);
         WindowState.remove(window, MINIATURE_ANIM_KIND);
         windowActor.set_pivot_point(0, 0);
