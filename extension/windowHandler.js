@@ -63,15 +63,9 @@ export const WindowHandler = GObject.registerClass({
         if (!workspace || monitor === undefined) return Clutter.EVENT_PROPAGATE;
         if (!this._canvasClickEligible(window, workspace, monitor)) return Clutter.EVENT_PROPAGATE;
 
-        const cm = this._ext.canvasManager;
-        const frame = window.get_frame_rect();
-        const area = workspace.get_work_area_for_monitor(monitor);
-        const w = cm.getViewportWidth(workspace, monitor);
-        const centered = Math.round(frame.x + frame.width / 2 - (area.x + w / 2)) ===
-            cm.getScrollOffset(workspace, monitor);
-        if (!centered) {
-            cm.centerOnWindow(window);
-        }
+        // revealWindow is already a no-op for a window that's fully on screen, so clicking
+        // one doesn't need a visibility test of its own.
+        this._ext.canvasManager.revealWindow(window);
         window.activate(global.get_current_time());
         return Clutter.EVENT_PROPAGATE;
     }
@@ -1001,7 +995,9 @@ export const WindowHandler = GObject.registerClass({
     }
 
     _dndRestoreSolo(win, workspace, monitor, preferredSize) {
-        const wa = workspace.get_work_area_for_monitor(monitor);
+        const wa = this.tilingManager.getUsableWorkArea(workspace, monitor);
+        // Both edges tiled leaves no mosaic space, and clamping to that zero rect commits a negative size.
+        if (!wa || wa.width <= 0) return;
         const currentRect = win.get_frame_rect();
         const targetW = Math.min(preferredSize.width, wa.width - constants.WINDOW_SPACING * 2);
         const targetH = Math.min(preferredSize.height, wa.height - constants.WINDOW_SPACING * 2);
@@ -1011,7 +1007,7 @@ export const WindowHandler = GObject.registerClass({
 
     _dndRestoreExpansion(monitorWindows, workspace, monitor) {
         const usedWidth = monitorWindows.reduce((sum, w) => sum + w.get_frame_rect().width, 0);
-        const wa = workspace.get_work_area_for_monitor(monitor);
+        const wa = this.tilingManager.getUsableWorkArea(workspace, monitor);
         const availableExtra = wa.width - usedWidth - (monitorWindows.length + 1) * constants.WINDOW_SPACING;
         if (availableExtra <= constants.ANIMATION_DIFF_THRESHOLD) return;
 

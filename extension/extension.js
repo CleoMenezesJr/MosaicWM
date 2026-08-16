@@ -248,6 +248,7 @@ export default class WindowMosaicExtension extends Extension {
         this.canvasManager = new CanvasManager();
         this.canvasManager.setTilingManager(this.tilingManager);
         this.canvasManager.setEdgeTilingManager(this.edgeTilingManager);
+        this.canvasManager.setSettledCallback(() => this._canvasRevealFocused());
         this.tilingManager.setCanvasManager(this.canvasManager);
         this.reorderingManager = new ReorderingManager();
         this.swappingManager = new SwappingManager();
@@ -737,7 +738,7 @@ export default class WindowMosaicExtension extends Extension {
         const prevFocusedId = this._lastFocusedWindowId;
         this._lastFocusedWindowId = window.get_id();
 
-        this._canvasCenterOnFocus();
+        this._canvasRevealFocused();
 
         if (!this._focusEligibleForRestore(window)) return;
 
@@ -759,15 +760,20 @@ export default class WindowMosaicExtension extends Extension {
         // 'miniature-restored' signal fires synchronously → _onMiniatureRestored runs next
     }
 
-    _canvasCenterOnFocus() {
+    // Focus fires before the pass that places the window, so a restored miniature is still
+    // sitting at its old slot here. The canvas calls this again once the layout settled,
+    // which is the run that actually has somewhere to scroll to.
+    _canvasRevealFocused() {
         const focused = global.display.focus_window;
         if (!focused || !this.canvasManager) return;
+        if (Main.overview.visible) return;
+        if (this.tilingManager.isDragging) return;
         const ws = focused.get_workspace();
         const mon = focused.get_monitor();
         if (ws && mon !== undefined &&
             this.isMosaicEnabledForWorkspace(ws) &&
             !this.windowingManager.isMaximizedOrFullscreen(focused)) {
-            this.canvasManager.centerOnWindow(focused);
+            this.canvasManager.revealWindow(focused);
         }
     }
 

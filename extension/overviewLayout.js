@@ -4,7 +4,7 @@
 
 import * as Workspace from 'resource:///org/gnome/shell/ui/workspace.js';
 import { ComputedLayouts } from './mosaicModel.js';
-import { WINDOW_SPACING, CANVAS_EXPANSION_RATIO, CANVAS_SIDE_MARGIN_RATIO } from './constants.js';
+import { WINDOW_SPACING } from './constants.js';
 
 // Scales down the layout instead of reorganizing windows (preserves spatial memory)
 // Overview clones expose the window directly or behind .source depending on where the
@@ -14,10 +14,12 @@ function metaWindowOf(clone) {
 }
 
 export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
-    constructor(props) {
+    // LayoutStrategy runs its params through Params.parse, which throws on any key it
+    // doesn't know, so the canvas handle has to be split off before super sees it.
+    constructor({ canvasManager, ...props } = {}) {
         super(props);
         this._calculating = false;
-        this._canvasManager = props?.canvasManager;
+        this._canvasManager = canvasManager;
     }
 
     computeLayout(windows, _params) {
@@ -68,14 +70,7 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
     _scaleBase(workspace, monitorIndex, workArea) {
         const cm = this._canvasManager;
         if (!cm || !cm.canvasEnabled(workspace, monitorIndex)) return workArea;
-        const margin = Math.round(workArea.width * CANVAS_SIDE_MARGIN_RATIO);
-        const offset = cm.getScrollOffset(workspace, monitorIndex);
-        return {
-            x: workArea.x - margin - offset,
-            y: workArea.y,
-            width: Math.round(workArea.width * CANVAS_EXPANSION_RATIO),
-            height: workArea.height,
-        };
+        return cm.overviewSpan(workspace, monitorIndex, workArea);
     }
 
     _firstWorkspace(clones) {

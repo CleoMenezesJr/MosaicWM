@@ -201,7 +201,7 @@ export const ReorderingManager = GObject.registerClass({
 
         // Pre-compute all valid mosaic layouts for this drag session
         const draggedId = meta_window.get_id();
-        const workArea = remainingSpace || workspace.get_work_area_for_monitor(monitor);
+        const workArea = remainingSpace || this._tilingManager.getUsableWorkArea(workspace, monitor);
         this._dragLayouts = this._tilingManager.computeDragLayouts(descriptorsCopy, workArea, draggedId);
         this._chosenLayout = null;
 

@@ -130,3 +130,6 @@ export const SWAP_OPS_COMPACT_THRESHOLD = 8;
 // CANVAS_SIDE_MARGIN_RATIO of slack on each side. Centered = scrollOffset 0.
 export const CANVAS_EXPANSION_RATIO = 1.5;
 export const CANVAS_SIDE_MARGIN_RATIO = 0.25;
+// Revealing a window stops as soon as it fits, so without this it would land flush against
+// the screen edge and read as still cut off.
+export const CANVAS_REVEAL_PADDING = 24;
