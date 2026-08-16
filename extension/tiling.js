@@ -23,8 +23,9 @@ import {
     MINIATURE_OVERLAY,
     ANIMATING_MINIATURE,
     PENDING_MINIATURE,
+    RESTORE_ANCHOR_ORDER,
 } from './windowState.js';
-import { getMiniatureSize, applyMiniatureActorState, animateMiniatureToTarget } from './miniature.js';
+import { getMiniatureSize, applyMiniatureActorState, animateMiniatureToTarget, redirectMiniatureEase } from './miniature.js';
 import { isWindowAlive } from './liveness.js';
 import { getSlowDownFactor, monotonicNow } from './timing.js';
 
@@ -114,6 +115,7 @@ export const TilingManager = GObject.registerClass({
         this._cachedTileResult = null;
         this._cachedTileOriginX = null;
         this._lastTiledOrder = null;
+        this._prevTiledOrder = null;
         // windowId -> levelIndex from the last committed tile pass
         this._lastGroupAssignment = null;
         this._skipStabilityForNextTile = false;
@@ -739,6 +741,29 @@ export const TilingManager = GObject.registerClass({
         return descriptors;
     }
 
+    // The sorts in the 6+ branch find a fit without caring where anything was, so nothing in
+    // that set both fits and preserves the previous order. Slotting one window into each
+    // position does, which is exactly what _orderDisplacement is there to score.
+    _preservingCandidates(arr) {
+        const last = this._lastTiledOrder;
+        if (!last) return [];
+        const rank = new Map(last.map((id, i) => [id, i]));
+        // Newcomers get a finite rank past the known ones; two Infinities would make the
+        // comparator return NaN and the sort undefined.
+        const rankOf = w => rank.get(w.id) ?? last.length + arr.indexOf(w);
+        const base = [...arr].sort((a, b) => rankOf(a) - rankOf(b));
+
+        const moverId = this._restoreAnchor?.id ?? arr.find(w => !rank.has(w.id))?.id;
+        const mover = base.find(w => w.id === moverId);
+        if (!mover) return [base];
+
+        const rest = base.filter(w => w !== mover);
+        const out = [];
+        for (let i = 0; i <= rest.length; i++)
+            out.push([...rest.slice(0, i), mover, ...rest.slice(i)]);
+        return out;
+    }
+
     _generatePermutations(arr, maxPermutations = 120) {
         if (arr.length <= 1) return [arr];
         if (arr.length === 2) return [arr, [arr[1], arr[0]]];
@@ -758,7 +783,12 @@ export const TilingManager = GObject.registerClass({
                 });
                 candidates.push(byPosX);
             }
-            return candidates;
+            candidates.push(...this._preservingCandidates(arr));
+            const seen = new Set();
+            return candidates.filter(c => {
+                const key = c.map(w => w.id).join(',');
+                return !seen.has(key) && seen.add(key);
+            });
         }
 
         const result = [];
@@ -896,6 +926,47 @@ export const TilingManager = GObject.registerClass({
         return (1 - Math.min(1, changed / totalPairs)) * GROUP_STABILITY_WEIGHT;
     }
 
+    // Neighbors beat an index: an index goes stale the moment any earlier window closes,
+    // while a neighbor still names the same gap.
+    _captureOrderAnchor(window) {
+        const id = window.get_id();
+        // Drop first: a miss below would otherwise leave the previous cycle's neighbors in place.
+        WindowState.remove(window, RESTORE_ANCHOR_ORDER);
+        for (const order of [this._lastTiledOrder, this._prevTiledOrder]) {
+            const i = order?.indexOf(id) ?? -1;
+            if (i < 0) continue;
+            const anchor = {
+                prev: i > 0 ? order[i - 1] : null,
+                next: i < order.length - 1 ? order[i + 1] : null,
+            };
+            WindowState.set(window, RESTORE_ANCHOR_ORDER, anchor);
+            Logger.log(`[RESTORE ANCHOR] ${id}: between ${anchor.prev} and ${anchor.next}`);
+            return;
+        }
+    }
+
+    // How far a permutation puts the restored window from the gap it left. Either neighbor
+    // alone is enough, so closing the other one doesn't strand the anchor.
+    _orderDisplacement(perm) {
+        const anchor = this._restoreAnchor?.order;
+        if (!anchor) return 0;
+        const i = perm.findIndex(w => w.id === this._restoreAnchor.id);
+        if (i < 0) return 0;
+        const p = anchor.prev === null ? -1 : perm.findIndex(w => w.id === anchor.prev);
+        const n = anchor.next === null ? -1 : perm.findIndex(w => w.id === anchor.next);
+        const candidates = this._displacementCandidates(i, p, n, anchor, perm.length);
+        return candidates.length > 0 ? Math.min(...candidates) : 0;
+    }
+
+    _displacementCandidates(i, p, n, anchor, len) {
+        const out = [];
+        if (anchor.prev === null) out.push(i);
+        else if (p >= 0) out.push(Math.abs(i - (p + 1)));
+        if (anchor.next === null) out.push(len - 1 - i);
+        else if (n >= 0) out.push(Math.abs(i - n));
+        return out;
+    }
+
     // Distance from the restored window's center to the region its miniature held (Infinity if absent).
     _restoreDisplacement(tileResult) {
         if (!this._restoreAnchor) return 0;
@@ -925,12 +996,14 @@ export const TilingManager = GObject.registerClass({
             if (isSameOrder) stability += 5;
         }
 
-        // A just-restored window makes proximity the primary pick, with geometry and stability breaking ties inside the tolerance bucket.
+        // A just-restored window goes back between the neighbors it left, and proximity to
+        // where its miniature sat only picks between orders that are equally good at that.
+        const orderGap = this._orderDisplacement(perm);
         const bucket = this._restoreAnchor
             ? Math.round(this._restoreDisplacement(result) / constants.RESTORE_PROXIMITY_TOLERANCE_PX)
             : 0;
 
-        return { geom, stability, bucket, fits };
+        return { geom, stability, bucket, orderGap, fits };
     }
 
     _findOptimalOrder(windows, workArea, tilingFn) {
@@ -947,9 +1020,12 @@ export const TilingManager = GObject.registerClass({
         const fitting = scored.filter(s => s.fits);
         const pool = fitting.length > 0 ? fitting : scored;
 
-        // Proximity to where a restored window's miniature sat comes next.
-        const minBucket = Math.min(...pool.map(s => s.bucket));
-        const inBucket = pool.filter(s => s.bucket === minBucket);
+        // Landing back in the gap it left comes next, then proximity to where its miniature sat.
+        const minGap = Math.min(...pool.map(s => s.orderGap));
+        const inGap = pool.filter(s => s.orderGap === minGap);
+
+        const minBucket = Math.min(...inGap.map(s => s.bucket));
+        const inBucket = inGap.filter(s => s.bucket === minBucket);
 
         // The band hangs off the best geometry on offer, not off a running best: chained
         // in-band hops walk the pick downhill and make it depend on the scan order.
@@ -2135,7 +2211,10 @@ export const TilingManager = GObject.registerClass({
         for (const w of meta_windows) {
             const rc = WindowState.get(w, 'restoreAnchorCenter');
             if (rc) {
-                this._restoreAnchor = { id: w.get_id(), cx: rc.cx, cy: rc.cy };
+                // restoreAnchorCenter is written only on the restore path, so reaching here
+                // already means this window is on its way back and wants its gap.
+                const order = WindowState.get(w, RESTORE_ANCHOR_ORDER);
+                this._restoreAnchor = { id: w.get_id(), cx: rc.cx, cy: rc.cy, order };
                 break;
             }
         }
@@ -2466,6 +2545,9 @@ export const TilingManager = GObject.registerClass({
 
     _recordGroupStability(tile_info) {
         if (!(tile_info?.levels?.length > 0)) return;
+        // The pass that miniaturizes a window has already dropped it from the order, so the
+        // one before is the last that can still say who its neighbors were.
+        this._prevTiledOrder = this._lastTiledOrder;
         this._lastTiledOrder = tile_info.levels.flatMap(l => l.windows).map(w => w.id);
         const newGroupAssignment = {
             pairs: this._coMembershipPairs(tile_info.levels),
@@ -2502,16 +2584,21 @@ export const TilingManager = GObject.registerClass({
 
     // Top-level only, not inside recursive tryFitWithResize.
     _createPendingMiniatures(meta_windows, computedRegions, tileArea) {
-        // Consume any restore anchor so it can't bleed into a later retile.
+        // Consume any restore anchor so it can't bleed into a later retile. Both halves die
+        // with the pass that used them: restoreMiniature writes the center a few statements
+        // after dropping IS_MINIATURE, so gating the order half on that flag hands it to
+        // whatever tile pass lands in between.
         for (const w of meta_windows) {
-            if (WindowState.get(w, 'restoreAnchorCenter'))
-                WindowState.remove(w, 'restoreAnchorCenter');
+            if (!WindowState.get(w, 'restoreAnchorCenter')) continue;
+            WindowState.remove(w, 'restoreAnchorCenter');
+            WindowState.remove(w, RESTORE_ANCHOR_ORDER);
         }
 
         if (!(this._pendingMiniatureWindows?.length > 0) || !this._extension?.miniatureManager) return;
         for (const { window: win, preSize } of this._pendingMiniatureWindows) {
             // Skip if already miniaturized, since an earlier tile call may have created it first.
             if (WindowState.get(win, IS_MINIATURE)) continue;
+            this._captureOrderAnchor(win);
             this._createOnePendingMiniature(win, preSize, computedRegions, tileArea);
         }
     }
@@ -3623,6 +3710,7 @@ export const TilingManager = GObject.registerClass({
         this._isSmartResizingBlocked = false;
         this._restoringWindowId = null;
         this._lastTiledOrder = null;
+        this._prevTiledOrder = null;
         this._lastLayoutHash = null;
         this._cachedTileResult = null;
         this._cachedTileOriginX = null;

@@ -41,6 +41,9 @@ export function clear(window) {
 export const IS_MINIATURE = 'isMiniature';
 export const MINIATURE_SCALE = 'miniatureScale';
 export const PRE_MINIATURE_SIZE = 'preMiniatureSize';
+// Who the window sat between before it miniaturized, so restoring can put it back there
+// instead of wherever the permutation search happens to land it.
+export const RESTORE_ANCHOR_ORDER = 'restoreAnchorOrder';
 export const MINIATURE_TARGET_POS = 'miniatureTargetPos';
 export const MINIATURE_EXT_LEFT = 'miniatureExtLeft';
 export const MINIATURE_EXT_TOP = 'miniatureExtTop';
