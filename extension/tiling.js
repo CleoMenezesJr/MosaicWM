@@ -108,9 +108,11 @@ export const TilingManager = GObject.registerClass({
         this._pinnedComposition = new WeakMap();
         this._activePinnedShape = null;
 
-        // Layout cache to avoid redundant O(n!) permutation calculations
+        // Layout cache to avoid redundant O(n!) permutation calculations.
+        // Where the cached layout was laid out, so a scroll that only shifts the origin reuses it by translating.
         this._lastLayoutHash = null;
         this._cachedTileResult = null;
+        this._cachedTileOriginX = null;
         this._lastTiledOrder = null;
         // windowId -> levelIndex from the last committed tile pass
         this._lastGroupAssignment = null;
@@ -376,6 +378,7 @@ export const TilingManager = GObject.registerClass({
     invalidateLayoutCache() {
         this._lastLayoutHash = null;
         this._cachedTileResult = null;
+        this._cachedTileOriginX = null;
     }
 
     getCachedLayout() {
@@ -963,24 +966,28 @@ export const TilingManager = GObject.registerClass({
         }
 
         const elapsed = Math.round(monotonicNow() - startTime);
-        Logger.log(`_findOptimalOrder: ${windows.length} windows, ${permutations.length} permutations, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
+        const anchorNote = this._restoreAnchor
+            ? ` (restore anchor ${this._restoreAnchor.id}, orderGap ${minGap}${this._restoreAnchor.order ? '' : ', no order anchor'})`
+            : '';
+        Logger.log(`_findOptimalOrder: ${windows.length} windows, ${permutations.length} permutations, ${elapsed}ms${anchorNote}`);
 
         return bestOrder;
     }
 
     // Order-sensitive hash: different input orders must never share a cache entry.
-    _getLayoutHash(windows, work_area) {
-        // Snap to 8px grid to reduce cache invalidation during resize
+    // Origin x is excluded on purpose: it shifts with every scroll and rerunning the
+    // optimizer per step isn't stable. The monitor index keeps per-monitor layouts apart.
+    _getLayoutHash(windows, work_area, monitor) {
         const snap = v => Math.round(v / 8) * 8;
         const parts = windows.map(w => `${w.id}:${snap(w.width)}x${snap(w.height)}`);
-        return `${snap(work_area.width)}x${snap(work_area.height)}|${parts.join(',')}`;
+        return `m${monitor ?? -1}|${snap(work_area.width)}x${snap(work_area.height)}|${parts.join(',')}`;
     }
 
-    _tile(windows, work_area, isSimulation = false) {
+    _tile(windows, work_area, isSimulation = false, monitor = null) {
         if (!windows || windows.length === 0) return { levels: [], vertical: false, overflow: false };
 
-        const hash = this._getLayoutHash(windows, work_area);
-        if (this._isTileCacheHit(hash, isSimulation)) {
+        const hash = this._getLayoutHash(windows, work_area, monitor);
+        if (this._isTileCacheHit(hash, isSimulation, work_area)) {
             Logger.log('_tile: Cache hit, reusing layout');
             return this._cachedTileResult;
         }
@@ -990,18 +997,25 @@ export const TilingManager = GObject.registerClass({
         const tilingFn = useVerticalShelves ? this._verticalShelves : this._horizontalShelves;
 
         const forced = this._tryForcedShape(windows, work_area, spacing, useVerticalShelves, isSimulation, hash);
-        if (forced) return forced;
+        const result = forced ?? this._autoTile(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation);
 
+        if (!isSimulation && !this.isDragging)
+            this._commitCachedLayout(hash, result, work_area.x);
+
+        return result;
+    }
+
+    _autoTile(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation) {
         let result = this._chooseTileResult(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation);
         if (result.overflow)
             result = this._tryOppositeOrientation(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation, result);
-
-        if (!isSimulation && !this.isDragging) {
-            this._lastLayoutHash = hash;
-            this._cachedTileResult = result;
-        }
-
         return result;
+    }
+
+    _commitCachedLayout(hash, result, originX) {
+        this._lastLayoutHash = hash;
+        this._cachedTileResult = result;
+        this._cachedTileOriginX = originX;
     }
 
     // A window as wide as the work area leaves no room for a second column, yet the same set fits
@@ -1027,14 +1041,37 @@ export const TilingManager = GObject.registerClass({
 
     // Skip cache during drag (order changes but hash doesn't) and while a pin is active, since
     // the hash ignores shape so a new pin would hit a stale cached layout and revert.
-    _isTileCacheHit(hash, isSimulation) {
+    _isTileCacheHit(hash, isSimulation, work_area) {
         if (!this._cachedTileResult || this._lastLayoutHash !== hash) return false;
         if (isSimulation || this.isDragging || this._activePinnedShape) return false;
 
         // The hash covers ids and sizes, not how hard we looked for an order. Without this the
         // fit check, which runs first and can't rank, gets to decide the layout for good.
-        return this._cachedTileResult.orderOptimized === true ||
-            !this._ranksOrders(this._cachedTileResult.overflow, isSimulation);
+        if (this._cachedTileResult.orderOptimized !== true &&
+            this._ranksOrders(this._cachedTileResult.overflow, isSimulation))
+            return false;
+
+        // The cache carries absolute coords bound to the origin it was laid out at, so reusing
+        // it after a scroll that only moved the origin means translating everything by the delta.
+        const dx = work_area.x - (this._cachedTileOriginX ?? work_area.x);
+        if (dx !== 0) this._translateCachedResult(dx);
+        return true;
+    }
+
+    // The levels and the window descriptors share the same array of Level objects, so
+    // mutating once fixes both. Only x moves: scrolling is horizontal, so targetY and
+    // level.y are left alone.
+    _translateCachedResult(dx) {
+        const r = this._cachedTileResult;
+        if (!r) return;
+        if (r.x !== undefined) r.x += dx;
+        for (const level of r.levels ?? []) {
+            if (level.x !== undefined) level.x += dx;
+            for (const w of level.windows ?? []) {
+                if (w.targetX !== undefined) w.targetX += dx;
+            }
+        }
+        this._cachedTileOriginX += dx;
     }
 
     // A pinned composition or an in-flight drag hint wins over the auto-chosen grid, but only
@@ -1044,8 +1081,7 @@ export const TilingManager = GObject.registerClass({
         if (this._activePinnedShape && !isSimulation && !this.isDragging) {
             const pinned = this._placeByShape(windows, work_area, spacing, this._activePinnedShape, useVerticalShelves);
             if (!pinned.overflow) {
-                this._lastLayoutHash = hash;
-                this._cachedTileResult = pinned;
+                this._commitCachedLayout(hash, pinned, work_area.x);
                 Logger.log(`_tile: ${windows.length} windows honoring pinned shape [${this._activePinnedShape.join(',')}]`);
                 return pinned;
             }
@@ -2021,7 +2057,7 @@ export const TilingManager = GObject.registerClass({
         }
 
         this._expelReferenceWindow(reference_meta_window, windows);
-        return { tile_info: this._tile(windows, tileArea), referenceOverflowSkipped: false };
+        return { tile_info: this._tile(windows, tileArea, false, monitor), referenceOverflowSkipped: false };
     }
 
     _fitReturningSacred(reference_meta_window, workspace, monitor) {
@@ -2245,7 +2281,7 @@ export const TilingManager = GObject.registerClass({
 
         this._prepareTilePass(meta_windows, windows, workspace);
 
-        let tile_info = this._tile(windows, tileArea, dryRun);
+        let tile_info = this._tile(windows, tileArea, dryRun, monitor);
         this._activePinnedShape = null;
         let overflow = this._determineOverflow(tile_info, workspace_windows);
 
@@ -2257,7 +2293,7 @@ export const TilingManager = GObject.registerClass({
         tile_info = refPhase.tile_info;
 
         const resolved = this._resolveOverflowByMiniature(
-            overflow, reference_meta_window, refPhase.referenceOverflowSkipped, meta_windows, windows, workspace, tileArea, tile_info);
+            overflow, reference_meta_window, refPhase.referenceOverflowSkipped, meta_windows, windows, workspace, monitor, tileArea, tile_info);
         tile_info = resolved.tile_info;
         overflow = resolved.overflow;
 
@@ -2339,11 +2375,11 @@ export const TilingManager = GObject.registerClass({
 
     // Nothing to eject (no reference, or its expulsion was skipped), so try
     // miniaturizing candidates to reclaim space instead of painting overflow.
-    _resolveOverflowByMiniature(overflow, reference_meta_window, referenceOverflowSkipped, meta_windows, windows, workspace, tileArea, tile_info) {
+    _resolveOverflowByMiniature(overflow, reference_meta_window, referenceOverflowSkipped, meta_windows, windows, workspace, monitor, tileArea, tile_info) {
         if (!(overflow && this._noRefMiniaturizeAllowed(reference_meta_window, referenceOverflowSkipped) && this._extension?.miniatureManager))
             return { tile_info, overflow };
 
-        const resolved = this._miniaturizeForNoRefOverflow(meta_windows, windows, workspace, reference_meta_window, tileArea);
+        const resolved = this._miniaturizeForNoRefOverflow(meta_windows, windows, workspace, reference_meta_window, monitor, tileArea);
         return resolved ? resolved : { tile_info, overflow };
     }
 
@@ -2522,7 +2558,7 @@ export const TilingManager = GObject.registerClass({
     // No reference to eject, so reclaim space by miniaturizing MRU-coldest candidates
     // one at a time until the sim stops overflowing. Returns the resolved
     // {tile_info, overflow} when it fits, or null to leave the caller's values alone.
-    _miniaturizeForNoRefOverflow(meta_windows, windows, workspace, reference_meta_window, tileArea) {
+    _miniaturizeForNoRefOverflow(meta_windows, windows, workspace, reference_meta_window, monitor, tileArea) {
         const focusedId = global.display.focus_window?.get_id();
         const resizingId = this._animationsManager?.getResizingWindowId();
         const mru = this._windowingManager.getMRUOrder(workspace);
@@ -2557,7 +2593,7 @@ export const TilingManager = GObject.registerClass({
 
             if (!this._tile(simSizes, tileArea, true).overflow) {
                 Logger.log(`[OVERFLOW] No-ref overflow resolved by miniaturizing ${pendingMinis.length} window(s)`);
-                return this._commitNoRefMinis(pendingMinis, windows, tileArea);
+                return this._commitNoRefMinis(pendingMinis, windows, tileArea, monitor);
             }
         }
 
@@ -2575,7 +2611,7 @@ export const TilingManager = GObject.registerClass({
         return [w.get_id(), { width: f.width, height: f.height }];
     }
 
-    _commitNoRefMinis(pendingMinis, windows, tileArea) {
+    _commitNoRefMinis(pendingMinis, windows, tileArea, monitor) {
         if (!this._pendingMiniatureWindows) this._pendingMiniatureWindows = [];
         for (const { candidate: c, frame: f, miniW: mW, miniH: mH } of pendingMinis) {
             Logger.log(`[OVERFLOW] Miniaturizing ${c.get_id()} (${mW}x${mH})`);
@@ -2585,7 +2621,7 @@ export const TilingManager = GObject.registerClass({
             if (desc) { desc.width = mW; desc.height = mH; }
         }
         this.invalidateLayoutCache();
-        const tile_info = this._tile(windows, tileArea);
+        const tile_info = this._tile(windows, tileArea, false, monitor);
         return { tile_info, overflow: tile_info.overflow };
     }
 
@@ -3589,6 +3625,7 @@ export const TilingManager = GObject.registerClass({
         this._lastTiledOrder = null;
         this._lastLayoutHash = null;
         this._cachedTileResult = null;
+        this._cachedTileOriginX = null;
         this._pendingMiniatureWindows = null;
         this._workspaceSwaps = null;
         this._pinnedComposition = null;
