@@ -432,8 +432,15 @@ export const WindowingManager = GObject.registerClass({
             const target = this._pickRenavigateTarget(workspace, currentIndex, lastVisitedIndex);
 
             if (target && target.index() >= 0 && target.index() !== currentIndex) {
-                target.activate(this.getTimestamp());
-                this.showWorkspaceSwitcher(target, monitorIndex);
+                const currentWindows = workspace.list_windows();
+                if (currentWindows.some(w => w.is_on_all_workspaces())) {
+                    Logger.log(
+                        '[RENAVIGATE] Current WS has is_on_all_workspaces() windows; skipping to avoid GNOME Shell WorkspaceSwitcherPopup freeze'
+                    );
+                } else {
+                    target.activate(this.getTimestamp());
+                    this.showWorkspaceSwitcher(target, monitorIndex);
+                }
             } else {
                 Logger.log(`[RENAVIGATE] No suitable target found to navigate away from WS-${currentIndex}`);
             }
@@ -504,6 +511,14 @@ export const WindowingManager = GObject.registerClass({
 
     showWorkspaceSwitcher(workspace, monitorIndex = -1) {
         if (!workspace) return;
+
+        const wsWindows = workspace.list_windows();
+        if (wsWindows.some(w => w.is_on_all_workspaces())) {
+            Logger.log(
+                '[SWITCHER] Workspace has is_on_all_workspaces() windows; skipping to avoid GNOME Shell WorkspaceSwitcherPopup freeze'
+            );
+            return;
+        }
 
         const index = workspace.index();
         Logger.log(`[SWITCHER] Activating OSD for WS-${index}`);
