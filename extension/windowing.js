@@ -481,7 +481,21 @@ export const WindowingManager = GObject.registerClass({
             }
         }
 
+        return this._guardLeftmostTarget(target, currentIndex);
+    }
+
+    // The leftmost workspace has nothing to return to; going right strands
+    // the user in the overflow zone when the target is empty.
+    _guardLeftmostTarget(target, currentIndex) {
+        if (currentIndex === 0 && target && !this._workspaceHasWindows(target)) {
+            Logger.log(`[RENAVIGATE] WS-0 is leftmost and WS-${target.index()} is empty; staying put`);
+            return null;
+        }
         return target;
+    }
+
+    _workspaceHasWindows(workspace) {
+        return workspace.list_windows().some(w => !this.isExcluded(w));
     }
 
     // The last workspace is the placeholder, so from there the only way out is left.
