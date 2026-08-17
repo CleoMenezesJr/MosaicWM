@@ -729,9 +729,14 @@ export const WindowHandler = GObject.registerClass({
         }
 
         this._isEvaluatingQueue = true;
-        // expectedWorkspace detects manual user switches; lastOverflowWorkspace cascades a
-        // batch's overflow; overflowedWorkspaces caps that cascade so it can't loop forever.
-        const state = { lastOverflowWorkspace: null, expectedWorkspace: null };
+        // lastOverflowWorkspace cascades a batch's overflow; overflowedWorkspaces caps that
+        // cascade so it can't loop forever.
+        const state = {
+            lastOverflowWorkspace: null,
+            // Only a move from batch start counts as a user switch: a batch spanning
+            // workspaces (monitor re-plug) has no expected workspace to compare against.
+            batchActiveWorkspace: this.windowingManager.getWorkspace(),
+        };
         const overflowedWorkspaces = new Set();
 
         while (this._evaluationQueue.length > 0) {
@@ -752,7 +757,6 @@ export const WindowHandler = GObject.registerClass({
             const resolved = this._resolveQueueItemWorkspace(window, workspace);
             if (resolved.skip) continue;
             workspace = this._applyQueueCascade(window, resolved.workspace, arrivedFromDnD, state, overflowedWorkspaces);
-            state.expectedWorkspace = workspace;
 
             Logger.log(`Evaluating queued window ${window.get_id()} on WS-${workspace.index()} (remaining: ${this._evaluationQueue.length})`);
             await this._evaluateQueuedWindowFit(window, workspace, monitor, arrivedFromDnD, state, overflowedWorkspaces);
@@ -783,14 +787,14 @@ export const WindowHandler = GObject.registerClass({
     // in-flight cascade), else keep cascading this batch's overflow. Returns that workspace.
     _applyQueueCascade(window, workspace, arrivedFromDnD, state, overflowedWorkspaces) {
         const activeWorkspace = this.windowingManager.getWorkspace();
-        const targetWorkspace = state.lastOverflowWorkspace || state.expectedWorkspace || workspace;
 
         // A drop is a destination the user chose, so "they navigated away" doesn't apply; without
         // this the overview drag lands the window and the cascade immediately drags it back.
         const droppedByUser = arrivedFromDnD;
 
-        if (!droppedByUser && activeWorkspace && targetWorkspace && activeWorkspace.index() !== targetWorkspace.index()) {
-            Logger.log(`Evaluation queue: User switched to WS-${activeWorkspace.index()} during processing (expected WS-${targetWorkspace.index()}) - following user`);
+        if (!droppedByUser && activeWorkspace && state.batchActiveWorkspace &&
+            activeWorkspace.index() !== state.batchActiveWorkspace.index()) {
+            Logger.log(`Evaluation queue: User switched to WS-${activeWorkspace.index()} during processing (batch started on WS-${state.batchActiveWorkspace.index()}) - following user`);
             state.lastOverflowWorkspace = null;
             overflowedWorkspaces.clear();
             window.change_workspace(activeWorkspace);
@@ -826,7 +830,6 @@ export const WindowHandler = GObject.registerClass({
             if (resultWorkspace && resultWorkspace.index() !== workspace.index()) {
                 overflowedWorkspaces.add(workspace.index());
                 state.lastOverflowWorkspace = resultWorkspace;
-                state.expectedWorkspace = resultWorkspace;
             }
 
             const managedWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
