@@ -91,6 +91,7 @@ export default class WindowMosaicExtension extends Extension {
 
         this._timeoutRegistry = null;
         this._pendingOverviewHiddenCallbacks = [];
+        this._pendingCanvasReveal = null;
 
         this._disabledWorkspaceStates = new WeakMap();
         this._mosaicDisabledByDefault = false;
@@ -234,6 +235,7 @@ export default class WindowMosaicExtension extends Extension {
         this._mosaicDisabledByDefault = false;
         this._timeoutRegistry = new TimeoutRegistry();
         this._pendingOverviewHiddenCallbacks = [];
+        this._pendingCanvasReveal = null;
         this._workspaceManager = global.workspace_manager;
 
         // SettingsOverrider already handles a stale override from a previous
@@ -542,6 +544,9 @@ export default class WindowMosaicExtension extends Extension {
         // Mutter already accepts move_resize_frame here, so real windows are in place
         // before the closing animation finishes and nothing flashes untiled.
         this._onOverviewHidingId = Main.overview.connect('hiding', () => {
+            // Ahead of the flush, or the exit animates to the pre-scroll slots and the picked
+            // window shows up off screen before the canvas catches up.
+            this._revealPickedWindow();
             // A restored window's group region is still its old miniature size here, so flushing
             // would shrink it before the pass deferred to 'hidden' grows it back.
             if (this._pendingOverviewHiddenCallbacks.length > 0) return;
@@ -738,7 +743,12 @@ export default class WindowMosaicExtension extends Extension {
         const prevFocusedId = this._lastFocusedWindowId;
         this._lastFocusedWindowId = window.get_id();
 
-        this._canvasRevealFocused();
+        // The canvas doesn't scroll under the overview, so a window picked there hands its
+        // reveal to the exit.
+        if (Main.overview.visible)
+            this._pendingCanvasReveal = window;
+        else
+            this._canvasRevealFocused();
 
         if (!this._focusEligibleForRestore(window)) return;
 
@@ -768,13 +778,28 @@ export default class WindowMosaicExtension extends Extension {
         if (!focused || !this.canvasManager) return;
         if (Main.overview.visible) return;
         if (this.tilingManager.isDragging) return;
-        const ws = focused.get_workspace();
-        const mon = focused.get_monitor();
+        this._canvasReveal(focused);
+    }
+
+    _canvasReveal(window) {
+        const ws = window.get_workspace();
+        const mon = window.get_monitor();
         if (ws && mon !== undefined &&
             this.isMosaicEnabledForWorkspace(ws) &&
-            !this.windowingManager.isMaximizedOrFullscreen(focused)) {
-            this.canvasManager.revealWindow(focused);
+            !this.windowingManager.isMaximizedOrFullscreen(window)) {
+            this.canvasManager.revealWindow(window);
         }
+    }
+
+    // A restore deferred to 'hidden' retiles after this, so that one takes its reveal from
+    // the settle and the window stashed here is just dropped.
+    _revealPickedWindow() {
+        const window = this._pendingCanvasReveal;
+        this._pendingCanvasReveal = null;
+        if (!window || !isWindowAlive(window) || !this.canvasManager) return;
+        if (this._pendingOverviewHiddenCallbacks.length > 0) return;
+        Logger.log(`[CANVAS] Revealing picked window ${window.get_id()}`);
+        this._canvasReveal(window);
     }
 
     // Only a miniature that the user could sensibly want back qualifies; a maximized,
@@ -1263,6 +1288,7 @@ export default class WindowMosaicExtension extends Extension {
         this.windowingManager = null;
         this._timeoutRegistry = null;
         this._pendingOverviewHiddenCallbacks = [];
+        this._pendingCanvasReveal = null;
         this._mutterSettings = null;
         this._settingsOverrider = null;
         this._injectionManager = null;
