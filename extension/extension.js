@@ -984,9 +984,7 @@ export default class WindowMosaicExtension extends Extension {
         // The pan's own pass settles a few ms later, and a reveal still armed there would
         // scroll right back to the focused window.
         this._pendingCanvasReveal = null;
-        const width = this.canvasManager.getViewportWidth(workspace, monitor);
-        const step = Math.round(width * constants.CANVAS_SCROLL_STEP_RATIO);
-        this.canvasManager.stepScroll(workspace, monitor, direction === 'left' ? -step : step);
+        this.canvasManager.stepToNextWindow(workspace, monitor, direction);
     }
 
     _onCanvasScrollEvent(event) {

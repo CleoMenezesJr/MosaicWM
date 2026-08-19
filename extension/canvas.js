@@ -9,6 +9,7 @@ import GObject from 'gi://GObject';
 
 import { CANVAS_EXPANSION_RATIO, CANVAS_SIDE_MARGIN_RATIO, CANVAS_REVEAL_PADDING } from './constants.js';
 import { constraintSupported } from './mosaicConstraint.js';
+import { isWindowAlive } from './liveness.js';
 import { MosaicModel } from './mosaicModel.js';
 
 export const CanvasManager = GObject.registerClass({
@@ -208,9 +209,32 @@ export const CanvasManager = GObject.registerClass({
             this.getScrollOffset(workspace, monitor) + delta);
     }
 
-    stepScroll(workspace, monitor, delta) {
-        this.animateScroll(workspace, monitor,
-            this.getScrollOffset(workspace, monitor) + delta);
+    // Measured toward the direction of travel (dir flips the sign), so the nearest window
+    // still out of view is the smallest key past the bound either way.
+    _offscreenKeys(group, dir, bound) {
+        const out = [];
+        for (const { window, region } of group.members()) {
+            if (!region || !isWindowAlive(window)) continue;
+            const edge = dir > 0 ? region.x + region.width : region.x;
+            const key = dir * (edge + dir * CANVAS_REVEAL_PADDING);
+            if (key > bound) out.push({ window, key });
+        }
+        return out;
+    }
+
+    // A step in pixels stops wherever it happens to stop, so the stop is a window instead:
+    // the nearest one that isn't whole on that side, brought in by the same minimal scroll.
+    // Nothing left to reach is a no-op, not a slide into empty canvas.
+    stepToNextWindow(workspace, monitor, direction) {
+        if (!this.canvasEnabled(workspace, monitor)) return;
+        const area = workspace.get_work_area_for_monitor(monitor);
+        const group = MosaicModel.store.groupFor(workspace.index(), monitor);
+        if (!area || !group) return;
+        const dir = direction === 'left' ? -1 : 1;
+        const viewEdge = dir > 0 ? area.x + this.getViewportWidth(workspace, monitor) : area.x;
+        const candidates = this._offscreenKeys(group, dir, dir * viewEdge);
+        if (candidates.length === 0) return;
+        this.revealWindow(candidates.reduce((a, b) => (b.key < a.key ? b : a)).window);
     }
 
     onWorkspaceRemoved(workspace) {
