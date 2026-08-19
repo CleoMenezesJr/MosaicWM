@@ -92,11 +92,12 @@ export const CanvasManager = GObject.registerClass({
         if (!bounds) return { lo: -half, hi: half };
         const view = this.getViewportWidth(workspace, monitor);
         if (bounds.right - bounds.left <= view) return { lo: 0, hi: 0 };
-        // Scrolled far enough that an edge of the content meets the matching edge of the
-        // viewport; past that there is only empty canvas to look at.
+        // Scrolled far enough that an edge of the content sits the reveal's padding inside the
+        // viewport; without room for that padding the outermost window is never quite whole,
+        // so it stays a candidate and eats the keypress meant to reach it.
         const margin = Math.round(view * CANVAS_SIDE_MARGIN_RATIO);
-        const lo = Math.max(-half, bounds.left - margin);
-        const hi = Math.min(half, bounds.right - margin - view);
+        const lo = Math.max(-half, bounds.left - margin - CANVAS_REVEAL_PADDING);
+        const hi = Math.min(half, bounds.right - margin - view + CANVAS_REVEAL_PADDING);
         return lo > hi ? { lo: 0, hi: 0 } : { lo, hi };
     }
 
@@ -197,10 +198,11 @@ export const CanvasManager = GObject.registerClass({
         const pastLeft = area.x - (rect.x - CANVAS_REVEAL_PADDING);
         const pastRight = (rect.x + rect.width + CANVAS_REVEAL_PADDING) - (area.x + w);
         // A window wider than the viewport sticks out either way; showing its left edge
-        // beats showing its right one.
+        // beats showing its right one. Rounded up because regions land on half pixels, and
+        // stopping half a pixel short leaves the window counting as off screen forever.
         let delta = 0;
-        if (pastLeft > 0) delta = -pastLeft;
-        else if (pastRight > 0) delta = pastRight;
+        if (pastLeft > 0) delta = -Math.ceil(pastLeft);
+        else if (pastRight > 0) delta = Math.ceil(pastRight);
         if (delta === 0) return;
         this.animateScroll(workspace, monitor,
             this.getScrollOffset(workspace, monitor) + delta);
