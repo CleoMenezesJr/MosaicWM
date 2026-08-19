@@ -250,7 +250,7 @@ export default class WindowMosaicExtension extends Extension {
         this.canvasManager = new CanvasManager();
         this.canvasManager.setTilingManager(this.tilingManager);
         this.canvasManager.setEdgeTilingManager(this.edgeTilingManager);
-        this.canvasManager.setSettledCallback(() => this._canvasRevealFocused());
+        this.canvasManager.setSettledCallback(() => this._consumePendingReveal());
         this.tilingManager.setCanvasManager(this.canvasManager);
         this.reorderingManager = new ReorderingManager();
         this.swappingManager = new SwappingManager();
@@ -544,12 +544,13 @@ export default class WindowMosaicExtension extends Extension {
         // Mutter already accepts move_resize_frame here, so real windows are in place
         // before the closing animation finishes and nothing flashes untiled.
         this._onOverviewHidingId = Main.overview.connect('hiding', () => {
+            // A restored window's group region is still its old miniature size here, so flushing
+            // would shrink it before the pass deferred to 'hidden' grows it back. That pass
+            // settles later and spends the arm itself.
+            if (this._pendingOverviewHiddenCallbacks.length > 0) return;
             // Ahead of the flush, or the exit animates to the pre-scroll slots and the picked
             // window shows up off screen before the canvas catches up.
-            this._revealPickedWindow();
-            // A restored window's group region is still its old miniature size here, so flushing
-            // would shrink it before the pass deferred to 'hidden' grows it back.
-            if (this._pendingOverviewHiddenCallbacks.length > 0) return;
+            this._consumePendingReveal();
             Logger.log('[FLUSH] triggered by hiding');
             this._flushMosaicToWindows();
         });
@@ -743,12 +744,12 @@ export default class WindowMosaicExtension extends Extension {
         const prevFocusedId = this._lastFocusedWindowId;
         this._lastFocusedWindowId = window.get_id();
 
-        // The canvas doesn't scroll under the overview, so a window picked there hands its
-        // reveal to the exit.
-        if (Main.overview.visible)
-            this._pendingCanvasReveal = window;
-        else
-            this._canvasRevealFocused();
+        // A restored miniature is still at its old slot when focus fires, so arming lets the
+        // pass that lands the layout do the reveal; the try below covers focus changes no
+        // pass follows.
+        this._pendingCanvasReveal = window;
+        if (!Main.overview.visible && !this.tilingManager.isDragging)
+            this._canvasReveal(window);
 
         if (!this._focusEligibleForRestore(window)) return;
 
@@ -770,18 +771,8 @@ export default class WindowMosaicExtension extends Extension {
         // 'miniature-restored' signal fires synchronously → _onMiniatureRestored runs next
     }
 
-    // Focus fires before the pass that places the window, so a restored miniature is still
-    // sitting at its old slot here. The canvas calls this again once the layout settled,
-    // which is the run that actually has somewhere to scroll to.
-    _canvasRevealFocused() {
-        const focused = global.display.focus_window;
-        if (!focused || !this.canvasManager) return;
-        if (Main.overview.visible) return;
-        if (this.tilingManager.isDragging) return;
-        this._canvasReveal(focused);
-    }
-
     _canvasReveal(window) {
+        if (!this.canvasManager) return;
         const ws = window.get_workspace();
         const mon = window.get_monitor();
         if (ws && mon !== undefined &&
@@ -791,14 +782,14 @@ export default class WindowMosaicExtension extends Extension {
         }
     }
 
-    // A restore deferred to 'hidden' retiles after this, so that one takes its reveal from
-    // the settle and the window stashed here is just dropped.
-    _revealPickedWindow() {
+    // Spent by whoever lands the layout the window was armed for: the settle after its tile
+    // pass, or the overview's exit.
+    _consumePendingReveal() {
         const window = this._pendingCanvasReveal;
         this._pendingCanvasReveal = null;
-        if (!window || !isWindowAlive(window) || !this.canvasManager) return;
-        if (this._pendingOverviewHiddenCallbacks.length > 0) return;
-        Logger.log(`[CANVAS] Revealing picked window ${window.get_id()}`);
+        if (!window || !isWindowAlive(window)) return;
+        if (this.tilingManager.isDragging) return;
+        Logger.log(`[CANVAS] Revealing window ${window.get_id()}`);
         this._canvasReveal(window);
     }
 
@@ -990,6 +981,9 @@ export default class WindowMosaicExtension extends Extension {
         if (!workspace || !this.isMosaicEnabledForWorkspace(workspace)) return;
         if (Main.overview.visible) return;
         if (this.tilingManager.isDragging) return;
+        // The pan's own pass settles a few ms later, and a reveal still armed there would
+        // scroll right back to the focused window.
+        this._pendingCanvasReveal = null;
         const width = this.canvasManager.getViewportWidth(workspace, monitor);
         const delta = direction === 'left' ? -width : width;
         this.canvasManager.stepScroll(workspace, monitor, delta);

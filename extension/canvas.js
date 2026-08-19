@@ -25,8 +25,8 @@ export const CanvasManager = GObject.registerClass({
         this._onSettled = null;
     }
 
-    // Revealing the focused window has to wait for the layout that placed it, and the
-    // guards for when that's unwelcome (drag, overview) live with the caller.
+    // Revealing a window has to wait for the layout that placed it, and the guards for when
+    // that's unwelcome (drag, a pan the user just made) live with the caller.
     setSettledCallback(callback) {
         this._onSettled = callback;
     }
