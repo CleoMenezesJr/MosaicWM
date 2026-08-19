@@ -7,7 +7,7 @@
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 
-import { CANVAS_EXPANSION_RATIO, CANVAS_SIDE_MARGIN_RATIO, CANVAS_REVEAL_PADDING } from './constants.js';
+import { CANVAS_EXPANSION_RATIO, CANVAS_SIDE_MARGIN_RATIO, CANVAS_REVEAL_PADDING, WINDOW_SPACING } from './constants.js';
 import { constraintSupported } from './mosaicConstraint.js';
 import { isWindowAlive } from './liveness.js';
 import { MosaicModel } from './mosaicModel.js';
@@ -93,12 +93,11 @@ export const CanvasManager = GObject.registerClass({
         if (!bounds) return { lo: -half, hi: half };
         const view = this.getViewportWidth(workspace, monitor);
         if (bounds.right - bounds.left <= view) return { lo: 0, hi: 0 };
-        // Scrolled far enough that an edge of the content sits the reveal's padding inside the
-        // viewport; without room for that padding the outermost window is never quite whole,
-        // so it stays a candidate and eats the keypress meant to reach it.
+        // Scrolled far enough that the outermost window clears the viewport edge by the same
+        // gap it keeps from its neighbors; past that there is only empty canvas to look at.
         const margin = Math.round(view * CANVAS_SIDE_MARGIN_RATIO);
-        const lo = Math.max(-half, bounds.left - margin - CANVAS_REVEAL_PADDING);
-        const hi = Math.min(half, bounds.right - margin - view + CANVAS_REVEAL_PADDING);
+        const lo = Math.max(-half, bounds.left - margin - WINDOW_SPACING);
+        const hi = Math.min(half, bounds.right - margin - view + WINDOW_SPACING);
         return lo > hi ? { lo: 0, hi: 0 } : { lo, hi };
     }
 
@@ -172,16 +171,17 @@ export const CanvasManager = GObject.registerClass({
     // tile animation eases every window to its shifted slot. A target that
     // clamps back to the current offset is a no-op, not a retile.
     animateScroll(workspace, monitor, target) {
-        if (this._scrolling) return;
+        if (this._scrolling) return false;
         const before = this.getScrollOffset(workspace, monitor);
         const clamped = this.setScrollOffset(workspace, monitor, target);
-        if (clamped === before) return;
+        if (clamped === before) return false;
         this._scrolling = true;
         try {
             this._tilingManager?.tileWorkspaceWindows(workspace, null, monitor, false);
         } finally {
             this._scrolling = false;
         }
+        return true;
     }
 
     // Scroll only as far as it takes to bring the window fully on screen. Centering it
@@ -190,11 +190,11 @@ export const CanvasManager = GObject.registerClass({
     revealWindow(window) {
         const workspace = window.get_workspace();
         const monitor = window.get_monitor();
-        if (!workspace || !this.canvasEnabled(workspace, monitor)) return;
+        if (!workspace || !this.canvasEnabled(workspace, monitor)) return false;
         // Mid-animation the frame is a transient size, so ask the model what the layout wants.
         const rect = MosaicModel.geometryOf(window);
         const area = workspace.get_work_area_for_monitor(monitor);
-        if (!rect || !area) return;
+        if (!rect || !area) return false;
         const w = this.getViewportWidth(workspace, monitor);
         const pastLeft = area.x - (rect.x - CANVAS_REVEAL_PADDING);
         const pastRight = (rect.x + rect.width + CANVAS_REVEAL_PADDING) - (area.x + w);
@@ -204,19 +204,20 @@ export const CanvasManager = GObject.registerClass({
         let delta = 0;
         if (pastLeft > 0) delta = -Math.ceil(pastLeft);
         else if (pastRight > 0) delta = Math.ceil(pastRight);
-        if (delta === 0) return;
-        this.animateScroll(workspace, monitor,
+        if (delta === 0) return false;
+        return this.animateScroll(workspace, monitor,
             this.getScrollOffset(workspace, monitor) + delta);
     }
 
-    // Measured toward the direction of travel (dir flips the sign), so the nearest window
-    // still out of view is the smallest key past the bound either way.
+    // Whole means the same clearance a window keeps from its neighbors. Measured toward the
+    // direction of travel (dir flips the sign), so the nearest one still short of that is the
+    // smallest key past the bound either way.
     _offscreenKeys(group, dir, bound) {
         const out = [];
         for (const { window, region } of group.members()) {
             if (!region || !isWindowAlive(window)) continue;
             const edge = dir > 0 ? region.x + region.width : region.x;
-            const key = dir * (edge + dir * CANVAS_REVEAL_PADDING);
+            const key = dir * (edge + dir * WINDOW_SPACING);
             if (key > bound) out.push({ window, key });
         }
         return out;
@@ -232,9 +233,12 @@ export const CanvasManager = GObject.registerClass({
         if (!area || !group) return;
         const dir = direction === 'left' ? -1 : 1;
         const viewEdge = dir > 0 ? area.x + this.getViewportWidth(workspace, monitor) : area.x;
-        const candidates = this._offscreenKeys(group, dir, dir * viewEdge);
-        if (candidates.length === 0) return;
-        this.revealWindow(candidates.reduce((a, b) => (b.key < a.key ? b : a)).window);
+        // Nearest first, and whoever the range can't reach any more is passed over: a stop has
+        // to move something, or the keypress dies against the clamp at the end of the canvas.
+        const candidates = this._offscreenKeys(group, dir, dir * viewEdge).sort((a, b) => a.key - b.key);
+        for (const { window } of candidates) {
+            if (this.revealWindow(window)) return;
+        }
     }
 
     onWorkspaceRemoved(workspace) {
