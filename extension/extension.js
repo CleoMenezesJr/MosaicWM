@@ -985,8 +985,8 @@ export default class WindowMosaicExtension extends Extension {
         // scroll right back to the focused window.
         this._pendingCanvasReveal = null;
         const width = this.canvasManager.getViewportWidth(workspace, monitor);
-        const delta = direction === 'left' ? -width : width;
-        this.canvasManager.stepScroll(workspace, monitor, delta);
+        const step = Math.round(width * constants.CANVAS_SCROLL_STEP_RATIO);
+        this.canvasManager.stepScroll(workspace, monitor, direction === 'left' ? -step : step);
     }
 
     _onCanvasScrollEvent(event) {
