@@ -789,8 +789,10 @@ export const TilingManager = GObject.registerClass({
         return { maxPair, meanPair: pairs ? sum / pairs : 0 };
     }
 
+    // A pool holding anything that fits drops the overflowing ones first, so these only ever
+    // compete against each other; unscored, that comparison is a coin flip.
     _scoreLayout(tileResult, workArea) {
-        if (!tileResult || tileResult.overflow) return null;
+        if (!tileResult) return null;
 
         const centers = [];
         for (const level of tileResult.levels) {
@@ -913,15 +915,14 @@ export const TilingManager = GObject.registerClass({
         const score = this._scoreLayout(result, workArea);
         const fits = !result.overflow;
 
-        let stability = 0;
-        if (fits) {
-            stability = this._positionStabilityBonus(result, workArea) +
-                this._groupStabilityBonus(result);
-            // Prefer current order (+5) to avoid unnecessary visual swaps
-            const isSameOrder = perm.length === currentIds.length &&
-                perm.every((w, i) => w.id === currentIds[i]);
-            if (isSameOrder) stability += 5;
-        }
+        // Displacement is well defined whether or not the layout fits. Gate this on fits and an
+        // all-overflowing pool ties at zero, handing the pick to whatever the scan reaches first.
+        let stability = this._positionStabilityBonus(result, workArea) +
+            this._groupStabilityBonus(result);
+        // Prefer current order (+5) to avoid unnecessary visual swaps
+        const isSameOrder = perm.length === currentIds.length &&
+            perm.every((w, i) => w.id === currentIds[i]);
+        if (isSameOrder) stability += 5;
 
         // A just-restored window makes proximity the primary pick, with geometry and stability breaking ties inside the tolerance bucket.
         const bucket = this._restoreAnchor
