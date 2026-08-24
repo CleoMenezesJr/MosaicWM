@@ -1123,25 +1123,14 @@ export const TilingManager = GObject.registerClass({
         return result;
     }
 
-    // Vertical shelves has two packings to offer (rows on or off); horizontal offers one
-    // placer per row count, since each is a differently-shaped candidate to score.
+    // Vertical shelves has two shapes to offer (rows on or off) instead of one; horizontal
+    // still only has itself.
     _placersFor(tilingFn, useVerticalShelves, windowCount) {
-        // One or two windows have a fixed arrangement, so there is no row count to choose.
-        if (windowCount <= 2) return [tilingFn];
-
-        if (useVerticalShelves) {
-            return [
-                (order, area, sp) => this._verticalShelvesWith(order, area, sp, false),
-                (order, area, sp) => this._verticalShelvesWith(order, area, sp, true),
-            ];
-        }
-
-        const placers = [];
-        for (let rows = 1; rows <= windowCount; rows++) {
-            const windowsPerRow = this._distributeWindowsPerRow(windowCount, rows);
-            placers.push((order, area, sp) => this._horizontalShelvesWith(order, area, sp, windowsPerRow));
-        }
-        return placers;
+        if (!useVerticalShelves) return [tilingFn];
+        return [
+            (order, area, sp) => this._verticalShelvesWith(order, area, sp, false),
+            (order, area, sp) => this._verticalShelvesWith(order, area, sp, true),
+        ];
     }
 
     _finishColumnLayout({ levels, totalWidth, overflow }, windows, work_area, spacing) {
@@ -1403,19 +1392,13 @@ export const TilingManager = GObject.registerClass({
         };
     }
 
-    // Non-search callers (drag, simulation, overflow fallback) never see the row-count search,
-    // so they still need one grid picked up front instead of a list of candidates.
     _horizontalShelves(windows, work_area, spacing) {
         if (windows.length <= 2) {
             return this._simpleCenteredRow(windows, work_area, spacing);
         }
-        const { windowsPerRow } = this._calculateOptimalGrid(windows, work_area);
-        return this._horizontalShelvesWith(windows, work_area, spacing, windowsPerRow);
-    }
-
-    _horizontalShelvesWith(windows, work_area, spacing, windowsPerRow) {
+        const { rows: numRows, windowsPerRow } = this._calculateOptimalGrid(windows, work_area);
         const { levels, totalHeight, overflow } =
-            this._buildShelfRows(windows, work_area, spacing, windowsPerRow.length, windowsPerRow);
+            this._buildShelfRows(windows, work_area, spacing, numRows, windowsPerRow);
 
         const y = Math.max(work_area.y, (work_area.height - totalHeight) / 2 + work_area.y);
         this._positionShelfWindows(levels, y, spacing, work_area);
