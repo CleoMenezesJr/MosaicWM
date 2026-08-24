@@ -1162,8 +1162,8 @@ export const TilingManager = GObject.registerClass({
 
         const placers = [];
         for (let rows = 1; rows <= windowCount; rows++) {
-            const windowsPerRow = this._distributeWindowsPerRow(windowCount, rows);
-            placers.push((order, area, sp) => this._horizontalShelvesWith(order, area, sp, windowsPerRow));
+            for (const perRow of this._rowSplitVariants(this._distributeWindowsPerRow(windowCount, rows)))
+                placers.push((order, area, sp) => this._horizontalShelvesWith(order, area, sp, perRow));
         }
         return placers;
     }
@@ -1671,6 +1671,14 @@ export const TilingManager = GObject.registerClass({
         }
 
         return { rows: bestRows, windowsPerRow: this._distributeWindowsPerRow(windowCount, bestRows) };
+    }
+
+    // The remainder always sinks to the lower rows, so three windows in two rows can only be
+    // 1 over 2. Mirroring puts the fuller row on top, next to a shrinking window's neighbors.
+    _rowSplitVariants(windowsPerRow) {
+        const mirrored = [...windowsPerRow].reverse();
+        if (mirrored.every((n, i) => n === windowsPerRow[i])) return [windowsPerRow];
+        return [windowsPerRow, mirrored];
     }
 
     // Spread the leftover windows outward from the center row, so an uneven grid stays
