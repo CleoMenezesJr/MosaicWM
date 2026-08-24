@@ -110,6 +110,7 @@ export const TilingManager = GObject.registerClass({
         this._lastTiledOrder = null;
         // windowId -> levelIndex from the last committed tile pass
         this._lastGroupAssignment = null;
+        this._lastTiledVertical = null;
         this._skipStabilityForNextTile = false;
 
         // Swap/reorder operations live per workspace, keyed by Meta.Workspace via WeakMap
@@ -913,13 +914,23 @@ export const TilingManager = GObject.registerClass({
         return { score, position, group, sameOrder, fits };
     }
 
+    // Everyone on screen was already tiled, so this pass is a miniaturize, a restore or a resize:
+    // the layout is settling, not being built. A newcomer means the opposite.
+    _layoutIsSettling(windows) {
+        const tiled = this._lastGroupAssignment?.ids;
+        if (!tiled) return false;
+        return windows.every(w => tiled.has(w.id));
+    }
+
     // The band hangs off the tightest layout on offer, not off a running best: chained in-band
-    // hops walk the pick downhill and make it depend on the scan order.
-    _bandFinalists(pool) {
+    // hops walk the pick downhill and make it depend on the scan order. It only opens once the
+    // set settles; while a window is arriving, density outranks anything worth preserving.
+    _bandFinalists(pool, settling) {
         const scored = pool.filter(s => s.score);
         const tightest = scored.length
             ? Math.min(...scored.map(s => s.score.maxPair)) : Infinity;
-        const band = scored.filter(s => s.score.maxPair <= tightest + COMPACTNESS_TIE_BAND);
+        const width = settling ? COMPACTNESS_TIE_BAND : 0;
+        const band = scored.filter(s => s.score.maxPair <= tightest + width);
         // Nothing scored because nothing fit, so stability decides on its own like before.
         return band.length ? band : pool;
     }
@@ -988,7 +999,8 @@ export const TilingManager = GObject.registerClass({
         const fitting = scored.filter(s => s.fits);
         const pool = fitting.length > 0 ? fitting : scored;
 
-        const finalists = this._bandFinalists(pool);
+        const settling = this._layoutIsSettling(windows);
+        const finalists = this._bandFinalists(pool, settling);
 
         let best = null;
         for (const s of finalists) {
@@ -996,7 +1008,7 @@ export const TilingManager = GObject.registerClass({
         }
 
         const elapsed = Math.round(monotonicNow() - startTime);
-        Logger.log(`_findOptimalLayout: ${windows.length} windows, ${orders.length} orders x ${placers.length} placers, ${scored.length} scored, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
+        Logger.log(`_findOptimalLayout: ${windows.length} windows, ${orders.length} orders x ${placers.length} placers, ${scored.length} scored, ${settling ? 'settling' : 'packing'}, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
 
         return best ? { order: best.perm, place: best.place } : { order: windows, place: placers[0] };
     }
@@ -1019,7 +1031,7 @@ export const TilingManager = GObject.registerClass({
         }
 
         const spacing = constants.WINDOW_SPACING;
-        const useVerticalShelves = this._useVerticalForDrag(windows, work_area);
+        const useVerticalShelves = this._orientationFor(windows, work_area);
         const tilingFn = useVerticalShelves ? this._verticalShelves : this._horizontalShelves;
 
         const forced = this._tryForcedShape(windows, work_area, spacing, useVerticalShelves, isSimulation, hash);
@@ -1137,8 +1149,9 @@ export const TilingManager = GObject.registerClass({
             return currentResult;
         }
 
+        const settling = this._layoutIsSettling(windows);
         const winner = this._findOptimalLayout(windows, work_area,
-            this._placersFor(tilingFn, useVerticalShelves, windows.length));
+            this._placersFor(tilingFn, useVerticalShelves, windows.length, settling));
         // Scoring a candidate writes targetX/targetY onto the shared descriptors, so the
         // winner has to be the last one placed.
         const result = winner.place.call(this, winner.order, work_area, spacing);
@@ -1150,10 +1163,7 @@ export const TilingManager = GObject.registerClass({
 
     // Vertical shelves has two packings to offer (rows on or off); horizontal offers one
     // placer per row count, since each is a differently-shaped candidate to score.
-    _placersFor(tilingFn, useVerticalShelves, windowCount) {
-        // One or two windows have a fixed arrangement, so there is no row count to choose.
-        if (windowCount <= 2) return [tilingFn];
-
+    _shelfPlacers(useVerticalShelves, windowCount) {
         if (useVerticalShelves) {
             return [
                 (order, area, sp) => this._verticalShelvesWith(order, area, sp, false),
@@ -1167,6 +1177,23 @@ export const TilingManager = GObject.registerClass({
                 placers.push((order, area, sp) => this._horizontalShelvesWith(order, area, sp, perRow));
         }
         return placers;
+    }
+
+    // Miniaturizing shrinks the tallest window, which is exactly what the heuristic reads, so
+    // letting it speak on every pass flips rows into columns and back mid-cycle.
+    _orientationFor(windows, workArea) {
+        if (this._lastTiledVertical !== null && this._layoutIsSettling(windows))
+            return this._lastTiledVertical;
+        return this._useVerticalForDrag(windows, workArea);
+    }
+
+    // A settling set competes only inside the shapes of the orientation it already has; a
+    // newcomer gets both, since that is the one pass that picks the arrangement from scratch.
+    _placersFor(tilingFn, useVerticalShelves, windowCount, settling) {
+        // One or two windows have a fixed arrangement, so there is no row count to choose.
+        if (windowCount <= 2) return [tilingFn];
+        if (settling) return this._shelfPlacers(useVerticalShelves, windowCount);
+        return [...this._shelfPlacers(false, windowCount), ...this._shelfPlacers(true, windowCount)];
     }
 
     _finishColumnLayout({ levels, totalWidth, overflow }, windows, work_area, spacing) {
@@ -2548,6 +2575,7 @@ export const TilingManager = GObject.registerClass({
             ids: new Set(tile_info.levels.flatMap(l => l.windows.map(w => w.id))),
         };
         this._lastGroupAssignment = newGroupAssignment;
+        this._lastTiledVertical = !!tile_info.vertical;
         // Partition rather than the pair set, which is quadratic and fires on every drag retile.
         const partition = tile_info.levels.map(l => `[${l.windows.map(w => w.id).join(',')}]`).join('');
         Logger.log(`[GROUP STABILITY] Recorded ${newGroupAssignment.pairs.size} pairs over ${partition}`);
