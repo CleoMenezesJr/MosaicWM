@@ -1123,8 +1123,27 @@ export const TilingManager = GObject.registerClass({
         return result;
     }
 
+    // Vertical shelves has two shapes to offer (rows on or off) instead of one; horizontal
+    // still only has itself.
     _placersFor(tilingFn, useVerticalShelves, windowCount) {
-        return [tilingFn];
+        if (!useVerticalShelves) return [tilingFn];
+        return [
+            (order, area, sp) => this._verticalShelvesWith(order, area, sp, false),
+            (order, area, sp) => this._verticalShelvesWith(order, area, sp, true),
+        ];
+    }
+
+    _finishColumnLayout({ levels, totalWidth, overflow }, windows, work_area, spacing) {
+        const startX = Math.max(work_area.x, (work_area.width - totalWidth) / 2 + work_area.x);
+        this._positionColumnWindows(levels, work_area, spacing, startX);
+        return { x: startX, y: work_area.y, overflow, vertical: true, levels, windows };
+    }
+
+    _verticalShelvesWith(windows, work_area, spacing, allowRows) {
+        if (windows.length <= 2) return this._simpleCenteredColumn(windows, work_area, spacing);
+        const columns = this._binPackColumns(windows, work_area, spacing, allowRows);
+        return this._finishColumnLayout(this._buildColumnLevels(columns, work_area, spacing),
+            windows, work_area, spacing);
     }
 
     _verticalShelves(windows, work_area, spacing) {
@@ -1139,19 +1158,7 @@ export const TilingManager = GObject.registerClass({
             return this._buildColumnLevels(columns, work_area, spacing);
         });
 
-        const { levels, totalWidth, overflow } = this._tighterPacking(packings);
-
-        const startX = Math.max(work_area.x, (work_area.width - totalWidth) / 2 + work_area.x);
-        this._positionColumnWindows(levels, work_area, spacing, startX);
-
-        return {
-            x: startX,
-            y: work_area.y,
-            overflow: overflow,
-            vertical: true,
-            levels: levels,
-            windows: windows
-        };
+        return this._finishColumnLayout(this._tighterPacking(packings), windows, work_area, spacing);
     }
 
     // Bin packing without height sorting to preserve swap order. A window that fits no column
