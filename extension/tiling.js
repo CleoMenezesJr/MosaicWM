@@ -1326,25 +1326,27 @@ export const TilingManager = GObject.registerClass({
         return { levels, totalWidth, overflow };
     }
 
-    // Columns fan out from center: those left of center pull right, those right pull left, so
-    // the gap always falls on the outer edges rather than between neighbours. A row leans the
-    // same way inside its column, and a short window inside its row.
+    // Columns fan in toward each other: the first pulls right, the last pulls left, so the gap
+    // always falls on the outer edges rather than between neighbors. A row leans the same way
+    // inside its column, and a short window inside its row.
     _positionColumnWindows(levels, work_area, spacing, startX) {
         const originX = work_area.x + work_area.width / 2;
         const originY = work_area.y + work_area.height / 2;
 
         let xPos = startX;
-        for (const level of levels) {
+        for (const [c, level] of levels.entries()) {
             level.x = xPos;
+            const leanX = neighborOrigin(xPos, level.width, c, levels.length, originX);
 
             let yPos = Math.max(work_area.y, (work_area.height - level.height) / 2 + work_area.y);
 
-            for (const row of level.rows) {
-                let rowX = xPos + outwardOffset(xPos, level.width, row.used, originX);
+            for (const [r, row] of level.rows.entries()) {
+                let rowX = xPos + outwardOffset(xPos, level.width, row.used, leanX);
+                const leanY = neighborOrigin(yPos, row.height, r, level.rows.length, originY);
 
                 for (const win of row.windows) {
                     win.targetX = rowX;
-                    win.targetY = yPos + outwardOffset(yPos, row.height, win.height, originY);
+                    win.targetY = yPos + outwardOffset(yPos, row.height, win.height, leanY);
                     rowX += win.width + spacing;
                 }
 
@@ -1496,12 +1498,13 @@ export const TilingManager = GObject.registerClass({
     _positionShelfWindows(levels, y, spacing, work_area) {
         const origin = work_area.y + work_area.height / 2;
         let levelY = y;
-        for (const level of levels) {
+        for (const [r, level] of levels.entries()) {
             level.y = levelY;
+            const lean = neighborOrigin(levelY, level.height, r, levels.length, origin);
             let xPos = level.x;
             for (const w of level.windows) {
                 w.targetX = xPos;
-                w.targetY = levelY + outwardOffset(levelY, level.height, w.height, origin);
+                w.targetY = levelY + outwardOffset(levelY, level.height, w.height, lean);
                 xPos += w.width + spacing;
             }
             levelY += level.height + spacing;
@@ -1549,18 +1552,7 @@ export const TilingManager = GObject.registerClass({
         if (totalHeight > work_area.height) overflow = true;
 
         const y = Math.max(work_area.y, (work_area.height - totalHeight) / 2 + work_area.y);
-        const origin = work_area.y + work_area.height / 2;
-        let levelY = y;
-        for (const level of levels) {
-            level.y = levelY;
-            let xPos = level.x;
-            for (const w of level.windows) {
-                w.targetX = xPos;
-                w.targetY = levelY + outwardOffset(levelY, level.height, w.height, origin);
-                xPos += w.width + spacing;
-            }
-            levelY += level.height + spacing;
-        }
+        this._positionShelfWindows(levels, y, spacing, work_area);
         return { x: work_area.x, y, overflow, vertical: false, levels, windows };
     }
 
@@ -1587,12 +1579,13 @@ export const TilingManager = GObject.registerClass({
         const x = Math.max(work_area.x, (work_area.width - totalWidth) / 2 + work_area.x);
         const origin = work_area.x + work_area.width / 2;
         let levelX = x;
-        for (const level of levels) {
+        for (const [c, level] of levels.entries()) {
             level.x = levelX;
+            const lean = neighborOrigin(levelX, level.width, c, levels.length, origin);
             const colHeight = level.windows.reduce((s, w, i) => s + w.height + (i > 0 ? spacing : 0), 0);
             let yPos = Math.max(work_area.y, (work_area.height - colHeight) / 2 + work_area.y);
             for (const w of level.windows) {
-                w.targetX = levelX + outwardOffset(levelX, level.width, w.width, origin);
+                w.targetX = levelX + outwardOffset(levelX, level.width, w.width, lean);
                 w.targetY = yPos;
                 yPos += w.height + spacing;
             }
@@ -3903,6 +3896,16 @@ function outwardOffset(levelStart, levelExtent, windowExtent, origin) {
     const slack = levelExtent - windowExtent;
     if (slack <= 0) return 0;
     return Math.min(Math.max(origin - windowExtent / 2 - levelStart, 0), slack);
+}
+
+// Which way a short window leans: toward the next level, not toward the screen's mid-line.
+// Two windows sharing a level have to leave the same gap to the level beside them, and the
+// mid-line lands short of that whenever a level straddles it. Alone, it's the only reference.
+function neighborOrigin(levelStart, levelExtent, index, count, origin) {
+    if (count < 2) return origin;
+    if (index === 0) return levelStart + levelExtent;
+    if (index === count - 1) return levelStart;
+    return levelStart + levelExtent / 2;
 }
 
 class Level {
