@@ -2162,6 +2162,44 @@ export const TilingManager = GObject.registerClass({
             Logger.error(`Overflow move failed for ref window: ${e}`));
     }
 
+    // Keep where everyone stood before this pass shrinks someone. The restore that undoes it
+    // needs that layout to aim at; the shrunken one only exists because of the shrink.
+    _rememberLayoutBeforeShrink() {
+        if (!this._settledSnapshot()) return;
+        for (const { window: w } of this._pendingMiniatureWindows ?? []) {
+            if (WindowState.get(w, IS_MINIATURE) || WindowState.get(w, 'layoutBeforeShrink'))
+                continue;
+            WindowState.set(w, 'layoutBeforeShrink', new Map(this._positionSnapshot));
+        }
+    }
+
+    // Frames are read before this pass runs, so on the pass that first tiles a new window they
+    // still hold the arrangement of the older, smaller set. Remembering that would let a later
+    // restore resurrect a layout the current windows never had.
+    _settledSnapshot() {
+        const tiled = this._lastGroupAssignment?.ids;
+        if (!tiled || tiled.size !== this._positionSnapshot.size) return false;
+        for (const id of this._positionSnapshot.keys()) {
+            if (!tiled.has(id)) return false;
+        }
+        return true;
+    }
+
+    // Windows that came and went since the shrink keep their live position, so a remembered
+    // layout never resurrects a slot the current set has no window for.
+    _adoptLayoutBeforeShrink(window) {
+        const remembered = WindowState.get(window, 'layoutBeforeShrink');
+        if (!remembered) return;
+        WindowState.remove(window, 'layoutBeforeShrink');
+        let adopted = 0;
+        for (const [id, center] of remembered) {
+            if (!this._positionSnapshot.has(id)) continue;
+            this._positionSnapshot.set(id, center);
+            adopted++;
+        }
+        Logger.log(`[RESTORE ANCHOR] ${window.get_id()}: ${adopted} slots from before the shrink`);
+    }
+
     // Snapshot positions (for stability scoring), find any restore anchor, and resolve the
     // pinned composition, all read by the _tile call that follows.
     _prepareTilePass(meta_windows, windows, workspace) {
@@ -2171,6 +2209,8 @@ export const TilingManager = GObject.registerClass({
             this._positionSnapshot.set(w.get_id(), { cx: f.x + f.width / 2, cy: f.y + f.height / 2 });
         }
 
+        this._rememberLayoutBeforeShrink();
+
         // Pull a just-restored window back toward its old miniature slot. The restore path tiles
         // with a null reference, so find the flagged window among these.
         this._restoreAnchor = null;
@@ -2178,6 +2218,7 @@ export const TilingManager = GObject.registerClass({
             const rc = WindowState.get(w, 'restoreAnchorCenter');
             if (rc) {
                 this._restoreAnchor = { id: w.get_id(), cx: rc.cx, cy: rc.cy };
+                this._adoptLayoutBeforeShrink(w);
                 break;
             }
         }
