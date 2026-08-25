@@ -319,6 +319,10 @@ export const ResizeHandler = GObject.registerClass({
     // maximizedUndoInfo gets removed right after use, so calling this twice for the
     // same exit is safe; the second call just finds nothing left to undo.
     tryExitSacred(window) {
+        // An arrival collision owns this unmaximize and keeps the window in its chosen workspace.
+        if (WindowState.get(window, 'workspaceMergeUnmaximize')) {
+            return;
+        }
         // Born-maximized windows: don't set unmaximizing flag or try undo
         if (WindowState.get(window, 'openedMaximized')) {
             return;
@@ -441,7 +445,8 @@ export const ResizeHandler = GObject.registerClass({
             return true;
         }
 
-        if (WindowState.get(window, 'unmaximizing')) {
+        if (WindowState.get(window, 'unmaximizing') ||
+            WindowState.get(window, 'workspaceMergeUnmaximize')) {
             this._sizeChanged = false;
             return true;
         }
@@ -559,6 +564,7 @@ export const ResizeHandler = GObject.registerClass({
             WindowState.get(window, 'unmaximizing') ||
             WindowState.get(window, 'isRestoringSacred') ||
             WindowState.get(window, 'openedMaximized') ||
+            WindowState.get(window, 'workspaceMergeUnmaximize') ||
             (WindowState.get(window, 'isMosaicResizing') && !clientOwnedSize);
     }
 

@@ -2807,6 +2807,10 @@ export const TilingManager = GObject.registerClass({
             Logger.log(`savePreferredSize: Skipping for ${window.get_id()} - opened maximized, not yet settled`);
             return true;
         }
+        if (WindowState.get(window, 'workspaceMergeUnmaximize')) {
+            Logger.log(`savePreferredSize: Skipping for ${window.get_id()} - workspace merge in progress`);
+            return true;
+        }
         return false;
     }
 
@@ -3825,4 +3829,3 @@ class Mask {
         }
     }
 }
-
