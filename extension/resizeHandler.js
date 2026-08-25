@@ -70,6 +70,21 @@ export const ResizeHandler = GObject.registerClass({
         this._constraintRebalanceCount = 0;
     }
 
+    _isMiniatureFrame(window) {
+        return WindowState.get(window, WindowState.IS_MINIATURE) ||
+            WindowState.get(window, WindowState.PENDING_MINIATURE);
+    }
+
+    _discardMiniatureResizeTarget(window) {
+        if (!this._isMiniatureFrame(window) || !WindowState.get(window, 'targetSmartResizeSize'))
+            return false;
+
+        WindowState.remove(window, 'targetSmartResizeSize');
+        this._disarmClampVerification(window);
+        this._sizeChanged = false;
+        return true;
+    }
+
     // Once the client had its chance, a frame still above target is a genuine minimum.
     _commitClampedSize(window, pendingSmartSize, rect) {
         Logger.log(`[SMART RESIZE] Window ${window.get_id()} clamped: target=${pendingSmartSize.width}×${pendingSmartSize.height}, actual=${rect.width}×${rect.height}`);
@@ -112,6 +127,13 @@ export const ResizeHandler = GObject.registerClass({
         const verifyId = this._timeoutRegistry.add(constants.RESIZE_CLAMP_VERIFY_DELAY_MS, () => {
             WindowState.remove(window, 'clampVerifyId');
             if (!isWindowAlive(window)) return GLib.SOURCE_REMOVE;
+
+            // Miniatures intentionally keep their native frame and scale only the actor.
+            // Their visual slot can never be verified through get_frame_rect().
+            if (this._isMiniatureFrame(window)) {
+                WindowState.remove(window, 'targetSmartResizeSize');
+                return GLib.SOURCE_REMOVE;
+            }
 
             // Whatever resolved or replaced this target meanwhile owns the state now.
             const current = WindowState.get(window, 'targetSmartResizeSize');
@@ -356,6 +378,7 @@ export const ResizeHandler = GObject.registerClass({
         const rect = window.get_frame_rect();
         if (this._ignoreSizeChange(window, rect)) return;
 
+        if (this._discardMiniatureResizeTarget(window)) return;
         if (this._handleClampAfterResize(window, rect)) return;
         if (this._handleSacredResizePhase(window)) return;
         if (this._handleMaxUnmaxResize(window)) return;

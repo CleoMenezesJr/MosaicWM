@@ -3363,14 +3363,18 @@ export const TilingManager = GObject.registerClass({
                 WindowState.set(w, 'preferredSize', { width: d.current.width, height: d.current.height });
             WindowState.set(w, 'originalSize', { width: d.current.width, height: d.current.height });
             WindowState.set(w, 'isConstrainedByMosaic', true);
-            this._setSmartResizeTarget(w, sim);
 
             if (d.pendingMiniature) {
+                // A miniature keeps its native frame and only scales its compositor actor.
+                // Recording the visual slot as a resize target would make clamp detection
+                // learn the unchanged frame as a false minimum.
+                WindowState.remove(w, 'targetSmartResizeSize');
                 const storedPreSize = d.pendingPreSize || d.current;
                 pendingWindows.push({ window: w, miniSize: d.miniSize, preSize: storedPreSize });
                 Logger.log(`[MINIATURE] ${w.get_id()} stored in pendingWindows: preSize=${storedPreSize.width}x${storedPreSize.height}, SKIPPING move_resize_frame (will be miniaturized)`);
                 continue;
             }
+            this._setSmartResizeTarget(w, sim);
             this._animateResize(w, frame, sim.width, sim.height, true);
             Logger.log(`[SMART RESIZE] ${sim.id}: ${d.current.width}×${d.current.height} → ${sim.width}×${sim.height}`);
         }
