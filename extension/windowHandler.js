@@ -153,11 +153,13 @@ export const WindowHandler = GObject.registerClass({
                     pendingMaximizeCheck = false;
                     if (!isWindowAlive(win)) return GLib.SOURCE_REMOVE;
 
-                    // Entering/exiting sacred state is owned by resizeHandler, normally
+                    // Entering/exiting maximized state is owned by resizeHandler, normally
                     // driven by the WM size-change signal. This property notify is a
                     // backup for apps where that signal doesn't fire reliably; calling
                     // these twice for the same transition is safe (see resizeHandler.js).
-                    if (this.windowingManager.isMaximizedOrFullscreen(win)) {
+                    if (win.is_fullscreen()) {
+                        this._ext.resizeHandler.handleFullscreenTransition(win);
+                    } else if (win.is_maximized()) {
                         if (!WindowState.get(win, 'openedMaximized') &&
                             !WindowState.get(win, 'workspaceMergeUnmaximize')) {
                             this._ext.resizeHandler.tryEnterSacred(win);
@@ -178,21 +180,11 @@ export const WindowHandler = GObject.registerClass({
             }));
         });
 
-        // Detect Fullscreen changes, same backup pattern as maximize above.
+        // Fullscreen stays on its current workspace. Its frame changes are consumed
+        // without invoking either sacred isolation or a mosaic tile pass.
         ids.push(window.connect('notify::fullscreen', (win) => {
-            if (this.windowingManager.isMaximizedOrFullscreen(win)) {
-                if (!WindowState.get(win, 'openedMaximized')) {
-                    this._ext.resizeHandler.tryEnterSacred(win);
-                }
-            } else if (WindowState.get(win, 'openedMaximized')) {
-                Logger.log(`Window ${win.get_id()} born fullscreen - skipping sacred exit, treating as normal`);
-                WindowState.remove(win, 'openedMaximized');
-                WindowState.remove(win, 'unmaximizing');
-                WindowState.remove(win, 'isEnteringSacred');
-                this._settleBornSacredExit(win, 'unfullscreen');
-            } else {
-                this._ext.resizeHandler.tryExitSacred(win);
-            }
+            this._ext.resizeHandler.handleFullscreenTransition(win);
+            Logger.log(`Window ${win.get_id()} changed fullscreen state in place`);
         }));
 
         ids.push(window.connect('size-changed', (win) => {
@@ -520,10 +512,7 @@ export const WindowHandler = GObject.registerClass({
     _retileAfterWindowGone(removedWindow, remainingWindows, workspace, monitor, freedWidth, freedHeight, options = {}) {
         const opts = this._retileOptions(options);
 
-        if (WindowState.get(removedWindow, 'closeRetileHandledAt')) {
-            Logger.log(`_retileAfterWindowGone: already handled for ${removedWindow.get_id()} - skipping duplicate`);
-            return;
-        }
+        if (this._shouldSkipRetileAfterWindowGone(removedWindow, remainingWindows, opts)) return;
         if (!opts.wasMovedByOverflow)
             WindowState.set(removedWindow, 'closeRetileHandledAt', true);
 
@@ -549,6 +538,18 @@ export const WindowHandler = GObject.registerClass({
         } else {
             this._retileWithoutRestore(workspace, monitor);
         }
+    }
+
+    _shouldSkipRetileAfterWindowGone(removedWindow, remainingWindows, opts) {
+        if (WindowState.get(removedWindow, 'closeRetileHandledAt')) {
+            Logger.log(`_retileAfterWindowGone: already handled for ${removedWindow.get_id()} - skipping duplicate`);
+            return true;
+        }
+        if (opts.wasMovedByOverflow && remainingWindows.some(w => w.is_fullscreen())) {
+            Logger.log('_retileAfterWindowGone: preserving the covered mosaic after overflow from a fullscreen workspace');
+            return true;
+        }
+        return false;
     }
 
     _retileOptions(options) {
@@ -923,17 +924,21 @@ export const WindowHandler = GObject.registerClass({
         return false;
     }
 
-    // Fullscreen remains exclusive. Maximized windows instead give up maximization when an
-    // arrival would make them share a workspace, then join the mosaic at their restored size.
+    // A fullscreen arrival stays over its current mosaic. A normal arrival cannot be
+    // tiled beneath a fullscreen sibling, while maximized siblings join the mosaic.
     async _ensureFitsSacred(window, workspace, monitor) {
         const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
             .filter(w => !WindowState.get(w, 'pendingInQueue') && !this.windowingManager.isExcluded(w));
         const otherWindows = workspaceWindows.filter(w => w.get_id() !== window.get_id());
 
-        const fullscreenCollision = (window.is_fullscreen() && otherWindows.length > 0) ||
-            otherWindows.some(w => w.is_fullscreen());
-        if (fullscreenCollision) {
-            Logger.log('Fullscreen collision on arrival - isolating incoming window');
+        if (window.is_fullscreen()) {
+            WindowState.remove(window, 'arrivalPending');
+            this.revealPendingEntrance(window);
+            Logger.log('Fullscreen arrival remains in its current workspace; preserving mosaic layout');
+            return { handled: true, result: workspace };
+        }
+        if (otherWindows.some(w => w.is_fullscreen())) {
+            Logger.log('Workspace has a fullscreen window - moving the normal arrival');
             return { handled: true, result: await this.windowingManager.moveOversizedWindow(window) };
         }
         if (otherWindows.length === 0) return { handled: false, mergedWindows: [] };
@@ -1151,7 +1156,7 @@ export const WindowHandler = GObject.registerClass({
             Logger.log(`Window ${window.get_id()} opened with Shift, set always-on-top`);
         }
 
-        if (this.windowingManager.isMaximizedOrFullscreen(window)) {
+        if (window.is_maximized() && !window.is_fullscreen()) {
             WindowState.set(window, 'openedMaximized', true);
             // Defense: clean up flags that onSizeChange may have set before window-created fired
             WindowState.remove(window, 'maximizedUndoInfo');
@@ -1266,9 +1271,8 @@ export const WindowHandler = GObject.registerClass({
 
         this._captureOpeningSize(window, workspace, monitor);
 
-        if (this.windowingManager.isMaximizedOrFullscreen(window)) {
-            return this._handleSacredCreated(window, workspace, monitor);
-        }
+        const sacredResult = this._handleCreatedSacredState(window, workspace, monitor);
+        if (sacredResult !== null) return sacredResult;
 
         const edgeResult = this._tryTileNewWithEdge(window, workspace, monitor);
         if (edgeResult !== null) return edgeResult;
@@ -1281,6 +1285,14 @@ export const WindowHandler = GObject.registerClass({
 
         this.enqueueWindowForEvaluation(window, workspace, monitor);
         return GLib.SOURCE_REMOVE;
+    }
+
+    _handleCreatedSacredState(window, workspace, monitor) {
+        if (window.is_fullscreen())
+            return this._handleFullscreenCreated(window, workspace);
+        if (window.is_maximized())
+            return this._handleSacredCreated(window, workspace, monitor);
+        return null;
     }
 
     // Use saved_rect for natural size (get_frame_rect matches monitor if Maximized).
@@ -1327,13 +1339,20 @@ export const WindowHandler = GObject.registerClass({
         if (otherWindows.length > 0) {
             // Resolving straight from here would race the queue's own collision
             // check and process the same arrival twice.
-            Logger.log('Opened sacred (Max/Full) in occupied workspace; queueing collision resolution');
+            Logger.log('Opened maximized window in occupied workspace; queueing collision resolution');
             this.enqueueWindowForEvaluation(window, workspace, monitor);
             return GLib.SOURCE_REMOVE;
         }
         Logger.log('Sacred window in empty workspace - keeping here');
         WindowState.remove(window, 'arrivalPending');
         this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
+        return GLib.SOURCE_REMOVE;
+    }
+
+    _handleFullscreenCreated(window, workspace) {
+        WindowState.remove(window, 'arrivalPending');
+        this.revealPendingEntrance(window);
+        Logger.log(`Fullscreen window ${window.get_id()} remains in workspace ${workspace.index()}; preserving mosaic layout`);
         return GLib.SOURCE_REMOVE;
     }
 

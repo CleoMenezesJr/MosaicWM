@@ -201,6 +201,12 @@ export const WindowingManager = GObject.registerClass({
     }
 
     moveOversizedWindow(window, options = { switchFocus: true }) {
+        if (window.is_fullscreen()) {
+            const workspace = window.get_workspace();
+            Logger.log(`moveOversizedWindow: Keeping fullscreen window ${window.get_id()} in workspace ${workspace?.index()}`);
+            return Promise.resolve(workspace);
+        }
+
         return new Promise(resolve => {
             const workspaceManager = global.workspace_manager;
             const monitor = window.get_monitor();
