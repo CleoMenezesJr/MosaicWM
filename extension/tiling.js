@@ -237,6 +237,10 @@ export const TilingManager = GObject.registerClass({
     // Stamp when a shrink target is applied so the clamp detector can tell "hasn't shrunk yet"
     // (transient) from "won't shrink" (a real minimum), keyed off the target, not the window's age.
     _setSmartResizeTarget(window, size) {
+        // A Smart Resize decision is the final post-unmaximize size. Keeping the earlier
+        // restoration bridge would make the tile pass request one size while clamp detection
+        // waits for another.
+        WindowState.remove(window, 'targetRestoredSize');
         WindowState.set(window, 'targetSmartResizeSize', { width: size.width, height: size.height });
         WindowState.set(window, 'targetSmartResizeSetAt', monotonicNow());
     }
@@ -2676,12 +2680,12 @@ export const TilingManager = GObject.registerClass({
     }
 
     _descriptorSizeForExisting(realWindow) {
-        const restoredSize = WindowState.get(realWindow, 'targetRestoredSize');
-        if (restoredSize) return restoredSize;
-
         // Resize still pending, target not reached yet.
         const smartResizeSize = WindowState.get(realWindow, 'targetSmartResizeSize');
         if (smartResizeSize) return smartResizeSize;
+
+        const restoredSize = WindowState.get(realWindow, 'targetRestoredSize');
+        if (restoredSize) return restoredSize;
 
         // targetSmartResizeSize gets cleared once the frame settles, so use the actual frame
         // here instead of preferredSize.
@@ -3587,19 +3591,19 @@ class WindowDescriptor {
             this.height = miniSize.height;
             Logger.log(`WindowDescriptor: Using miniatureSize ${this.width}x${this.height} for ${meta_window.get_id()}`);
         } else {
-            // Use target dimensions if unmaximizing, as physical frame might still be maximized.
-            const targetSize = WindowState.get(meta_window, 'targetRestoredSize');
             // Use smart resize target dims if move_resize_frame hasn't completed yet.
             const smartResizeSize = WindowState.get(meta_window, 'targetSmartResizeSize');
+            // Use restored dimensions if unmaximizing, as the physical frame might still be maximized.
+            const targetSize = WindowState.get(meta_window, 'targetRestoredSize');
 
-            if (targetSize) {
-                this.width = targetSize.width;
-                this.height = targetSize.height;
-                Logger.log(`WindowDescriptor: Using targetRestoredSize ${this.width}x${this.height} for ${meta_window.get_id()}`);
-            } else if (smartResizeSize) {
+            if (smartResizeSize) {
                 this.width = smartResizeSize.width;
                 this.height = smartResizeSize.height;
                 Logger.log(`WindowDescriptor: Using targetSmartResizeSize ${this.width}x${this.height} for ${meta_window.get_id()}`);
+            } else if (targetSize) {
+                this.width = targetSize.width;
+                this.height = targetSize.height;
+                Logger.log(`WindowDescriptor: Using targetRestoredSize ${this.width}x${this.height} for ${meta_window.get_id()}`);
             } else {
                 this.width = frame.width > 0 ? frame.width : 1;
                 this.height = frame.height > 0 ? frame.height : 1;

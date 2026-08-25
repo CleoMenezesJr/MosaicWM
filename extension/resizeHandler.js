@@ -256,11 +256,12 @@ export const ResizeHandler = GObject.registerClass({
     // fullscreen doesn't reliably trigger window_manager's size-change signal, so
     // this is also called from windowHandler's notify::fullscreen as a backup -
     // the pending flag below makes calling it twice for the same transition safe.
-    // size-change fires BEFORE window-created for new windows, so a window with no
-    // preferredSize/openingSize hasn't been through onWindowCreated yet; if it's already
-    // maximized it was born that way and skips isolation.
+    // size-change fires BEFORE window-created for new windows. Once geometryReady is set,
+    // a maximize is necessarily a later user action even when the client never supplied a
+    // usable saved size.
     _detectBornMaximized(window) {
-        if (!WindowState.get(window, 'preferredSize') &&
+        if (!WindowState.get(window, 'geometryReady') &&
+            !WindowState.get(window, 'preferredSize') &&
             !WindowState.get(window, 'openingSize') &&
             this.windowingManager.isMaximizedOrFullscreen(window)) {
             WindowState.set(window, 'openedMaximized', true);

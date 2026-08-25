@@ -994,6 +994,7 @@ export const WindowHandler = GObject.registerClass({
     _settleWorkspaceMerge(windows) {
         for (const window of windows) {
             this._timeoutRegistry.add(constants.RETILE_DELAY_MS + constants.RESIZE_SETTLE_DELAY_MS, () => {
+                this._captureWorkspaceMergeSize(window);
                 WindowState.remove(window, 'workspaceMergeUnmaximize');
                 WindowState.remove(window, 'openedMaximized');
                 WindowState.remove(window, 'isEnteringSacred');
@@ -1002,6 +1003,35 @@ export const WindowHandler = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             }, 'windowHandler_workspaceMergeSettle');
         }
+    }
+
+    _captureWorkspaceMergeSize(window) {
+        const context = this._workspaceMergeSizeContext(window);
+        if (!context) return;
+
+        const { frame, workArea } = context;
+        const isMonitorSized = frame.width >= workArea.width && frame.height >= workArea.height;
+        const size = isMonitorSized
+            ? { width: Math.floor(workArea.width * 0.8), height: Math.floor(workArea.height * 0.8) }
+            : { width: frame.width, height: frame.height };
+        WindowState.set(window, 'preferredSize', size);
+        Logger.log(`Workspace merge: captured preferred size for ${window.get_id()}: ${size.width}x${size.height}${isMonitorSized ? ' (80% fallback)' : ''}`);
+    }
+
+    _workspaceMergeSizeContext(window) {
+        if (!isWindowAlive(window)) return null;
+        if (WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize')) return null;
+
+        const workspace = window.get_workspace();
+        const monitor = window.get_monitor();
+        if (!workspace || monitor === null || monitor < 0) return null;
+
+        const workArea = workspace.get_work_area_for_monitor(monitor);
+        if (!workArea) return null;
+
+        const frame = window.get_frame_rect();
+        if (frame.width <= 0 || frame.height <= 0) return null;
+        return { frame, workArea };
     }
 
     _handleDnDArrival(window, workspace, monitor) {
