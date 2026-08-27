@@ -429,16 +429,27 @@ export const TilingManager = GObject.registerClass({
         return tooTall || isNarrow || tooWide;
     }
 
+    // The windows that stay put have to hold the order they are on screen, not the stacking
+    // order the caller hands over: on a tight layout that one is the composition that does not fit.
+    _inTiledOrder(windows) {
+        if (!this._lastTiledOrder) return windows;
+        const rank = new Map(this._lastTiledOrder.map((id, i) => [id, i]));
+        return [...windows].sort((a, b) =>
+            (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
+    }
+
     computeDragLayouts(windowDescriptors, workArea, draggedId) {
         const spacing = constants.WINDOW_SPACING;
         const startTime = GLib.get_monotonic_time();
 
-        const useVertical = this._useVerticalForDrag(windowDescriptors, workArea);
+        // Whatever orientation _tile will settle on: built the other way round every shape
+        // overflows and the drag ends up with an empty list, so nothing ever previews.
+        const useVertical = this._orientationFor(windowDescriptors, workArea);
 
         const n = windowDescriptors.length;
         const dragged = windowDescriptors.find(w => w.id === draggedId);
         if (!dragged) return [];
-        const others = windowDescriptors.filter(w => w.id !== draggedId);
+        const others = this._inTiledOrder(windowDescriptors.filter(w => w.id !== draggedId));
 
         const layouts = [];
         const seenPositions = new Set();
@@ -647,11 +658,13 @@ export const TilingManager = GObject.registerClass({
         const n = descriptors.length;
         if (n < 2) return null;
 
-        const useVertical = this._useVerticalForDrag(descriptors, workArea);
+        // Same reason as the drag path: off the orientation _tile picks every shape overflows
+        // and the search returns null without a word.
+        const useVertical = this._orientationFor(descriptors, workArea);
 
         const focused = descriptors.find(w => w.id === focusedWindow.get_id());
         if (!focused) return null;
-        const others = descriptors.filter(w => w.id !== focusedWindow.get_id());
+        const others = this._inTiledOrder(descriptors.filter(w => w.id !== focusedWindow.get_id()));
         const f0 = focusedWindow.get_frame_rect();
         const sign = direction === 'right' || direction === 'down' ? 1 : -1;
         const axis = direction === 'left' || direction === 'right' ? 'x' : 'y';
