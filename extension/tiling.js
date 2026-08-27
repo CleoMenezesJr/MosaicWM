@@ -106,6 +106,7 @@ export const TilingManager = GObject.registerClass({
         // it is keyed by workspace GObjects that come and go (like _workspaceSwaps).
         this._pinnedComposition = new WeakMap();
         this._activePinnedShape = null;
+        this._activePinnedWorkspace = null;
 
         // Layout cache to avoid redundant O(n!) permutation calculations
         this._lastLayoutHash = null;
@@ -1204,7 +1205,11 @@ export const TilingManager = GObject.registerClass({
                 this._cachedTileResult = pinned;
                 return pinned;
             }
-            Logger.log('_tile: pinned shape overflows, dropping to auto-layout');
+            // A shape that stopped fitting is dead, not paused. Leaving it in the map makes every
+            // later retile place it, fail, and fall through again.
+            this._pinnedComposition.delete(this._activePinnedWorkspace);
+            this._activePinnedShape = null;
+            Logger.log('_tile: pinned shape overflows, dropping it');
         }
 
         if (this._dragLayoutHint?.shape && this.isDragging && !isSimulation) {
@@ -2462,6 +2467,7 @@ export const TilingManager = GObject.registerClass({
         // Honor a pinned composition only while it still matches the current window count; a
         // count change (window opened/closed) invalidates it, handing control to the auto-layout.
         this._activePinnedShape = null;
+        this._activePinnedWorkspace = workspace;
         this._pinnedSizesUnchanged = false;
         const pin = this._pinnedComposition.get(workspace);
         if (!pin) return;
