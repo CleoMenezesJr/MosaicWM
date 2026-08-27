@@ -3591,9 +3591,16 @@ export const TilingManager = GObject.registerClass({
         }
     }
 
-    _binarySearchFitScale(buildSimulated, workArea) {
-        let lo = 0.0, hi = 1.0;
-        for (let i = 0; i < 15; i++) {
+    // A probe that overflows scans the whole candidate space to prove no order fits, so stop as
+    // soon as the scale stops meaning anything: one pixel of the widest range. lo must already fit.
+    _binarySearchFitScale(buildSimulated, workArea, lo = 0.0) {
+        let hi = 1.0;
+        const atMin = buildSimulated(0.0), atMax = buildSimulated(1.0);
+        const span = Math.max(1, ...atMax.map((w, i) =>
+            Math.max(w.width - atMin[i].width, w.height - atMin[i].height)));
+        const steps = Math.max(1, Math.ceil(Math.log2((hi - lo) * span)));
+
+        for (let i = 0; i < steps; i++) {
             const mid = (lo + hi) / 2;
             if (!this._tile(buildSimulated(mid), workArea, true).overflow)
                 lo = mid;
@@ -3703,7 +3710,10 @@ export const TilingManager = GObject.registerClass({
             if (!this._tile(buildSimulated(1.0), workArea, true).overflow) {
                 return 1.0;
             }
-            lo = this._binarySearchFitScale(buildSimulated, workArea);
+            // Marking only frees space, so last round's scale still fits and the search can resume
+            // there. The exception is a mini size bigger than the window's own minimum.
+            const floor = this._tile(buildSimulated(lo), workArea, true).overflow ? 0.0 : lo;
+            lo = this._binarySearchFitScale(buildSimulated, workArea, floor);
         }
         return lo;
     }
