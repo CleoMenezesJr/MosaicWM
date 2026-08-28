@@ -29,9 +29,6 @@ import { getSlowDownFactor, monotonicNow } from './timing.js';
 const POSITION_STABILITY_WEIGHT = 40;
 // Tuning these two changes nothing on its own since they rank in tiers, never in one sum.
 const GROUP_STABILITY_WEIGHT = 150;
-// A distance in screen fractions now, not slack on an arbitrarily scaled scalar. In the measured
-// scenes four equal windows separate 2x2 from the diamond by 0.055, so the band sits well under it.
-const DENSITY_TIE_BAND = 0.02;
 // How much a hole in the middle counts against a layout whose window centers are close. The
 // measured miniature-between-two-columns scene flips at 0.25, so this keeps a margin over it.
 const HOLLOW_CENTER_WEIGHT = 0.3;
@@ -117,6 +114,11 @@ export const TilingManager = GObject.registerClass({
         this._lastTiledVertical = null;
         // The column packing that produced the last layout, as windows per row per column
         this._lastTiledShape = null;
+        // The row packing that produced the last horizontal layout, as windows per row
+        this._lastTiledRowCounts = null;
+        // Whether the last committed pass ranked its order; an unranked one (fit check, drag)
+        // is whatever arrival order happened to pack, not a settled state worth trusting.
+        this._lastTileRanked = false;
         this._pinnedSizesUnchanged = false;
         this._skipStabilityForNextTile = false;
 
@@ -976,22 +978,25 @@ export const TilingManager = GObject.registerClass({
     }
 
     // Everyone on screen was already tiled, so this pass is a miniaturize, a restore or a resize:
-    // the layout is settling, not being built. A newcomer means the opposite.
+    // the layout is settling, not being built. A newcomer means the opposite. An unranked last
+    // pass (fit check, drag) never earns settling either, or its leftover order gets trusted.
     _layoutIsSettling(windows) {
         const tiled = this._lastGroupAssignment?.ids;
-        if (!tiled) return false;
+        if (!tiled || !this._lastTileRanked) return false;
         return windows.every(w => tiled.has(w.id));
     }
 
     // The band hangs off the tightest layout on offer, not off a running best: chained in-band
-    // hops walk the pick downhill and make it depend on the scan order. It only opens once the
-    // set settles; while a window is arriving, density outranks anything worth preserving.
+    // hops walk the pick downhill and make it depend on the scan order. A settling pass skips
+    // the filter outright: two orders inside the same shape can differ by far more than any
+    // band worth keeping, and _beatsCandidate already carries density as its last tiebreak.
     _bandFinalists(pool, settling) {
         const scored = pool.filter(s => s.score);
+        if (settling) return scored.length ? scored : pool;
+
         const tightest = scored.length
             ? Math.min(...scored.map(s => s.score.density)) : Infinity;
-        const width = settling ? DENSITY_TIE_BAND : 0;
-        const band = scored.filter(s => s.score.density <= tightest + width);
+        const band = scored.filter(s => s.score.density <= tightest);
         // Nothing scored because nothing fit, so stability decides on its own like before.
         return band.length ? band : pool;
     }
@@ -1242,6 +1247,9 @@ export const TilingManager = GObject.registerClass({
         }
 
         const settling = this._layoutIsSettling(windows);
+        const held = this._tryFrozenShape(windows, work_area, spacing, useVerticalShelves, settling, isSimulation);
+        if (held) return held;
+
         const placers = this._placersFor(tilingFn, useVerticalShelves, windows.length, settling);
         const winner = isSimulation && windows.length > 1
             ? this._findFittingLayout(windows, work_area, placers)
@@ -1250,6 +1258,26 @@ export const TilingManager = GObject.registerClass({
         // winner has to be the last one placed.
         const result = winner.place.call(this, winner.order, work_area, spacing);
         Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, ${currentResult.overflow ? 'reordered (overflow fallback)' : 'stability-checked'}`);
+        result.recipe = winner;
+        result.orderOptimized = true;
+        return result;
+    }
+
+    // A settling pass almost always keeps its shape, so trying it alone first skips scoring the
+    // whole shelf-placer pool for nothing. Returning null just means the caller's full pool runs
+    // next, so a shape that stopped fitting still repacks. Below 3 windows there is no shape to
+    // freeze (_placersFor never searches), and a simulation cares only about what fits.
+    _tryFrozenShape(windows, work_area, spacing, useVerticalShelves, settling, isSimulation) {
+        if (!settling || isSimulation || windows.length <= 2) return null;
+
+        const placers = this._shapePreservingPlacers(useVerticalShelves, windows.length);
+        if (!placers.length) return null;
+
+        const winner = this._findOptimalLayout(windows, work_area, placers);
+        const result = winner.place.call(this, winner.order, work_area, spacing);
+        if (result.overflow) return null;
+
+        Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, shape held`);
         result.recipe = winner;
         result.orderOptimized = true;
         return result;
@@ -1281,15 +1309,22 @@ export const TilingManager = GObject.registerClass({
         return this._useVerticalForDrag(windows, workArea);
     }
 
-    // Rows already get every split out of _rowSplitVariants, so only columns need their previous
-    // shape handed back. A close leaves a shape that no longer matches the set, hence the count.
+    // Both orientations hand back their exact split from the last pass, so _chooseTileResult can
+    // try it alone before opening the density fight. A close leaves a shape that no longer
+    // matches the set, hence the slot count check.
     _shapePreservingPlacers(useVerticalShelves, windowCount) {
-        const shape = this._lastTiledShape;
-        if (!useVerticalShelves || !shape) return [];
+        if (useVerticalShelves) {
+            const shape = this._lastTiledShape;
+            if (!shape) return [];
+            const slots = shape.reduce((s, col) => s + col.reduce((t, n) => t + n, 0), 0);
+            if (slots !== windowCount) return [];
+            return [(order, area, sp) => this._verticalShelvesFixed(order, area, sp, shape)];
+        }
 
-        const slots = shape.reduce((s, col) => s + col.reduce((t, n) => t + n, 0), 0);
-        if (slots !== windowCount) return [];
-        return [(order, area, sp) => this._verticalShelvesFixed(order, area, sp, shape)];
+        const rowCounts = this._lastTiledRowCounts;
+        if (!rowCounts) return [];
+        if (rowCounts.reduce((a, b) => a + b, 0) !== windowCount) return [];
+        return [(order, area, sp) => this._horizontalShelvesWith(order, area, sp, rowCounts)];
     }
 
     // A settling set competes only inside the shapes of the orientation it already has; a
@@ -2802,6 +2837,9 @@ export const TilingManager = GObject.registerClass({
         this._lastTiledVertical = !!tile_info.vertical;
         this._lastTiledShape = tile_info.vertical && tile_info.levels.every(lv => lv.rows)
             ? tile_info.levels.map(lv => lv.rows.map(r => r.windows.length)) : null;
+        this._lastTiledRowCounts = !tile_info.vertical
+            ? tile_info.levels.map(lv => lv.windows.length) : null;
+        this._lastTileRanked = !!tile_info.orderOptimized;
         // Partition rather than the pair set, which is quadratic and fires on every drag retile.
         const partition = tile_info.levels.map(l => `[${l.windows.map(w => w.id).join(',')}]`).join('');
         Logger.log(`[GROUP STABILITY] Recorded ${newGroupAssignment.pairs.size} pairs over ${partition}`);
