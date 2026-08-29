@@ -10,9 +10,10 @@ export const MAX_DRAG_LAYOUTS = 48;
 // Wall-clock ceiling for composition generation at drag start; a last-resort guard
 // against pathological window counts.
 export const DRAG_LAYOUT_TIME_BUDGET_MS = 8;
-// Belt and suspenders: the pool grows by a constant multiplier, not by a new factorial
-// term, but retiling runs on every size-changed storm.
-export const LAYOUT_SEARCH_TIME_BUDGET_MS = 12;
+// Counted, not timed: a clock ceiling makes the same windows land in different layouts
+// depending on how busy the shell was. Sized so four windows always scan in full, both
+// orientations included (24 orders x 6 shapes).
+export const LAYOUT_SEARCH_CANDIDATE_BUDGET = 192;
 // A Super+Arrow only counts as an action if it moves the focused window's center at
 // least this far in the pressed direction; below it the key is a no-op.
 export const KEYBOARD_RECOMPOSE_MIN_DISPLACEMENT_PX = 20;
@@ -121,10 +122,6 @@ export const MINIATURE_ANIM_MS = 250;
 export const MINIATURE_FOCUS_GUARD_MS = 500;  // Block focus-triggered restore right after miniaturizing
 export const MINIATURE_HOVER_REST_MS = 300;  // How long the pointer must rest on a miniature before focus-follows-mouse restores it
 export const DND_MINIATURE_RESTORE_DELAY_MS = 400;  // Dwell time over a miniature before a DnD hover triggers restore
-
-// Restored window's distance to its old slot is the primary layout pick; layouts
-// whose distances land within this many px tie, so shelves still break near-ties.
-export const RESTORE_PROXIMITY_TOLERANCE_PX = 100;
 
 // Compact the per-workspace swap history into a single canonical order op
 // once it grows past this many entries (keeps replay cost bounded)

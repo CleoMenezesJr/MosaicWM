@@ -29,8 +29,7 @@ import { isWindowAlive } from './liveness.js';
 import { getSlowDownFactor, monotonicNow } from './timing.js';
 
 const POSITION_STABILITY_WEIGHT = 40;
-// These two only ever compete with each other. Nothing outscores the layout that reproduces
-// the previous one, so the unscaled +5 in _scoreOrder only ever breaks an exact tie.
+// Tuning these two changes nothing on its own since they rank in tiers, never in one sum.
 const GROUP_STABILITY_WEIGHT = 150;
 // A distance in screen fractions now, not slack on an arbitrarily scaled scalar. In the measured
 // scenes four equal windows separate 2x2 from the diamond by 0.055, so the band sits well under it.
@@ -834,7 +833,10 @@ export const TilingManager = GObject.registerClass({
         let count = 0;
         for (const level of tileResult.levels) {
             for (const w of level.windows) {
-                const snap = this._positionSnapshot.get(w.id);
+                // A window mid-restore is already scaling back up, so its frame no longer reports
+                // the slot the user last saw it in; the anchor does.
+                const snap = this._restoreAnchor?.id === w.id
+                    ? this._restoreAnchor : this._positionSnapshot.get(w.id);
                 if (!snap) continue;
                 const px = (w.targetX ?? level.x) + w.width / 2;
                 const py = (w.targetY ?? level.y) + w.height / 2;
@@ -899,20 +901,6 @@ export const TilingManager = GObject.registerClass({
         return (1 - Math.min(1, changed / totalPairs)) * GROUP_STABILITY_WEIGHT;
     }
 
-    // Distance from the restored window's center to the region its miniature held (Infinity if absent).
-    _restoreDisplacement(tileResult) {
-        if (!this._restoreAnchor) return 0;
-        for (const level of tileResult.levels) {
-            for (const w of level.windows) {
-                if (w.id !== this._restoreAnchor.id) continue;
-                const px = (w.targetX ?? level.x) + w.width / 2;
-                const py = (w.targetY ?? level.y) + w.height / 2;
-                return Math.hypot(px - this._restoreAnchor.cx, py - this._restoreAnchor.cy);
-            }
-        }
-        return Infinity;
-    }
-
     _scoreOrder(perm, workArea, place, currentIds) {
         const result = place.call(this, perm, workArea, constants.WINDOW_SPACING);
         const score = this._scoreLayout(result, workArea);
@@ -920,52 +908,49 @@ export const TilingManager = GObject.registerClass({
 
         // Displacement is well defined whether or not the layout fits. Gate this on fits and an
         // all-overflowing pool ties at zero, handing the pick to whatever the scan reaches first.
-        let stability = this._positionStabilityBonus(result, workArea) +
-            this._groupStabilityBonus(result);
-        // Prefer current order (+5) to avoid unnecessary visual swaps
-        const isSameOrder = perm.length === currentIds.length &&
+        const position = this._positionStabilityBonus(result, workArea);
+        const group = this._groupStabilityBonus(result);
+        const sameOrder = perm.length === currentIds.length &&
             perm.every((w, i) => w.id === currentIds[i]);
-        if (isSameOrder) stability += 5;
 
-        // A just-restored window makes proximity the primary pick, with geometry and stability breaking ties inside the tolerance bucket.
-        const bucket = this._restoreAnchor
-            ? Math.round(this._restoreDisplacement(result) / constants.RESTORE_PROXIMITY_TOLERANCE_PX)
-            : 0;
-
-        return { score, stability, bucket, fits };
+        return { score, position, group, sameOrder, fits };
     }
 
     // The band hangs off the tightest layout on offer, not off a running best: chained in-band
     // hops walk the pick downhill and make it depend on the scan order.
-    _bandFinalists(inBucket) {
-        const scoredInBucket = inBucket.filter(s => s.score);
-        const tightest = scoredInBucket.length
-            ? Math.min(...scoredInBucket.map(s => s.score.maxPair)) : Infinity;
-        const band = scoredInBucket.filter(s => s.score.maxPair <= tightest + COMPACTNESS_TIE_BAND);
+    _bandFinalists(pool) {
+        const scored = pool.filter(s => s.score);
+        const tightest = scored.length
+            ? Math.min(...scored.map(s => s.score.maxPair)) : Infinity;
+        const band = scored.filter(s => s.score.maxPair <= tightest + COMPACTNESS_TIE_BAND);
         // Nothing scored because nothing fit, so stability decides on its own like before.
-        return band.length ? band : inBucket;
+        return band.length ? band : pool;
     }
 
-    // Stability rules inside the band. meanPair and centralization only exist because a maximum
-    // ties easily, and without a tiebreak the pick would depend on the scan order again.
+    // Stability ranks in tiers, never as one sum: co-membership jumps in steps of a third of its
+    // weight while displacement spans a few points, so summed it always dictated the layout.
+    // meanPair and centralization only exist because a maximum ties easily, and without a
+    // tiebreak the pick would depend on the scan order again.
     _beatsCandidate(candidate, best) {
-        if (candidate.stability !== best.stability) return candidate.stability > best.stability;
+        if (candidate.position !== best.position) return candidate.position > best.position;
+        if (candidate.group !== best.group) return candidate.group > best.group;
+        if (candidate.sameOrder !== best.sameOrder) return candidate.sameOrder;
         if (!candidate.score || !best.score) return false;
         if (candidate.score.meanPair !== best.score.meanPair)
             return candidate.score.meanPair < best.score.meanPair;
         return candidate.score.centralization > best.score.centralization;
     }
 
-    // Order on the outside: a budget cut drops alternative shapes for a whole order at once,
-    // instead of leaving the last few orders with no shape to choose from at all.
-    _scoreCandidates(orders, placers, workArea, currentIds, startTime) {
+    // Whole orders only, and the same cut on every run: an order scored on some of its shapes
+    // competes on a subset nobody chose, and a wall-clock cut lands somewhere different each
+    // time the shell is busy. Preserving orders come first, so a cut keeps them.
+    _scoreCandidates(orders, placers, workArea, currentIds) {
         const scored = [];
-        outer:
         for (const perm of orders) {
-            for (const place of placers) {
+            if (scored.length > 0 &&
+                scored.length + placers.length > constants.LAYOUT_SEARCH_CANDIDATE_BUDGET) break;
+            for (const place of placers)
                 scored.push({ perm, place, ...this._scoreOrder(perm, workArea, place, currentIds) });
-                if (monotonicNow() - startTime > constants.LAYOUT_SEARCH_TIME_BUDGET_MS) break outer;
-            }
         }
         return scored;
     }
@@ -999,18 +984,14 @@ export const TilingManager = GObject.registerClass({
         // wherever the scan happened to stop.
         const orders = [...this._preservingCandidates(windows), ...this._generatePermutations(windows)];
         const currentIds = this._lastTiledOrder ?? windows.map(w => w.id);
-        const scored = this._scoreCandidates(orders, placers, workArea, currentIds, startTime);
+        const scored = this._scoreCandidates(orders, placers, workArea, currentIds);
 
         // An overflowing pick lands out of bounds and Mutter clamps it onto its neighbor, so
         // anything that fits outranks everything else.
         const fitting = scored.filter(s => s.fits);
         const pool = fitting.length > 0 ? fitting : scored;
 
-        // Proximity to where a restored window's miniature sat comes next.
-        const minBucket = Math.min(...pool.map(s => s.bucket));
-        const inBucket = pool.filter(s => s.bucket === minBucket);
-
-        const finalists = this._bandFinalists(inBucket);
+        const finalists = this._bandFinalists(pool);
 
         let best = null;
         for (const s of finalists) {
