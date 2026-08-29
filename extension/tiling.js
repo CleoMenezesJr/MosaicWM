@@ -1494,6 +1494,79 @@ export const TilingManager = GObject.registerClass({
 
             xPos += level.width + spacing;
         }
+
+        this._slideTowardNeighbors(levels.map(lv => lv.rows.map(r => r.windows)),
+            true, work_area, spacing);
+    }
+
+    // A level is as wide as its widest row, so a narrower row leaves a notch the next level never
+    // uses. Units that don't face each other across the axis can't collide, so each slides in whole
+    // (a row moves as one); the level ahead is the floor, since past it the mosaic collapses.
+    _slideTowardNeighbors(levelUnits, vertical, work_area, spacing) {
+        const boxes = levelUnits.map(units => units.map(u => this._unitBox(u, vertical)));
+        const placed = [];
+        let prevLead = null;
+        let recovered = 0;
+
+        for (const [l, units] of boxes.entries()) {
+            let levelLead = Infinity;
+            for (const [u, box] of units.entries()) {
+                const slack = box.lead - this._slideFloor(box, placed, spacing, prevLead ?? box.lead);
+                if (slack > 0) {
+                    recovered += slack;
+                    box.lead -= slack;
+                    box.end -= slack;
+                    for (const w of levelUnits[l][u]) {
+                        if (vertical) w.targetX -= slack;
+                        else w.targetY -= slack;
+                    }
+                }
+                levelLead = Math.min(levelLead, box.lead);
+            }
+            placed.push(...units);
+            prevLead = levelLead;
+        }
+
+        // Layouts that gained nothing have to come out byte identical, or every retile pays for
+        // a recentering it didn't need.
+        if (recovered > 0) this._recenterAlongAxis(levelUnits.flat(2), vertical, work_area);
+    }
+
+    _slideFloor(box, placed, spacing, floor) {
+        for (const p of placed) {
+            const apart = box.perpLo >= p.perpHi + spacing || p.perpLo >= box.perpHi + spacing;
+            if (!apart) floor = Math.max(floor, p.end + spacing);
+        }
+        return floor;
+    }
+
+    _unitBox(unit, vertical) {
+        const lead = w => (vertical ? w.targetX : w.targetY);
+        const perpLo = w => (vertical ? w.targetY : w.targetX);
+        return {
+            lead: Math.min(...unit.map(lead)),
+            end: Math.max(...unit.map(w => lead(w) + (vertical ? w.width : w.height))),
+            perpLo: Math.min(...unit.map(perpLo)),
+            perpHi: Math.max(...unit.map(w => perpLo(w) + (vertical ? w.height : w.width))),
+        };
+    }
+
+    // The mosaic has always been centered on the space it uses, and the slide above shrinks that.
+    _recenterAlongAxis(windows, vertical, work_area) {
+        const lead = w => (vertical ? w.targetX : w.targetY);
+        const size = w => (vertical ? w.width : w.height);
+        const start = vertical ? work_area.x : work_area.y;
+        const extent = vertical ? work_area.width : work_area.height;
+
+        const lo = Math.min(...windows.map(lead));
+        const hi = Math.max(...windows.map(w => lead(w) + size(w)));
+        if (hi - lo > extent) return;
+
+        const shift = start + (extent - (hi - lo)) / 2 - lo;
+        for (const w of windows) {
+            if (vertical) w.targetX += shift;
+            else w.targetY += shift;
+        }
     }
 
     _simpleCenteredColumn(windows, work_area, spacing) {
@@ -1648,6 +1721,9 @@ export const TilingManager = GObject.registerClass({
             }
             levelY += level.height + spacing;
         }
+
+        this._slideTowardNeighbors(levels.map(lv => lv.windows.map(w => [w])),
+            false, work_area, spacing);
     }
 
     // Force windows into an explicit shape instead of the auto-chosen grid (drag/keyboard/pin).
@@ -1730,6 +1806,8 @@ export const TilingManager = GObject.registerClass({
             }
             levelX += level.width + spacing;
         }
+        this._slideTowardNeighbors(levels.map(lv => lv.windows.map(w => [w])),
+            true, work_area, spacing);
         return { x, y: work_area.y, overflow, vertical: true, levels, windows };
     }
 
@@ -4053,7 +4131,7 @@ class WindowDescriptor {
     }
 }
 
-// Slack inside a level belongs on the outer side, never between two neighbours,
+// Slack inside a level belongs on the outer side, never between two neighbors,
 // so the mosaic densifies toward the middle. Clamping keeps a level that straddles
 // the origin from pushing its window past its own edge.
 function outwardOffset(levelStart, levelExtent, windowExtent, origin) {
