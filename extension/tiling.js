@@ -969,11 +969,34 @@ export const TilingManager = GObject.registerClass({
         return scored;
     }
 
+    // From six windows up the pool is nothing but global re-sorts, which reshuffle by
+    // construction, so the stability terms score with nothing to preserve.
+    _preservingCandidates(windows) {
+        if (!this._lastTiledOrder) return [];
+
+        const byId = new Map(windows.map(w => [w.id, w]));
+        const kept = this._lastTiledOrder.filter(id => byId.has(id)).map(id => byId.get(id));
+        const known = new Set(this._lastTiledOrder);
+        const newcomers = windows.filter(w => !known.has(w.id));
+
+        if (newcomers.length === 0) return [kept];
+
+        const out = [];
+        for (let i = 0; i <= kept.length; i++) {
+            const order = [...kept];
+            order.splice(i, 0, ...newcomers);
+            out.push(order);
+        }
+        return out;
+    }
+
     _findOptimalLayout(windows, workArea, placers) {
         if (windows.length <= 1) return { order: windows, place: placers[0] };
 
         const startTime = monotonicNow();
-        const orders = this._generatePermutations(windows);
+        // Preservers go first so a budget cut falls back to the previous order instead of
+        // wherever the scan happened to stop.
+        const orders = [...this._preservingCandidates(windows), ...this._generatePermutations(windows)];
         const currentIds = this._lastTiledOrder ?? windows.map(w => w.id);
         const scored = this._scoreCandidates(orders, placers, workArea, currentIds, startTime);
 
