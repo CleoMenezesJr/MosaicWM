@@ -1216,17 +1216,8 @@ export const TilingManager = GObject.registerClass({
     // overflow -> miniaturization still runs. Returns the forced layout, or null to continue.
     _tryForcedShape(windows, work_area, spacing, useVerticalShelves, isSimulation, hash) {
         if (this._activePinnedShape && !isSimulation && !this.isDragging) {
-            const pinned = this._placePinnedShape(windows, work_area, spacing, useVerticalShelves, isSimulation);
-            if (!pinned.overflow) {
-                this._lastLayoutHash = hash;
-                this._cachedTileResult = pinned;
-                return pinned;
-            }
-            // A shape that stopped fitting is dead, not paused. Leaving it in the map makes every
-            // later retile place it, fail, and fall through again.
-            this._pinnedComposition.delete(this._activePinnedWorkspace);
-            this._activePinnedShape = null;
-            Logger.log('_tile: pinned shape overflows, dropping it');
+            const pinned = this._tryPin(windows, work_area, spacing, useVerticalShelves, isSimulation, hash);
+            if (pinned) return pinned;
         }
 
         if (this._dragLayoutHint?.shape && this.isDragging && !isSimulation) {
@@ -1239,6 +1230,36 @@ export const TilingManager = GObject.registerClass({
         }
 
         return null;
+    }
+
+    // Applies the active pin, clearing its overflow grace timer on success or handing it to
+    // _dropPinAfterGrace on failure. Returns the placed layout, or null to fall through.
+    _tryPin(windows, work_area, spacing, useVerticalShelves, isSimulation, hash) {
+        const pinned = this._placePinnedShape(windows, work_area, spacing, useVerticalShelves, isSimulation);
+        const pin = this._pinnedComposition.get(this._activePinnedWorkspace);
+        if (!pinned.overflow) {
+            if (pin) pin.overflowSince = null;
+            this._lastLayoutHash = hash;
+            this._cachedTileResult = pinned;
+            return pinned;
+        }
+        this._dropPinAfterGrace(pin);
+        this._activePinnedShape = null;
+        this._activePinnedVertical = null;
+        return null;
+    }
+
+    // A frame mid-Wayland-negotiation can overflow for a moment without the shape being truly
+    // dead, so give it PIN_OVERFLOW_GRACE_MS before dropping it for good.
+    _dropPinAfterGrace(pin) {
+        if (!pin) return;
+        pin.overflowSince ??= monotonicNow();
+        if (monotonicNow() - pin.overflowSince < constants.PIN_OVERFLOW_GRACE_MS) {
+            Logger.log('_tile: pinned shape overflows, holding grace period');
+            return;
+        }
+        this._pinnedComposition.delete(this._activePinnedWorkspace);
+        Logger.log('_tile: pinned shape overflows, dropping it');
     }
 
     // Simulations (binary-search in tryFitWithResize) skip stability scoring for performance.
