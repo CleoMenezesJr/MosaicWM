@@ -3801,6 +3801,10 @@ export const TilingManager = GObject.registerClass({
             if (d.pendingMiniature) {
                 const storedPreSize = d.pendingPreSize || d.current;
                 pendingWindows.push({ window: w, miniSize: d.miniSize, preSize: storedPreSize });
+                // Stamped here rather than in _markPendingMiniature because the fit search calls
+                // that one speculatively; an abort would leave the flag on and draw() would skip
+                // the window forever.
+                WindowState.set(w, PENDING_MINIATURE, true);
                 Logger.log(`[MINIATURE] ${w.get_id()} stored in pendingWindows: preSize=${storedPreSize.width}x${storedPreSize.height}, SKIPPING move_resize_frame (will be miniaturized)`);
                 continue;
             }
