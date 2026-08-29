@@ -192,8 +192,7 @@ export default class WindowMosaicExtension extends Extension {
 
         this._currentWorkspaceIndex = newIndex;
 
-        // Wait for workspace switch animation to complete before any tiling operations
-        // This prevents race conditions where tiling starts while animation is still running
+        // Tiling while the switch animation runs races it; wait until it finishes.
         afterAnimations(this.animationsManager, () => {
             Logger.log(`Workspace animation complete - ready for operations on workspace ${newIndex}`);
         }, this._timeoutRegistry);

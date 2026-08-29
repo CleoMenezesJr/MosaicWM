@@ -205,7 +205,6 @@ export const WindowingManager = GObject.registerClass({
             const workspaceManager = global.workspace_manager;
             const monitor = window.get_monitor();
 
-            // Notify that overflow is starting
             if (this._overflowStartCallback) {
                 this._overflowStartCallback();
             }
