@@ -114,6 +114,7 @@ export const TilingManager = GObject.registerClass({
         this._lastTiledOrder = null;
         // windowId -> levelIndex from the last committed tile pass
         this._lastGroupAssignment = null;
+        this._lastTiledVertical = null;
         this._skipStabilityForNextTile = false;
 
         // Swap/reorder operations live per workspace, keyed by Meta.Workspace via WeakMap
@@ -430,7 +431,7 @@ export const TilingManager = GObject.registerClass({
         const spacing = constants.WINDOW_SPACING;
         const startTime = GLib.get_monotonic_time();
 
-        const useVertical = this._useVerticalForDrag(windowDescriptors, workArea);
+        const useVertical = this._orientationFor(windowDescriptors, workArea);
 
         const n = windowDescriptors.length;
         const dragged = windowDescriptors.find(w => w.id === draggedId);
@@ -644,7 +645,7 @@ export const TilingManager = GObject.registerClass({
         const n = descriptors.length;
         if (n < 2) return null;
 
-        const useVertical = this._useVerticalForDrag(descriptors, workArea);
+        const useVertical = this._orientationFor(descriptors, workArea);
 
         const focused = descriptors.find(w => w.id === focusedWindow.get_id());
         if (!focused) return null;
@@ -982,7 +983,7 @@ export const TilingManager = GObject.registerClass({
         }
 
         const spacing = constants.WINDOW_SPACING;
-        const useVerticalShelves = this._useVerticalForDrag(windows, work_area);
+        const useVerticalShelves = this._orientationFor(windows, work_area);
         const tilingFn = useVerticalShelves ? this._verticalShelves : this._horizontalShelves;
 
         const forced = this._tryForcedShape(windows, work_area, spacing, useVerticalShelves, isSimulation, hash);
@@ -1082,6 +1083,21 @@ export const TilingManager = GObject.registerClass({
         }
         this._pinnedComposition.delete(this._activePinnedWorkspace);
         Logger.log('_tile: pinned shape overflows, dropping it');
+    }
+
+    // Whether `windows` is the exact set the last real pass tiled. Written on every real pass,
+    // so a same-set match means the orientation that pass settled on is still trustworthy.
+    _sameWindowSetAsLastPass(windows) {
+        const tiled = this._lastGroupAssignment?.ids;
+        return !!tiled && windows.every(w => tiled.has(w.id));
+    }
+
+    // Miniaturizing shrinks the tallest window, which is exactly what the heuristic reads, so
+    // letting it speak on every pass flips rows into columns and back mid-cycle.
+    _orientationFor(windows, workArea) {
+        if (this._lastTiledVertical !== null && this._sameWindowSetAsLastPass(windows))
+            return this._lastTiledVertical;
+        return this._useVerticalForDrag(windows, workArea);
     }
 
     // Simulations (binary-search in tryFitWithResize) skip stability scoring for performance.
@@ -2461,6 +2477,7 @@ export const TilingManager = GObject.registerClass({
             ids: new Set(tile_info.levels.flatMap(l => l.windows.map(w => w.id))),
         };
         this._lastGroupAssignment = newGroupAssignment;
+        this._lastTiledVertical = !!tile_info.vertical;
         // Partition rather than the pair set, which is quadratic and fires on every drag retile.
         const partition = tile_info.levels.map(l => `[${l.windows.map(w => w.id).join(',')}]`).join('');
         Logger.log(`[GROUP STABILITY] Recorded ${newGroupAssignment.pairs.size} pairs over ${partition}`);
