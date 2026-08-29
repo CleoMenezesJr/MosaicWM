@@ -2686,8 +2686,12 @@ export const TilingManager = GObject.registerClass({
 
         // Ejecting and miniaturizing above can both come back still overflowing, and the packer
         // force-stacks into the work area rather than refusing, so drawing it piles windows up.
-        if (this._ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor))
+        if (this._ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor)) {
+            // The miniaturization above still stands; finalize it here too, or the flagged
+            // window never gets its miniature and stays frozen out of every later pass.
+            this._finalizeTilePass(overflow, meta_windows, computedSlots, tileArea, workspace, isRecursive);
             return { overflow: true, layout: null };
+        }
 
         this._positionTiledWindows(workspace, monitor, tile_info, tileArea, meta_windows, reference_meta_window, computedSlots, work_area);
 
