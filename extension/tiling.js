@@ -911,8 +911,8 @@ export const TilingManager = GObject.registerClass({
         return Infinity;
     }
 
-    _scoreOrder(perm, workArea, tilingFn, currentIds) {
-        const result = tilingFn.call(this, perm, workArea, constants.WINDOW_SPACING);
+    _scoreOrder(perm, workArea, place, currentIds) {
+        const result = place.call(this, perm, workArea, constants.WINDOW_SPACING);
         const score = this._scoreLayout(result, workArea);
         const fits = !result.overflow;
 
@@ -955,17 +955,30 @@ export const TilingManager = GObject.registerClass({
         return candidate.score.centralization > best.score.centralization;
     }
 
-    _findOptimalOrder(windows, workArea, tilingFn) {
-        if (windows.length <= 1) return windows;
+    // Order on the outside: a budget cut drops alternative shapes for a whole order at once,
+    // instead of leaving the last few orders with no shape to choose from at all.
+    _scoreCandidates(orders, placers, workArea, currentIds, startTime) {
+        const scored = [];
+        outer:
+        for (const perm of orders) {
+            for (const place of placers) {
+                scored.push({ perm, place, ...this._scoreOrder(perm, workArea, place, currentIds) });
+                if (monotonicNow() - startTime > constants.LAYOUT_SEARCH_TIME_BUDGET_MS) break outer;
+            }
+        }
+        return scored;
+    }
+
+    _findOptimalLayout(windows, workArea, placers) {
+        if (windows.length <= 1) return { order: windows, place: placers[0] };
 
         const startTime = monotonicNow();
-        const permutations = this._generatePermutations(windows);
+        const orders = this._generatePermutations(windows);
         const currentIds = this._lastTiledOrder ?? windows.map(w => w.id);
+        const scored = this._scoreCandidates(orders, placers, workArea, currentIds, startTime);
 
-        const scored = permutations.map(perm =>
-            ({ perm, ...this._scoreOrder(perm, workArea, tilingFn, currentIds) }));
-
-        // An overflowing pick lands out of bounds and Mutter clamps it onto its neighbor, so anything that fits outranks everything else.
+        // An overflowing pick lands out of bounds and Mutter clamps it onto its neighbor, so
+        // anything that fits outranks everything else.
         const fitting = scored.filter(s => s.fits);
         const pool = fitting.length > 0 ? fitting : scored;
 
@@ -979,12 +992,11 @@ export const TilingManager = GObject.registerClass({
         for (const s of finalists) {
             if (!best || this._beatsCandidate(s, best)) best = s;
         }
-        const bestOrder = best ? best.perm : windows;
 
         const elapsed = Math.round(monotonicNow() - startTime);
-        Logger.log(`_findOptimalOrder: ${windows.length} windows, ${permutations.length} permutations, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
+        Logger.log(`_findOptimalLayout: ${windows.length} windows, ${orders.length} orders x ${placers.length} placers, ${scored.length} scored, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
 
-        return bestOrder;
+        return best ? { order: best.perm, place: best.place } : { order: windows, place: placers[0] };
     }
 
     // Order-sensitive hash: different input orders must never share a cache entry.
@@ -1039,8 +1051,11 @@ export const TilingManager = GObject.registerClass({
 
         // The alt pass wrote its own targets onto the descriptors, and the preferred result's
         // levels point at those same objects, so replay it before handing it back.
-        const replay = tilingFn.call(this, primary.windows, work_area, spacing);
+        const replay = primary.recipe
+            ? primary.recipe.place.call(this, primary.recipe.order, work_area, spacing)
+            : tilingFn.call(this, primary.windows, work_area, spacing);
         replay.orderOptimized = primary.orderOptimized;
+        replay.recipe = primary.recipe;
         return replay;
     }
 
@@ -1139,11 +1154,19 @@ export const TilingManager = GObject.registerClass({
             return currentResult;
         }
 
-        const optimalWindows = this._findOptimalOrder(windows, work_area, tilingFn);
-        const result = tilingFn.call(this, optimalWindows, work_area, spacing);
+        const winner = this._findOptimalLayout(windows, work_area,
+            this._placersFor(tilingFn, useVerticalShelves, windows.length));
+        // Scoring a candidate writes targetX/targetY onto the shared descriptors, so the
+        // winner has to be the last one placed.
+        const result = winner.place.call(this, winner.order, work_area, spacing);
         Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, ${currentResult.overflow ? 'reordered (overflow fallback)' : 'stability-checked'}`);
+        result.recipe = winner;
         result.orderOptimized = true;
         return result;
+    }
+
+    _placersFor(tilingFn, useVerticalShelves, windowCount) {
+        return [tilingFn];
     }
 
     _verticalShelves(windows, work_area, spacing) {
