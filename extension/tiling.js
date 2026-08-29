@@ -917,12 +917,14 @@ export const TilingManager = GObject.registerClass({
     }
 
     // The band hangs off the tightest layout on offer, not off a running best: chained in-band
-    // hops walk the pick downhill and make it depend on the scan order.
-    _bandFinalists(pool) {
+    // hops walk the pick downhill and make it depend on the scan order. It only opens once the
+    // set settles; while a window is arriving, density outranks anything worth preserving.
+    _bandFinalists(pool, settling) {
         const scored = pool.filter(s => s.score);
         const tightest = scored.length
             ? Math.min(...scored.map(s => s.score.maxPair)) : Infinity;
-        const band = scored.filter(s => s.score.maxPair <= tightest + COMPACTNESS_TIE_BAND);
+        const width = settling ? COMPACTNESS_TIE_BAND : 0;
+        const band = scored.filter(s => s.score.maxPair <= tightest + width);
         // Nothing scored because nothing fit, so stability decides on its own like before.
         return band.length ? band : pool;
     }
@@ -991,7 +993,8 @@ export const TilingManager = GObject.registerClass({
         const fitting = scored.filter(s => s.fits);
         const pool = fitting.length > 0 ? fitting : scored;
 
-        const finalists = this._bandFinalists(pool);
+        const settling = this._sameWindowSetAsLastPass(windows);
+        const finalists = this._bandFinalists(pool, settling);
 
         let best = null;
         for (const s of finalists) {
@@ -999,7 +1002,7 @@ export const TilingManager = GObject.registerClass({
         }
 
         const elapsed = Math.round(monotonicNow() - startTime);
-        Logger.log(`_findOptimalLayout: ${windows.length} windows, ${orders.length} orders x ${placers.length} placers, ${scored.length} scored, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
+        Logger.log(`_findOptimalLayout: ${windows.length} windows, ${orders.length} orders x ${placers.length} placers, ${scored.length} scored, ${settling ? 'settling' : 'packing'}, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
 
         return best ? { order: best.perm, place: best.place } : { order: windows, place: placers[0] };
     }
@@ -1180,8 +1183,9 @@ export const TilingManager = GObject.registerClass({
             return currentResult;
         }
 
+        const settling = this._sameWindowSetAsLastPass(windows);
         const winner = this._findOptimalLayout(windows, work_area,
-            this._placersFor(tilingFn, useVerticalShelves, windows.length));
+            this._placersFor(tilingFn, useVerticalShelves, windows.length, settling));
         // Scoring a candidate writes targetX/targetY onto the shared descriptors, so the
         // winner has to be the last one placed.
         const result = winner.place.call(this, winner.order, work_area, spacing);
@@ -1191,12 +1195,7 @@ export const TilingManager = GObject.registerClass({
         return result;
     }
 
-    // Vertical shelves has two packings to offer (rows on or off); horizontal offers one
-    // placer per row count, since each is a differently-shaped candidate to score.
-    _placersFor(tilingFn, useVerticalShelves, windowCount) {
-        // One or two windows have a fixed arrangement, so there is no row count to choose.
-        if (windowCount <= 2) return [tilingFn];
-
+    _shelfPlacers(useVerticalShelves, windowCount) {
         if (useVerticalShelves) {
             return [
                 (order, area, sp) => this._verticalShelvesWith(order, area, sp, false),
@@ -1210,6 +1209,15 @@ export const TilingManager = GObject.registerClass({
                 placers.push((order, area, sp) => this._horizontalShelvesWith(order, area, sp, perRow));
         }
         return placers;
+    }
+
+    // A settling set competes only inside the shapes of the orientation it already has; a
+    // newcomer gets both, since that is the one pass that picks the arrangement from scratch.
+    _placersFor(tilingFn, useVerticalShelves, windowCount, settling) {
+        // One or two windows have a fixed arrangement, so there is no row count to choose.
+        if (windowCount <= 2) return [tilingFn];
+        if (settling) return this._shelfPlacers(useVerticalShelves, windowCount);
+        return [...this._shelfPlacers(false, windowCount), ...this._shelfPlacers(true, windowCount)];
     }
 
     _finishColumnLayout({ levels, totalWidth, overflow }, windows, work_area, spacing) {
