@@ -3844,6 +3844,10 @@ export const TilingManager = GObject.registerClass({
         const target = WindowState.get(window, 'targetRestoredSize');
         if (!target) return true;
 
+        // get_frame_rect on a disposed MetaWindow segfaults libmutter; a dead window can't
+        // grow any further, so treat it as settled and let the caller drop it.
+        if (!isWindowAlive(window)) return true;
+
         const frame = window.get_frame_rect();
         return frame.width >= target.width - 2 && frame.height >= target.height - 2;
     }
