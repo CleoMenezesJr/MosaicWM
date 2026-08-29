@@ -1296,9 +1296,10 @@ export const TilingManager = GObject.registerClass({
 
     // A settling pass almost always keeps its shape, so trying it alone first skips scoring the
     // whole shelf-placer pool for nothing. Returning null just means the caller's full pool runs
-    // next, so a shape that stopped fitting still repacks. Below 3 windows there is no shape to
-    // freeze (_placersFor never searches), and a simulation cares only about what fits.
+    // next, so a shape that stopped fitting still repacks.
     _tryFrozenShape(windows, work_area, spacing, useVerticalShelves, settling, isSimulation) {
+        // _placersFor never searches below 3 windows, so there is no shape to freeze; a
+        // simulation only cares whether something fits, not which order produced it.
         if (!settling || isSimulation || windows.length <= 2) return null;
 
         const placers = this._shapePreservingPlacers(useVerticalShelves, windows.length);
