@@ -140,6 +140,7 @@ export const ResizeHandler = GObject.registerClass({
     onResizeBegin(window, grabpo) {
         this._resizeInOverflow = false;
         this._lastResizeTileTime = 0;
+        this.tilingManager.isResizing = true;
         this.animationsManager.setResizingWindow(window.get_id());
 
         // Always clear pending resize targets so manual resize takes precedence
@@ -156,6 +157,10 @@ export const ResizeHandler = GObject.registerClass({
     onResizeEnd(window, grabpo, skipTiling) {
         // Keep resizingWindowId set during final retile to prevent animation jiggle
         Logger.log(`Resize ended for window ${window.get_id()}`);
+
+        // Clear before the final retile, same as disableDragMode ahead of a drop's retile: the
+        // grab is over, so this pass is allowed to commit a real eviction.
+        this.tilingManager.isResizing = false;
 
         const tileState = this.edgeTilingManager.getWindowState(window);
         const isEdgeTiled = tileState && tileState.zone !== TileZone.NONE;
