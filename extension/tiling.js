@@ -1076,12 +1076,33 @@ export const TilingManager = GObject.registerClass({
             !this._ranksOrders(this._cachedTileResult.overflow, isSimulation);
     }
 
+    // The pin fixes the composition, not who sits in which cell. Taking the descriptor list as
+    // the order lets a window swap sides with its neighbor the moment it miniaturizes.
+    _placePinnedShape(windows, work_area, spacing, useVerticalShelves, isSimulation) {
+        const shape = this._activePinnedShape;
+        const place = (order, area, sp) => this._placeByShape(order, area, sp, shape, useVerticalShelves);
+        const literal = place(windows, work_area, spacing);
+        if (literal.overflow) return literal;
+
+        if (!this._ranksOrders(false, isSimulation)) {
+            Logger.log(`_tile: ${windows.length} windows honoring pinned shape [${shape.join(',')}] (stable order)`);
+            return literal;
+        }
+
+        const winner = this._findOptimalLayout(windows, work_area, [place]);
+        const ranked = winner.place(winner.order, work_area, spacing);
+        ranked.recipe = winner;
+        ranked.orderOptimized = true;
+        Logger.log(`_tile: ${windows.length} windows honoring pinned shape [${shape.join(',')}] (ranked order)`);
+        return ranked;
+    }
+
     // A pinned composition or an in-flight drag hint wins over the auto-chosen grid, but only
     // for the real apply (not simulations) and only while it fits; an overflow falls through so
     // overflow -> miniaturization still runs. Returns the forced layout, or null to continue.
     _tryForcedShape(windows, work_area, spacing, useVerticalShelves, isSimulation, hash) {
         if (this._activePinnedShape && !isSimulation && !this.isDragging) {
-            const pinned = this._tryPin(windows, work_area, spacing, useVerticalShelves, hash);
+            const pinned = this._tryPin(windows, work_area, spacing, useVerticalShelves, isSimulation, hash);
             if (pinned) return pinned;
         }
 
@@ -1099,8 +1120,8 @@ export const TilingManager = GObject.registerClass({
 
     // Applies the active pin, clearing its overflow grace timer on success or handing it to
     // _dropPinAfterGrace on failure. Returns the placed layout, or null to fall through.
-    _tryPin(windows, work_area, spacing, useVerticalShelves, hash) {
-        const pinned = this._placeByShape(windows, work_area, spacing, this._activePinnedShape, useVerticalShelves);
+    _tryPin(windows, work_area, spacing, useVerticalShelves, isSimulation, hash) {
+        const pinned = this._placePinnedShape(windows, work_area, spacing, useVerticalShelves, isSimulation);
         const pin = this._pinnedComposition.get(this._activePinnedWorkspace);
         if (!pinned.overflow) {
             if (pin) pin.overflowSince = null;
