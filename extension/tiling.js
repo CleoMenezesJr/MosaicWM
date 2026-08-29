@@ -1024,6 +1024,27 @@ export const TilingManager = GObject.registerClass({
         return out;
     }
 
+    // A simulation reads back nothing but whether the set fits, and the smart-resize loop runs one
+    // per shrink step. Same scan and budget as the ranked search, or the two disagree on what fits.
+    _findFittingLayout(windows, workArea, placers) {
+        const orders = [...this._preservingCandidates(windows), ...this._generatePermutations(windows)];
+        let fallback = null;
+        let scanned = 0;
+
+        for (const perm of orders) {
+            if (scanned > 0 &&
+                scanned + placers.length > constants.LAYOUT_SEARCH_CANDIDATE_BUDGET) break;
+            for (const place of placers) {
+                scanned++;
+                if (!place.call(this, perm, workArea, constants.WINDOW_SPACING).overflow)
+                    return { order: perm, place };
+                fallback ??= { order: perm, place };
+            }
+        }
+
+        return fallback ?? { order: windows, place: placers[0] };
+    }
+
     _findOptimalLayout(windows, workArea, placers) {
         if (windows.length <= 1) return { order: windows, place: placers[0] };
 
@@ -1094,6 +1115,10 @@ export const TilingManager = GObject.registerClass({
     // second pass in the other orientation before paying that.
     _tryOppositeOrientation(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation, primary) {
         if (this.isDragging && !isSimulation) return primary;
+        // A packing search competes both orientations in one pass, so there is no other side to
+        // try and rerunning it here just pays for the same candidates twice.
+        if (primary.orderOptimized && windows.length > 2 && !this._sameWindowSetAsLastPass(windows))
+            return primary;
 
         const altVertical = !useVerticalShelves;
         const altFn = altVertical ? this._verticalShelves : this._horizontalShelves;
@@ -1230,8 +1255,10 @@ export const TilingManager = GObject.registerClass({
         }
 
         const settling = this._sameWindowSetAsLastPass(windows);
-        const winner = this._findOptimalLayout(windows, work_area,
-            this._placersFor(tilingFn, useVerticalShelves, windows.length, settling));
+        const placers = this._placersFor(tilingFn, useVerticalShelves, windows.length, settling);
+        const winner = isSimulation && windows.length > 1
+            ? this._findFittingLayout(windows, work_area, placers)
+            : this._findOptimalLayout(windows, work_area, placers);
         // Scoring a candidate writes targetX/targetY onto the shared descriptors, so the
         // winner has to be the last one placed.
         const result = winner.place.call(this, winner.order, work_area, spacing);
