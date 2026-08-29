@@ -84,6 +84,8 @@ export const TilingManager = GObject.registerClass({
         // Live for the whole grab, unlike isDragging/masks, which only exist once startDrag runs. The
         // edge tile exit tiles before that point, and the layout can't move what the cursor is holding.
         this._grabbedWindowId = null;
+        // Mirrors isDragging for a live manual resize; resizeHandler owns the toggle.
+        this.isResizing = false;
         this.dragRemainingSpace = null;
         this._dragMiniaturizationAllowed = true;
         // During a drag the drag layouts are the single source of truth for geometry: the cursor
@@ -2441,10 +2443,11 @@ export const TilingManager = GObject.registerClass({
         return { tile_info: resizeResult.tileInfo, referenceOverflowSkipped: false };
     }
 
-    // Newest goes, matching the victim the smart-resize rebalance already picks. A drag is exempt
-    // for the same reason the reference rung is: the drop decides, not the pass under the cursor.
+    // Newest goes, matching the victim the smart-resize rebalance already picks. A drag or live
+    // resize is exempt for the same reason the reference rung is: the drop decides, not the pass
+    // under the cursor.
     _ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor) {
-        if (!overflow || this.isDragging) return false;
+        if (!overflow || this.isDragging || this.isResizing) return false;
 
         const candidates = meta_windows.filter(w => !this._windowingManager.isExcluded(w));
         if (candidates.length <= 1) return false;
