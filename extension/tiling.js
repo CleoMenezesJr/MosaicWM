@@ -3562,7 +3562,6 @@ export const TilingManager = GObject.registerClass({
         // Save pending miniatures before recursive call (which resets the array)
         const savedPending = this._pendingMiniatureWindows;
         this.tileWorkspaceWindows(workspace, null, monitor, true);
-        // Restore after recursive tiling completes
         this._pendingMiniatureWindows = savedPending;
     }
 

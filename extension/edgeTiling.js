@@ -59,7 +59,6 @@ export const EdgeTilingManager = GObject.registerClass({
     }
 
     clearAllStates() {
-        // Disconnect resize listeners from all known windows
         const allWindows = global.display.get_tab_list(Meta.TabList.NORMAL, null);
         for (const window of allWindows) {
             const signalId = WindowState.get(window, 'edgeResizeSignalId');
@@ -71,7 +70,6 @@ export const EdgeTilingManager = GObject.registerClass({
                 }
                 WindowState.remove(window, 'edgeResizeSignalId');
             }
-            // Clear other states
             WindowState.remove(window, 'edgeTilingState');
             WindowState.remove(window, 'edgePreviousSize');
         }
@@ -327,7 +325,6 @@ export const EdgeTilingManager = GObject.registerClass({
             return null;
         }
 
-        // Validation for monitor index
         const nMonitors = global.display.get_n_monitors();
         if (monitor >= nMonitors) {
             Logger.log(`calculateRemainingSpace: Monitor index ${monitor} out of bounds (${nMonitors})`);
@@ -791,7 +788,6 @@ export const EdgeTilingManager = GObject.registerClass({
                     fullToQuarterConversion, savedFullTileWidth);
             }
 
-            // Handle mosaic windows that can't fit in remaining space
             if (!skipOverflowCheck) {
                 const remSpace = this.calculateRemainingSpace(
                     window.get_workspace(), window.get_monitor());
@@ -1014,7 +1010,6 @@ export const EdgeTilingManager = GObject.registerClass({
         for (const dependent of Array.from(dependents)) {
             this.removeTile(dependent);
 
-            // Cleanup refs
             WindowState.remove(dependent, 'autoTileMaster');
         }
         dependents.clear();
@@ -1178,7 +1173,6 @@ export const EdgeTilingManager = GObject.registerClass({
         const monitor = tiledWindow.get_monitor();
         const workArea = workspace.get_work_area_for_monitor(monitor);
 
-        // Check if BOTH sides are now edge-tiled (including the window just tiled)
         const occupiedSides = new Set(
             this.getEdgeTiledWindows(workspace, monitor).map(w => ZONE_SIDE[w.zone])
         );
@@ -1187,7 +1181,6 @@ export const EdgeTilingManager = GObject.registerClass({
 
         if (mosaicWindows.length === 0) return;
 
-        // If both sides are occupied, move ALL mosaic windows to new workspace
         if (occupiedSides.has('left') && occupiedSides.has('right')) {
             this._evacuateMosaicToNewWorkspace(mosaicWindows, workspace, monitor);
             return;
@@ -1412,7 +1405,6 @@ export const EdgeTilingManager = GObject.registerClass({
     }
 
     _handleResizeWithMosaic(_window, workspace, monitor) {
-        // Retile mosaic to adapt to the edge tile's new size
         if (this._tilingManager) {
             Logger.log('Edge-tiled window resizing - retiling mosaic to adapt');
             this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
@@ -1549,7 +1541,6 @@ export const EdgeTilingManager = GObject.registerClass({
             }
         }
 
-        // Always retile mosaic to adapt to new available space
         if (this._tilingManager) {
             Logger.log('Retiling mosaic after edge tile resize');
             this._timeoutRegistry.add(100, () => {
