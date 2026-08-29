@@ -32,9 +32,9 @@ const POSITION_STABILITY_WEIGHT = 40;
 // These two only ever compete with each other. Nothing outscores the layout that reproduces
 // the previous one, so the unscaled +5 in _scoreOrder only ever breaks an exact tie.
 const GROUP_STABILITY_WEIGHT = 150;
-// Geometry gaps narrower than this are noise, so stability picks instead. Worth 2% of the
-// work area in bounding box, about a 200px square.
-const STABILITY_TIE_BAND = 0.4;
+// A distance in screen fractions now, not slack on an arbitrarily scaled scalar. In the measured
+// scenes four equal windows separate 2x2 from the diamond by 0.055, so the band sits well under it.
+const COMPACTNESS_TIE_BAND = 0.02;
 
 // Every ordered composition of n into 1..n groups (n=3 gives [3],[2,1],[1,2],[1,1,1]).
 // A lazy generator on purpose: the count is 2^(n-1), so callers iterate under a time
@@ -775,45 +775,52 @@ export const TilingManager = GObject.registerClass({
         return result;
     }
 
-    _scoreLayout(tileResult, workArea) {
-        if (!tileResult || tileResult.overflow) return -Infinity;
-
-        let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
-
-        for (const level of tileResult.levels) {
-            for (const w of level.windows) {
-                const x = w.targetX || level.x;
-                const y = w.targetY || level.y;
-                minX = Math.min(minX, x);
-                minY = Math.min(minY, y);
-                maxX = Math.max(maxX, x + w.width);
-                maxY = Math.max(maxY, y + w.height);
+    // Stacking two windows would beat side by side on a 16:9 if both axes shared one scale,
+    // the opposite of what a wide screen asks for.
+    _pairwiseCompactness(centers, workArea) {
+        let maxPair = 0, sum = 0, pairs = 0;
+        for (let i = 0; i < centers.length; i++) {
+            for (let j = i + 1; j < centers.length; j++) {
+                const d = Math.hypot(
+                    (centers[i].x - centers[j].x) / workArea.width,
+                    (centers[i].y - centers[j].y) / workArea.height);
+                maxPair = Math.max(maxPair, d);
+                sum += d;
+                pairs++;
             }
         }
+        return { maxPair, meanPair: pairs ? sum / pairs : 0 };
+    }
 
-        if (minX === Infinity) return -Infinity;
+    _scoreLayout(tileResult, workArea) {
+        if (!tileResult || tileResult.overflow) return null;
 
-        const bboxWidth = maxX - minX;
-        const bboxHeight = maxY - minY;
-        const bboxArea = bboxWidth * bboxHeight;
+        const centers = [];
+        for (const level of tileResult.levels) {
+            for (const w of level.windows) {
+                centers.push({
+                    x: (w.targetX ?? level.x) + w.width / 2,
+                    y: (w.targetY ?? level.y) + w.height / 2,
+                });
+            }
+        }
+        if (centers.length === 0) return null;
 
-        const bboxCenterX = minX + bboxWidth / 2;
-        const bboxCenterY = minY + bboxHeight / 2;
-        const workCenterX = workArea.x + workArea.width / 2;
-        const workCenterY = workArea.y + workArea.height / 2;
-        const centerDist = Math.sqrt(
-            Math.pow(bboxCenterX - workCenterX, 2) +
-            Math.pow(bboxCenterY - workCenterY, 2)
-        );
-        const maxDist = Math.sqrt(Math.pow(workArea.width, 2) + Math.pow(workArea.height, 2)) / 2;
-        const centralization = 1 - (centerDist / maxDist);
+        const { maxPair, meanPair } = this._pairwiseCompactness(centers, workArea);
 
-        const sizeEfficiency = 1 - (bboxArea / (workArea.width * workArea.height));
+        let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+        for (const c of centers) {
+            minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x);
+            minY = Math.min(minY, c.y); maxY = Math.max(maxY, c.y);
+        }
+        const centerDist = Math.hypot(
+            (minX + maxX) / 2 - (workArea.x + workArea.width / 2),
+            (minY + maxY) / 2 - (workArea.y + workArea.height / 2));
+        const maxDist = Math.hypot(workArea.width, workArea.height) / 2;
 
-        // Don't be tempted to also charge dead space inside a level. The window set is fixed
-        // across the orders being compared, so a tighter box already is less dead space, and an
-        // intra-level charge reads the gap beside a short row as waste when that gap is the point.
-        return centralization * 30 + sizeEfficiency * 20;
+        // Bounding box area is gone on purpose: a long thin strip has less area than a square
+        // block, so it rewarded exactly the most spread out arrangement.
+        return { maxPair, meanPair, centralization: 1 - centerDist / maxDist };
     }
 
     // Reward a layout that leaves windows near where they already sat, so a retile doesn't
@@ -906,8 +913,8 @@ export const TilingManager = GObject.registerClass({
 
     _scoreOrder(perm, workArea, tilingFn, currentIds) {
         const result = tilingFn.call(this, perm, workArea, constants.WINDOW_SPACING);
-        const geom = this._scoreLayout(result, workArea);
-        const fits = geom > -Infinity;
+        const score = this._scoreLayout(result, workArea);
+        const fits = !result.overflow;
 
         let stability = 0;
         if (fits) {
@@ -924,7 +931,28 @@ export const TilingManager = GObject.registerClass({
             ? Math.round(this._restoreDisplacement(result) / constants.RESTORE_PROXIMITY_TOLERANCE_PX)
             : 0;
 
-        return { geom, stability, bucket, fits };
+        return { score, stability, bucket, fits };
+    }
+
+    // The band hangs off the tightest layout on offer, not off a running best: chained in-band
+    // hops walk the pick downhill and make it depend on the scan order.
+    _bandFinalists(inBucket) {
+        const scoredInBucket = inBucket.filter(s => s.score);
+        const tightest = scoredInBucket.length
+            ? Math.min(...scoredInBucket.map(s => s.score.maxPair)) : Infinity;
+        const band = scoredInBucket.filter(s => s.score.maxPair <= tightest + COMPACTNESS_TIE_BAND);
+        // Nothing scored because nothing fit, so stability decides on its own like before.
+        return band.length ? band : inBucket;
+    }
+
+    // Stability rules inside the band. meanPair and centralization only exist because a maximum
+    // ties easily, and without a tiebreak the pick would depend on the scan order again.
+    _beatsCandidate(candidate, best) {
+        if (candidate.stability !== best.stability) return candidate.stability > best.stability;
+        if (!candidate.score || !best.score) return false;
+        if (candidate.score.meanPair !== best.score.meanPair)
+            return candidate.score.meanPair < best.score.meanPair;
+        return candidate.score.centralization > best.score.centralization;
     }
 
     _findOptimalOrder(windows, workArea, tilingFn) {
@@ -945,19 +973,13 @@ export const TilingManager = GObject.registerClass({
         const minBucket = Math.min(...pool.map(s => s.bucket));
         const inBucket = pool.filter(s => s.bucket === minBucket);
 
-        // The band hangs off the best geometry on offer, not off a running best: chained
-        // in-band hops walk the pick downhill and make it depend on the scan order.
-        const floor = Math.max(...inBucket.map(s => s.geom)) - STABILITY_TIE_BAND;
+        const finalists = this._bandFinalists(inBucket);
 
-        let bestOrder = windows;
-        let bestStability = -Infinity;
-        for (const s of inBucket) {
-            if (s.geom < floor) continue;
-            if (s.stability > bestStability) {
-                bestStability = s.stability;
-                bestOrder = s.perm;
-            }
+        let best = null;
+        for (const s of finalists) {
+            if (!best || this._beatsCandidate(s, best)) best = s;
         }
+        const bestOrder = best ? best.perm : windows;
 
         const elapsed = Math.round(monotonicNow() - startTime);
         Logger.log(`_findOptimalOrder: ${windows.length} windows, ${permutations.length} permutations, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
