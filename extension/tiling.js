@@ -119,6 +119,7 @@ export const TilingManager = GObject.registerClass({
         this._lastTiledVertical = null;
         // The column packing that produced the last layout, as windows per row per column
         this._lastTiledShape = null;
+        this._pinnedSizesUnchanged = false;
         this._skipStabilityForNextTile = false;
 
         // Swap/reorder operations live per workspace, keyed by Meta.Workspace via WeakMap
@@ -1158,7 +1159,9 @@ export const TilingManager = GObject.registerClass({
         const literal = place(windows, work_area, spacing);
         if (literal.overflow) return literal;
 
-        if (!this._ranksOrders(false, isSimulation)) {
+        // Reranking cells right after a drop moves the window the drag just placed, so the order
+        // only opens up once a size changes; a miniaturize is what the ranking is there for.
+        if (this._pinnedSizesUnchanged || !this._ranksOrders(false, isSimulation)) {
             Logger.log(`_tile: ${windows.length} windows honoring pinned shape [${shape.join(',')}] (stable order)`);
             return literal;
         }
@@ -2495,11 +2498,20 @@ export const TilingManager = GObject.registerClass({
         // count change (window opened/closed) invalidates it, handing control to the auto-layout.
         this._activePinnedShape = null;
         this._activePinnedWorkspace = workspace;
+        this._pinnedSizesUnchanged = false;
         const pin = this._pinnedComposition.get(workspace);
-        if (pin) {
-            if (pin.count === windows.length) this._activePinnedShape = pin.shape;
-            else this._pinnedComposition.delete(workspace);
+        if (!pin) return;
+        if (pin.count !== windows.length) {
+            this._pinnedComposition.delete(workspace);
+            return;
         }
+
+        this._activePinnedShape = pin.shape;
+        // A drop retiles three times and the suppression above only covers the first, so the
+        // sizes at pin time say how long the dropped order still stands.
+        const sizes = windows.map(w => `${w.id}:${w.width}x${w.height}`).sort().join();
+        pin.sizes ??= sizes;
+        this._pinnedSizesUnchanged = pin.sizes === sizes;
     }
 
     // A single window never overflows; a maximized/fullscreen sibling always forces it.
