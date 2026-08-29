@@ -114,6 +114,8 @@ export const TilingManager = GObject.registerClass({
         // windowId -> levelIndex from the last committed tile pass
         this._lastGroupAssignment = null;
         this._lastTiledVertical = null;
+        // The column packing that produced the last layout, as windows per row per column
+        this._lastTiledShape = null;
         this._skipStabilityForNextTile = false;
 
         // Swap/reorder operations live per workspace, keyed by Meta.Workspace via WeakMap
@@ -1211,12 +1213,26 @@ export const TilingManager = GObject.registerClass({
         return placers;
     }
 
+    // Rows already get every split out of _rowSplitVariants, so only columns need their previous
+    // shape handed back. A close leaves a shape that no longer matches the set, hence the count.
+    _shapePreservingPlacers(useVerticalShelves, windowCount) {
+        const shape = this._lastTiledShape;
+        if (!useVerticalShelves || !shape) return [];
+
+        const slots = shape.reduce((s, col) => s + col.reduce((t, n) => t + n, 0), 0);
+        if (slots !== windowCount) return [];
+        return [(order, area, sp) => this._verticalShelvesFixed(order, area, sp, shape)];
+    }
+
     // A settling set competes only inside the shapes of the orientation it already has; a
     // newcomer gets both, since that is the one pass that picks the arrangement from scratch.
     _placersFor(tilingFn, useVerticalShelves, windowCount, settling) {
         // One or two windows have a fixed arrangement, so there is no row count to choose.
         if (windowCount <= 2) return [tilingFn];
-        if (settling) return this._shelfPlacers(useVerticalShelves, windowCount);
+        if (settling) {
+            return [...this._shapePreservingPlacers(useVerticalShelves, windowCount),
+                ...this._shelfPlacers(useVerticalShelves, windowCount)];
+        }
         return [...this._shelfPlacers(false, windowCount), ...this._shelfPlacers(true, windowCount)];
     }
 
@@ -1229,6 +1245,34 @@ export const TilingManager = GObject.registerClass({
     _verticalShelvesWith(windows, work_area, spacing, allowRows) {
         if (windows.length <= 2) return this._simpleCenteredColumn(windows, work_area, spacing);
         const columns = this._binPackColumns(windows, work_area, spacing, allowRows);
+        return this._finishColumnLayout(this._buildColumnLevels(columns, work_area, spacing),
+            windows, work_area, spacing);
+    }
+
+    // The greedy packer re-decides every column as soon as a window changes size, so replaying the
+    // previous order gives back a different arrangement, and the layout on screen never gets
+    // offered back to the search. Hence a recorded shape to fill instead of one to pack into.
+    _verticalShelvesFixed(windows, work_area, spacing, shape) {
+        const columns = [];
+        let next = 0;
+
+        for (const rowSizes of shape) {
+            const col = { rows: [], height: 0, width: 0 };
+            for (const size of rowSizes) {
+                const row = { windows: [], used: 0, height: 0 };
+                for (let k = 0; k < size; k++) {
+                    const w = windows[next++];
+                    row.windows.push(w);
+                    row.used += (row.windows.length > 1 ? spacing : 0) + w.width;
+                    row.height = Math.max(row.height, w.height);
+                }
+                col.height += (col.rows.length > 0 ? spacing : 0) + row.height;
+                col.width = Math.max(col.width, row.used);
+                col.rows.push(row);
+            }
+            columns.push(col);
+        }
+
         return this._finishColumnLayout(this._buildColumnLevels(columns, work_area, spacing),
             windows, work_area, spacing);
     }
@@ -2623,6 +2667,8 @@ export const TilingManager = GObject.registerClass({
         };
         this._lastGroupAssignment = newGroupAssignment;
         this._lastTiledVertical = !!tile_info.vertical;
+        this._lastTiledShape = tile_info.vertical && tile_info.levels.every(lv => lv.rows)
+            ? tile_info.levels.map(lv => lv.rows.map(r => r.windows.length)) : null;
         // Partition rather than the pair set, which is quadratic and fires on every drag retile.
         const partition = tile_info.levels.map(l => `[${l.windows.map(w => w.id).join(',')}]`).join('');
         Logger.log(`[GROUP STABILITY] Recorded ${newGroupAssignment.pairs.size} pairs over ${partition}`);
