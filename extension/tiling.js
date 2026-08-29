@@ -33,7 +33,10 @@ const POSITION_STABILITY_WEIGHT = 40;
 const GROUP_STABILITY_WEIGHT = 150;
 // A distance in screen fractions now, not slack on an arbitrarily scaled scalar. In the measured
 // scenes four equal windows separate 2x2 from the diamond by 0.055, so the band sits well under it.
-const COMPACTNESS_TIE_BAND = 0.02;
+const DENSITY_TIE_BAND = 0.02;
+// How much a hole in the middle counts against a layout whose window centers are close. The
+// measured miniature-between-two-columns scene flips at 0.25, so this keeps a margin over it.
+const HOLLOW_CENTER_WEIGHT = 0.3;
 
 // Every ordered composition of n into 1..n groups (n=3 gives [3],[2,1],[1,2],[1,1,1]).
 // A lazy generator on purpose: the count is 2^(n-1), so callers iterate under a time
@@ -778,7 +781,7 @@ export const TilingManager = GObject.registerClass({
 
     // Stacking two windows would beat side by side on a 16:9 if both axes shared one scale,
     // the opposite of what a wide screen asks for.
-    _pairwiseCompactness(centers, workArea) {
+    _pairwiseDensity(centers, workArea) {
         let maxPair = 0, sum = 0, pairs = 0;
         for (let i = 0; i < centers.length; i++) {
             for (let j = i + 1; j < centers.length; j++) {
@@ -809,7 +812,7 @@ export const TilingManager = GObject.registerClass({
         }
         if (centers.length === 0) return null;
 
-        const { maxPair, meanPair } = this._pairwiseCompactness(centers, workArea);
+        const { maxPair, meanPair } = this._pairwiseDensity(centers, workArea);
 
         let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
         for (const c of centers) {
@@ -823,7 +826,48 @@ export const TilingManager = GObject.registerClass({
 
         // Bounding box area is gone on purpose: a long thin strip has less area than a square
         // block, so it rewarded exactly the most spread out arrangement.
-        return { maxPair, meanPair, centralization: 1 - centerDist / maxDist };
+        const hollow = this._hollowCenter(tileResult, workArea);
+        return {
+            maxPair, meanPair, hollow,
+            density: maxPair + HOLLOW_CENTER_WEIGHT * hollow,
+            centralization: 1 - centerDist / maxDist,
+        };
+    }
+
+    // A shallow level leaves bare screen beside it, which is a lone miniature parked between two
+    // full columns. Pairwise distance can't see it: the miniature sitting there keeps centers close.
+    _hollowCenter(tileResult, workArea) {
+        const levels = tileResult.levels;
+        if (levels.length < 3) return 0;
+
+        const vertical = !!tileResult.vertical;
+        const axis = vertical ? workArea.width : workArea.height;
+        const origin = (vertical ? workArea.x : workArea.y) + axis / 2;
+        const boxes = levels.map(lv => this._levelBox(lv));
+        const depth = b => (vertical ? b.y1 - b.y0 : b.x1 - b.x0);
+        const along = b => (vertical ? (b.x0 + b.x1) / 2 : (b.y0 + b.y1) / 2);
+        const deepest = Math.max(...boxes.map(depth));
+
+        let hollow = 0;
+        for (const b of boxes) {
+            // An overflowing level sits past the edge, where the raw weight goes negative and
+            // would pay a layout for shoving its shallowest level off screen.
+            const centered = Math.max(0, 1 - Math.abs(along(b) - origin) / (axis / 2));
+            hollow += (deepest - depth(b)) * centered;
+        }
+
+        return hollow / (vertical ? workArea.height : workArea.width);
+    }
+
+    _levelBox(level) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const w of level.windows) {
+            const x = w.targetX ?? level.x;
+            const y = w.targetY ?? level.y;
+            x0 = Math.min(x0, x); y0 = Math.min(y0, y);
+            x1 = Math.max(x1, x + w.width); y1 = Math.max(y1, y + w.height);
+        }
+        return { x0, y0, x1, y1 };
     }
 
     // Reward a layout that leaves windows near where they already sat, so a retile doesn't
@@ -924,9 +968,9 @@ export const TilingManager = GObject.registerClass({
     _bandFinalists(pool, settling) {
         const scored = pool.filter(s => s.score);
         const tightest = scored.length
-            ? Math.min(...scored.map(s => s.score.maxPair)) : Infinity;
-        const width = settling ? COMPACTNESS_TIE_BAND : 0;
-        const band = scored.filter(s => s.score.maxPair <= tightest + width);
+            ? Math.min(...scored.map(s => s.score.density)) : Infinity;
+        const width = settling ? DENSITY_TIE_BAND : 0;
+        const band = scored.filter(s => s.score.density <= tightest + width);
         // Nothing scored because nothing fit, so stability decides on its own like before.
         return band.length ? band : pool;
     }
