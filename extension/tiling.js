@@ -3798,17 +3798,35 @@ export const TilingManager = GObject.registerClass({
         return { pendingWindows, grownWindows };
     }
 
-    // Clear the targetRestoredSize bridge after the Wayland frame settles; until then
-    // WindowDescriptor reads this value instead of the stale frame.
+    // WindowDescriptor reads targetRestoredSize instead of the stale frame, so dropping it before
+    // the client acks the grow hands the next pass the old size. Slow acks run past several delays.
     _scheduleGrowSettle(grownWindows) {
         if (grownWindows.length === 0 || !this._extension?._timeoutRegistry) return;
 
+        let attemptsLeft = constants.RESIZE_SETTLE_MAX_ATTEMPTS;
+        let pending = grownWindows;
+
         this._extension._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
-            for (const gw of grownWindows) {
+            const lastTry = --attemptsLeft <= 0;
+            pending = pending.filter(gw => {
+                if (!lastTry && !this._reachedRestoredSize(gw)) {
+                    Logger.log(`[SMART RESIZE] ${gw.get_id()}: grow not acked yet, holding the restored size`);
+                    return true;
+                }
                 WindowState.remove(gw, 'targetRestoredSize');
-            }
-            return false;
+                return false;
+            });
+            return pending.length > 0 ? GLib.SOURCE_CONTINUE : GLib.SOURCE_REMOVE;
         }, 'tryFitWithResize_growSettle');
+    }
+
+    // Same 2px slop the shrink check uses, since the grow target came from a rounded layout.
+    _reachedRestoredSize(window) {
+        const target = WindowState.get(window, 'targetRestoredSize');
+        if (!target) return true;
+
+        const frame = window.get_frame_rect();
+        return frame.width >= target.width - 2 && frame.height >= target.height - 2;
     }
 
     // Re-run binary search with corrected minimums after client-side clamping detection.
