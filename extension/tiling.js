@@ -1722,7 +1722,10 @@ export const TilingManager = GObject.registerClass({
             levelY += level.height + spacing;
         }
 
-        this._slideTowardNeighbors(levels.map(lv => lv.windows.map(w => [w])),
+        // One unit per shelf, not per window: sliding each window separately let a narrow one
+        // drift off its own shelf toward a neighbor while its shelf-mate stayed put, fragmenting
+        // the group without shrinking it (the shelf's footprint still follows its widest member).
+        this._slideTowardNeighbors(levels.map(lv => [lv.windows]),
             false, work_area, spacing);
     }
 
@@ -1806,7 +1809,10 @@ export const TilingManager = GObject.registerClass({
             }
             levelX += level.width + spacing;
         }
-        this._slideTowardNeighbors(levels.map(lv => lv.windows.map(w => [w])),
+        // One unit per column, not per window: sliding each window separately let a narrow one
+        // drift off its own column toward a neighbor while its column-mate stayed put, fragmenting
+        // the group without shrinking it (the column's footprint still follows its widest member).
+        this._slideTowardNeighbors(levels.map(lv => [lv.windows]),
             true, work_area, spacing);
         return { x, y: work_area.y, overflow, vertical: true, levels, windows };
     }
