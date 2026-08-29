@@ -103,6 +103,7 @@ export const TilingManager = GObject.registerClass({
         // it is keyed by workspace GObjects that come and go (like _workspaceSwaps).
         this._pinnedComposition = new WeakMap();
         this._activePinnedShape = null;
+        this._activePinnedVertical = null;
         this._activePinnedWorkspace = null;
 
         // Layout cache to avoid redundant O(n!) permutation calculations
@@ -486,6 +487,7 @@ export const TilingManager = GObject.registerClass({
                     positions,
                     permOrder: ordered.map(w => w.id),
                     shape,
+                    vertical: useVertical,
                 });
 
                 if (layouts.length >= constants.MAX_DRAG_LAYOUTS) break outer;
@@ -627,9 +629,10 @@ export const TilingManager = GObject.registerClass({
 
     // Persist a chosen composition for the workspace. Ordering rides the existing order-op
     // path; only the shape is new. Honored by _tile until the window count changes or the
-    // shape stops fitting.
-    pinComposition(workspace, shape, order) {
-        this._pinnedComposition.set(workspace, { count: order.length, shape });
+    // shape stops fitting. vertical is the axis the shape was verified against (see
+    // _orientationFor for why that can't just be re-derived on the next pass).
+    pinComposition(workspace, shape, order, vertical) {
+        this._pinnedComposition.set(workspace, { count: order.length, shape, vertical });
         Logger.log(`pinComposition: pinned shape [${shape.join(',')}] for ${order.length} windows`);
         this.applyOrderOp(workspace, order);
     }
@@ -698,7 +701,7 @@ export const TilingManager = GObject.registerClass({
                 const center = axis === 'x' ? fp.x + fp.width / 2 : fp.y + fp.height / 2;
                 const disp = sign * (center - originCenter);
                 if (disp >= constants.KEYBOARD_RECOMPOSE_MIN_DISPLACEMENT_PX && (!best || disp > best.displacement))
-                    best = { shape, order: ordered.map(w => w.id), displacement: disp };
+                    best = { shape, order: ordered.map(w => w.id), displacement: disp, vertical: useVertical };
             }
         }
         return best;
@@ -977,13 +980,19 @@ export const TilingManager = GObject.registerClass({
         return { score, position, group, sameOrder, fits };
     }
 
+    // Whether `windows` is the exact set the last real pass tiled. Orientation is written on
+    // every real pass regardless of ranking, so this is what _orientationFor trusts; settling
+    // additionally requires ranking, since only a ranked pass leaves an order worth keeping.
+    _sameWindowSetAsLastPass(windows) {
+        const tiled = this._lastGroupAssignment?.ids;
+        return !!tiled && windows.every(w => tiled.has(w.id));
+    }
+
     // Everyone on screen was already tiled, so this pass is a miniaturize, a restore or a resize:
     // the layout is settling, not being built. A newcomer means the opposite. An unranked last
     // pass (fit check, drag) never earns settling either, or its leftover order gets trusted.
     _layoutIsSettling(windows) {
-        const tiled = this._lastGroupAssignment?.ids;
-        if (!tiled || !this._lastTileRanked) return false;
-        return windows.every(w => tiled.has(w.id));
+        return this._lastTileRanked && this._sameWindowSetAsLastPass(windows);
     }
 
     // The band hangs off the tightest layout on offer, not off a running best: chained in-band
@@ -1177,10 +1186,13 @@ export const TilingManager = GObject.registerClass({
     }
 
     // The pin fixes the composition, not who sits in which cell. Taking the descriptor list as
-    // the order lets a window swap sides with its neighbor the moment it miniaturizes.
+    // the order lets a window swap sides with its neighbor the moment it miniaturizes. Placed on
+    // the stored axis, not useVerticalShelves: see _orientationFor for why the fresh value can't
+    // be trusted right after a pin's own "stable order" placement.
     _placePinnedShape(windows, work_area, spacing, useVerticalShelves, isSimulation) {
         const shape = this._activePinnedShape;
-        const place = (order, area, sp) => this._placeByShape(order, area, sp, shape, useVerticalShelves);
+        const vertical = this._activePinnedVertical ?? useVerticalShelves;
+        const place = (order, area, sp) => this._placeByShape(order, area, sp, shape, vertical);
         const literal = place(windows, work_area, spacing);
         if (literal.overflow) return literal;
 
@@ -1303,9 +1315,13 @@ export const TilingManager = GObject.registerClass({
     }
 
     // Miniaturizing shrinks the tallest window, which is exactly what the heuristic reads, so
-    // letting it speak on every pass flips rows into columns and back mid-cycle.
+    // letting it speak on every pass flips rows into columns and back mid-cycle. Trusts the last
+    // real orientation whenever the window set matches, not only while _layoutIsSettling: a pin's
+    // "stable order" placement never ranks (by design, to skip re-ranking right after a drop), so
+    // gating on settling here starved every caller of an orientation just verified to fit, not
+    // only the pin's own.
     _orientationFor(windows, workArea) {
-        if (this._lastTiledVertical !== null && this._layoutIsSettling(windows))
+        if (this._lastTiledVertical !== null && this._sameWindowSetAsLastPass(windows))
             return this._lastTiledVertical;
         return this._useVerticalForDrag(windows, workArea);
     }
@@ -2503,6 +2519,7 @@ export const TilingManager = GObject.registerClass({
         // Honor a pinned composition only while it still matches the current window count; a
         // count change (window opened/closed) invalidates it, handing control to the auto-layout.
         this._activePinnedShape = null;
+        this._activePinnedVertical = null;
         this._activePinnedWorkspace = workspace;
         this._pinnedSizesUnchanged = false;
         const pin = this._pinnedComposition.get(workspace);
@@ -2513,6 +2530,7 @@ export const TilingManager = GObject.registerClass({
         }
 
         this._activePinnedShape = pin.shape;
+        this._activePinnedVertical = pin.vertical;
         // A drop retiles three times and the suppression above only covers the first, so the
         // sizes at pin time say how long the dropped order still stands.
         const sizes = windows.map(w => `${w.id}:${w.width}x${w.height}`).sort().join();
@@ -2646,6 +2664,7 @@ export const TilingManager = GObject.registerClass({
 
         let tile_info = this._tile(windows, tileArea, dryRun);
         this._activePinnedShape = null;
+        this._activePinnedVertical = null;
         let overflow = this._determineOverflow(tile_info, workspace_windows);
 
         if (dryRun) return this._dryRunResult(overflow, workspace);
@@ -4020,6 +4039,7 @@ export const TilingManager = GObject.registerClass({
         this._workspaceSwaps = null;
         this._pinnedComposition = null;
         this._activePinnedShape = null;
+        this._activePinnedVertical = null;
         this._edgeTilingManager = null;
         this._drawingManager = null;
         this._animationsManager = null;

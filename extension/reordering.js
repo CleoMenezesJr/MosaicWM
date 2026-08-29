@@ -221,7 +221,7 @@ export const ReorderingManager = GObject.registerClass({
         // Use the shape from the layout, not re-derived from positions: unequal-height windows
         // have differing top edges and would be misread as separate rows.
         if (!skip_apply && this._chosenLayout && this._tilingManager) {
-            this._tilingManager.pinComposition(workspace, this._chosenLayout.shape, this._chosenLayout.permOrder);
+            this._tilingManager.pinComposition(workspace, this._chosenLayout.shape, this._chosenLayout.permOrder, this._chosenLayout.vertical);
         }
 
         this._dragLayouts = null;

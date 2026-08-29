@@ -277,7 +277,7 @@ export const SwappingManager = GObject.registerClass({
     _recompose(window, direction, workspace, monitor) {
         const best = this._tilingManager.bestRecomposition(workspace, monitor, window, direction);
         if (best) {
-            this._tilingManager.pinComposition(workspace, best.shape, best.order);
+            this._tilingManager.pinComposition(workspace, best.shape, best.order, best.vertical);
             this._tilingManager.invalidateLayoutCache();
             this._tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
             Logger.log(`Recomposed to [${best.shape.join(',')}] moving ${window.get_id()} ${direction}`);
