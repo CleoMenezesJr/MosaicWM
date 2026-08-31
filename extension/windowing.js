@@ -262,7 +262,6 @@ export const WindowingManager = GObject.registerClass({
                     }
                 }, this._timeoutRegistry);
 
-                // Re-tile after window has settled
                 if (this._tilingManager) {
                     Logger.log('moveOversizedWindow: workspace switch done, retiling immediately and then waiting for animations');
 

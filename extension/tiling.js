@@ -321,7 +321,6 @@ export const TilingManager = GObject.registerClass({
         if (this._drawingManager) {
             this._drawingManager.removeBoxes();
         }
-        // Clear logical masks only when not dragging; recycle boxes otherwise.
         if (!this.isDragging) {
             this.masks.clear();
         }
@@ -1973,7 +1972,6 @@ export const TilingManager = GObject.registerClass({
 
             const aspectDiff = Math.abs(layoutWidth / layoutHeight - workspaceAspect);
             const emptySpaces = rows * cols - windowCount;
-            // Heavily penalize overflow
             const score = aspectDiff + emptySpaces * 0.3 + (overflow ? 1000 : 0);
 
             if (!overflow && bestOverflow) {
@@ -2902,7 +2900,6 @@ export const TilingManager = GObject.registerClass({
     _positionTiledWindows(workspace, monitor, tile_info, tileArea, meta_windows, reference_meta_window, computedSlots, work_area) {
         let animationsHandledPositioning = false;
         if (!this.isDragging && tile_info && tile_info.levels && tile_info.levels.length > 0) {
-            // Allow animation for windows returning from excluded state
             if (reference_meta_window && WindowState.get(reference_meta_window, 'justReturnedFromExclusion')) {
                 Logger.log(`Allowing animation for returning excluded window ${reference_meta_window.get_id()}`);
                 WindowState.remove(reference_meta_window, 'justReturnedFromExclusion');
@@ -3249,7 +3246,6 @@ export const TilingManager = GObject.registerClass({
         }
     }
 
-    // TARGET size the window wants to be
     savePreferredSize(window) {
         if (this._preferredSaveBlocked(window)) return;
 
@@ -3503,7 +3499,6 @@ export const TilingManager = GObject.registerClass({
                 WindowState.set(w, 'isConstrainedByMosaic', false);
                 WindowState.set(w, 'targetSmartResizeSize', null);
             } else {
-                // Still constrained, but update mask
                 this._setSmartResizeTarget(w, sim);
             }
         }

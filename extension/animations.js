@@ -95,7 +95,6 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     setDragging(dragging) {
-        // If ending drag, set flag for smooth drop animation
         if (this._isDragging && !dragging) {
             this._justEndedDrag = true;
             this._timeoutRegistry.add(constants.DEBOUNCE_DELAY_MS, () => {

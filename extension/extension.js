@@ -566,7 +566,9 @@ export default class WindowMosaicExtension extends Extension {
                     this.tilingManager.savePreferredSize(window);
                 }
 
-                // Always connect exclusion signals, even if excluded
+                // Exclusion can flip later (always-on-top toggled off, unstuck from all
+                // workspaces), and unmanaged has to fire regardless for cleanup either way,
+                // so an excluded window still needs to be wired up now.
                 this.windowHandler.connectWindowSignals(window);
             }
         }
