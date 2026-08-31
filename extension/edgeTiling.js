@@ -103,7 +103,6 @@ export const EdgeTilingManager = GObject.registerClass({
         if (!workspace) return false;
 
         // Iterating WeakMap is not possible in GJS, so query workspace windows instead
-        // This is robust but slightly more expensive than a Map lookup
         return workspace.list_windows().some(win => {
             const state = WindowState.get(win, 'edgeTilingState');
             return state && ZONE_SIDE[state.zone] === side;
@@ -114,7 +113,6 @@ export const EdgeTilingManager = GObject.registerClass({
     detectZone(cursorX, cursorY, workArea, workspace, cachedEdgeTiledIds = null) {
         const threshold = constants.EDGE_TILING_THRESHOLD;
 
-        // Check TOP edge first (maximize)
         if (cursorY < workArea.y + threshold) {
             return TileZone.FULLSCREEN;
         }
@@ -452,7 +450,6 @@ export const EdgeTilingManager = GObject.registerClass({
         const winId = window.get_id();
         const state = WindowState.get(window, 'edgeTilingState');
 
-        // If this was a quarter tile, expand the adjacent quarter to FULL
         if (state && state.zone && this._isQuarterZone(state.zone)) {
             Logger.log(`Quarter tile ${winId} being removed from zone ${state.zone}`);
 
@@ -1021,7 +1018,6 @@ export const EdgeTilingManager = GObject.registerClass({
     _releaseAutoTileLinks(window) {
         this.releaseAutoTileDependents(window);
 
-        // If this window is a dependent, remove itself from master
         const master = WindowState.get(window, 'autoTileMaster');
         if (master) {
             const masterDeps = WindowState.get(master, 'autoTileDependents');

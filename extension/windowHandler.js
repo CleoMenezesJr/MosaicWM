@@ -1134,7 +1134,6 @@ export const WindowHandler = GObject.registerClass({
                 });
             }
 
-            // Safety timeout
             timeoutId = this._timeoutRegistry.add(400, () => {
                 // Pre-flight check: If the actor was disposed while waiting, abort safely.
                 if (!isWindowAlive(window)) {
@@ -1381,7 +1380,6 @@ export const WindowHandler = GObject.registerClass({
         const isCrossWorkspaceDrop = previousWorkspaceIndex !== undefined
             && previousWorkspaceIndex !== WORKSPACE.index()
             && timeSinceRemoved < constants.SAFETY_TIMEOUT_BUFFER_MS;
-        // Skip if this is an overflow move, not a real drag-drop
         if (!isCrossWorkspaceDrop || WindowState.get(WINDOW, 'movedByOverflow')) return;
 
         // Mark as DnD arrival; triggers expansion after tiling
