@@ -842,8 +842,11 @@ export default class WindowMosaicExtension extends Extension {
                         WindowState.remove(w, 'isReverseSmartResizing');
                     }
                     this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
+                    this._tryCascadeMiniatureRestore(workspace, monitor);
                     return GLib.SOURCE_REMOVE;
                 }, 'miniatureRestoreGrowSettle');
+            } else {
+                this._tryCascadeMiniatureRestore(workspace, monitor);
             }
         };
 
@@ -856,6 +859,17 @@ export default class WindowMosaicExtension extends Extension {
         } else {
             doTile();
         }
+    }
+
+    // One restore can leave enough room for the next MRU miniature too; restoreMiniature
+    // fires this same handler synchronously, so this just keeps the chain going until
+    // nothing else fits, the same way a single window leaving already restores one.
+    _tryCascadeMiniatureRestore(workspace, monitor) {
+        if (this.dragHandler?._suppressRestoreRetile) return;
+
+        const remaining = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
+            .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
+        this.windowHandler?._tryAutoRestoreMiniature(remaining, workspace, monitor);
     }
 
     _onDndEnter() {
