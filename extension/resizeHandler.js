@@ -70,6 +70,21 @@ export const ResizeHandler = GObject.registerClass({
         this._constraintRebalanceCount = 0;
     }
 
+    _isMiniatureFrame(window) {
+        return WindowState.get(window, WindowState.IS_MINIATURE) ||
+            WindowState.get(window, WindowState.PENDING_MINIATURE);
+    }
+
+    _discardMiniatureResizeTarget(window) {
+        if (!this._isMiniatureFrame(window) || !WindowState.get(window, 'targetSmartResizeSize'))
+            return false;
+
+        WindowState.remove(window, 'targetSmartResizeSize');
+        this._disarmClampVerification(window);
+        this._sizeChanged = false;
+        return true;
+    }
+
     // Once the client had its chance, a frame still above target is a genuine minimum.
     _commitClampedSize(window, pendingSmartSize, rect) {
         Logger.log(`[SMART RESIZE] Window ${window.get_id()} clamped: target=${pendingSmartSize.width}×${pendingSmartSize.height}, actual=${rect.width}×${rect.height}`);
@@ -112,6 +127,13 @@ export const ResizeHandler = GObject.registerClass({
         const verifyId = this._timeoutRegistry.add(constants.RESIZE_CLAMP_VERIFY_DELAY_MS, () => {
             WindowState.remove(window, 'clampVerifyId');
             if (!isWindowAlive(window)) return GLib.SOURCE_REMOVE;
+
+            // Miniatures intentionally keep their native frame and scale only the actor.
+            // Their visual slot can never be verified through get_frame_rect().
+            if (this._isMiniatureFrame(window)) {
+                WindowState.remove(window, 'targetSmartResizeSize');
+                return GLib.SOURCE_REMOVE;
+            }
 
             // Whatever resolved or replaced this target meanwhile owns the state now.
             const current = WindowState.get(window, 'targetSmartResizeSize');
@@ -226,26 +248,48 @@ export const ResizeHandler = GObject.registerClass({
     onSizeChange = (_, win, mode) => {
         const window = win.meta_window;
         if (!this.windowingManager.isExcluded(window)) {
-            if (mode === Meta.SizeChange.FULLSCREEN || mode === Meta.SizeChange.MAXIMIZE) {
+            if (mode === Meta.SizeChange.FULLSCREEN || mode === Meta.SizeChange.UNFULLSCREEN) {
+                this.handleFullscreenTransition(window);
+            } else if (mode === Meta.SizeChange.MAXIMIZE) {
                 this.tryEnterSacred(window);
-            } else if (mode === Meta.SizeChange.UNMAXIMIZE || mode === Meta.SizeChange.UNFULLSCREEN) {
+            } else if (mode === Meta.SizeChange.UNMAXIMIZE) {
                 this.tryExitSacred(window);
             }
         }
     };
 
-    // Isolates a maximized/fullscreen window to its own workspace, after a short
-    // debounce so a quick toggle back never even starts the move. Some apps'
-    // fullscreen doesn't reliably trigger window_manager's size-change signal, so
-    // this is also called from windowHandler's notify::fullscreen as a backup -
-    // the pending flag below makes calling it twice for the same transition safe.
-    // size-change fires BEFORE window-created for new windows, so a window with no
-    // preferredSize/openingSize hasn't been through onWindowCreated yet; if it's already
-    // maximized it was born that way and skips isolation.
+    // Fullscreen is a compositor overlay on the current mosaic. Consume the frame
+    // changes on both sides of the transition so they cannot rewrite or retile it.
+    // notify::fullscreen calls this too because some clients omit the WM signal.
+    handleFullscreenTransition(window) {
+        WindowState.set(window, 'fullscreenTransition', true);
+        WindowState.remove(window, 'isEnteringSacred');
+
+        const previousTimeout = WindowState.get(window, 'fullscreenTransitionTimeout');
+        if (previousTimeout) this._timeoutRegistry.remove(previousTimeout);
+
+        const timeoutId = this._timeoutRegistry.add(
+            constants.RETILE_DELAY_MS + constants.RESIZE_SETTLE_DELAY_MS,
+            () => {
+                WindowState.remove(window, 'fullscreenTransition');
+                WindowState.remove(window, 'fullscreenTransitionTimeout');
+                return GLib.SOURCE_REMOVE;
+            },
+            'resizeHandler_fullscreenTransition'
+        );
+        WindowState.set(window, 'fullscreenTransitionTimeout', timeoutId);
+    }
+
+    // Isolates a maximized window to its own workspace, after a short debounce
+    // so a quick toggle back never even starts the move.
+    // size-change fires BEFORE window-created for new windows. Once geometryReady is set,
+    // a maximize is necessarily a later user action even when the client never supplied a
+    // usable saved size.
     _detectBornMaximized(window) {
-        if (!WindowState.get(window, 'preferredSize') &&
+        if (!WindowState.get(window, 'geometryReady') &&
+            !WindowState.get(window, 'preferredSize') &&
             !WindowState.get(window, 'openingSize') &&
-            this.windowingManager.isMaximizedOrFullscreen(window)) {
+            window.is_maximized() && !window.is_fullscreen()) {
             WindowState.set(window, 'openedMaximized', true);
             Logger.log(`tryEnterSacred: Detected born-maximized window ${window.get_id()} - skipping isolation`);
             return true;
@@ -254,6 +298,10 @@ export const ResizeHandler = GObject.registerClass({
     }
 
     tryEnterSacred(window) {
+        if (window.is_fullscreen()) {
+            this.handleFullscreenTransition(window);
+            return;
+        }
         if (this._detectBornMaximized(window)) return;
 
         // Born-maximized guard (from onWindowCreated, for subsequent maximize events)
@@ -274,7 +322,7 @@ export const ResizeHandler = GObject.registerClass({
             Logger.log('User entering sacred state, but mosaic is disabled - skipping isolation');
             return;
         }
-        if (!this.windowingManager.isMaximizedOrFullscreen(window) ||
+        if (!window.is_maximized() ||
             this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor).length <= 1) {
             return;
         }
@@ -286,7 +334,7 @@ export const ResizeHandler = GObject.registerClass({
         this._timeoutRegistry.add(constants.SACRED_ENTER_DEBOUNCE_MS, () => {
             WindowState.remove(window, 'sacredEnterPending');
 
-            if (!isWindowAlive(window) || !this.windowingManager.isMaximizedOrFullscreen(window)) {
+            if (!isWindowAlive(window) || !window.is_maximized() || window.is_fullscreen()) {
                 Logger.log(`[SACRED-ENTER] Window ${window.get_id()} already left sacred state - skipping isolation`);
                 return GLib.SOURCE_REMOVE;
             }
@@ -319,11 +367,17 @@ export const ResizeHandler = GObject.registerClass({
         }, 'resizeHandler_sacredEnterDebounce');
     }
 
-    // Mirrors tryEnterSacred: also called from windowHandler's notify::fullscreen
-    // as a backup, in case the size-change signal didn't fire for this exit either.
-    // maximizedUndoInfo gets removed right after use, so calling this twice for the
-    // same exit is safe; the second call just finds nothing left to undo.
+    // maximizedUndoInfo gets removed right after use, so duplicate maximize property
+    // notifications are safe; the second call just finds nothing left to undo.
     tryExitSacred(window) {
+        if (window.is_fullscreen()) {
+            this.handleFullscreenTransition(window);
+            return;
+        }
+        // An arrival collision owns this unmaximize and keeps the window in its chosen workspace.
+        if (WindowState.get(window, 'workspaceMergeUnmaximize')) {
+            return;
+        }
         // Born-maximized windows: don't set unmaximizing flag or try undo
         if (WindowState.get(window, 'openedMaximized')) {
             return;
@@ -357,6 +411,7 @@ export const ResizeHandler = GObject.registerClass({
         const rect = window.get_frame_rect();
         if (this._ignoreSizeChange(window, rect)) return;
 
+        if (this._discardMiniatureResizeTarget(window)) return;
         if (this._handleClampAfterResize(window, rect)) return;
         if (this._handleSacredResizePhase(window)) return;
         if (this._handleMaxUnmaxResize(window)) return;
@@ -440,13 +495,19 @@ export const ResizeHandler = GObject.registerClass({
     }
 
     _handleMaxUnmaxResize(window) {
+        if (WindowState.get(window, 'fullscreenTransition')) {
+            this._sizeChanged = false;
+            return true;
+        }
+
         if (this.windowingManager.isMaximizedOrFullscreen(window)) {
             WindowState.remove(window, 'isEnteringSacred');
             this._sizeChanged = false;
             return true;
         }
 
-        if (WindowState.get(window, 'unmaximizing')) {
+        if (WindowState.get(window, 'unmaximizing') ||
+            WindowState.get(window, 'workspaceMergeUnmaximize')) {
             this._sizeChanged = false;
             return true;
         }
@@ -564,6 +625,7 @@ export const ResizeHandler = GObject.registerClass({
             WindowState.get(window, 'unmaximizing') ||
             WindowState.get(window, 'isRestoringSacred') ||
             WindowState.get(window, 'openedMaximized') ||
+            WindowState.get(window, 'workspaceMergeUnmaximize') ||
             (WindowState.get(window, 'isMosaicResizing') && !clientOwnedSize);
     }
 
