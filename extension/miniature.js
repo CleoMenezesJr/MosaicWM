@@ -7,6 +7,7 @@ import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
+import St from 'gi://St';
 
 import * as Logger from './logger.js';
 import * as constants from './constants.js';
@@ -149,11 +150,10 @@ const MiniatureClickOverlay = GObject.registerClass({
             reactive: true,
             // The icon child would inherit a zero opacity, and this actor paints nothing anyway.
             opacity: 255,
-            layout_manager: new Clutter.BinLayout(),
-            x: tgt.x,
-            y: tgt.y,
-            width,
-            height,
+            x: tgt.x - 12,
+            y: tgt.y - 12,
+            width: width + 24,
+            height: height + 24,
         });
 
         this._window = window;
@@ -173,11 +173,52 @@ const MiniatureClickOverlay = GObject.registerClass({
             this._icon.set({
                 reactive: false,
                 opacity: 0,
-                x_align: Clutter.ActorAlign.CENTER,
-                y_align: Clutter.ActorAlign.CENTER,
             });
             this.add_child(this._icon);
+            this._icon.add_constraint(new Clutter.AlignConstraint({
+                source: this,
+                align_axis: Clutter.AlignAxis.X_AXIS,
+                factor: 0.5,
+            }));
+            this._icon.add_constraint(new Clutter.AlignConstraint({
+                source: this,
+                align_axis: Clutter.AlignAxis.Y_AXIS,
+                factor: 0.5,
+            }));
         }
+
+        const basePath = GLib.path_get_dirname(import.meta.url.replace(/^file:\/\//, ''));
+        const iconFile = Gio.File.new_for_path(`${basePath}/icons/x.svg`);
+        const gicon = new Gio.FileIcon({ file: iconFile });
+
+        this._closeButton = new St.Button({
+            style_class: 'window-close',
+            child: new St.Icon({ gicon: gicon, icon_size: 16 }),
+            opacity: 0,
+            reactive: true,
+        });
+
+        this._closeButton.add_constraint(new Clutter.AlignConstraint({
+            source: this,
+            align_axis: Clutter.AlignAxis.X_AXIS,
+            factor: 1.0,
+        }));
+        this._closeButton.add_constraint(new Clutter.AlignConstraint({
+            source: this,
+            align_axis: Clutter.AlignAxis.Y_AXIS,
+            factor: 0.0,
+        }));
+        this.add_child(this._closeButton);
+
+        this._closeButtonVisible = false;
+
+        this._closeButton.connect('clicked', () => {
+            if (this._destroyed) return;
+            Logger.log(`[MINIATURE] Close button clicked for ${window.get_id()}`);
+            this._window.delete(global.get_current_time());
+        });
+
+        // Parent cleanup handles children automatically.
 
         // Mirror window actor visibility so the reactive overlay isn't pickable
         // from other workspaces at the same screen position.
@@ -189,19 +230,39 @@ const MiniatureClickOverlay = GObject.registerClass({
         }
 
         const restore = () => {
+            if (this._closeButton) this._closeButton.hide();
             Logger.log(`[MINIATURE] Click overlay clicked for ${window.get_id()}`);
             this._miniatureManager.restoreMiniature(window, null);
         };
-        this.connect('button-press-event', () => {
+        this.connect('button-press-event', (_actor, event) => {
+            if (this._closeButtonVisible) {
+                const [x, y] = event.get_coords();
+                const [ok, lx, ly] = this.transform_stage_point(x, y);
+                // The button is aligned to the top-right corner.
+                // Its right edge is this.width, its top edge is 0.
+                // We assume a ~28px hit area.
+                if (ok && lx >= this.width - 28 && lx <= this.width && ly >= 0 && ly <= 28) {
+                    this._window.delete(global.get_current_time());
+                    return Clutter.EVENT_STOP;
+                }
+            }
             restore();
             return Clutter.EVENT_STOP;
         });
         // A tap never reaches this window_group sibling as an emulated button press,
         // and Clutter.ClickAction is gone in GNOME 48+, so read the touch signal raw.
         this.connect('touch-event', (_actor, event) => {
-            if (event.type() !== Clutter.EventType.TOUCH_BEGIN)
-                return Clutter.EVENT_PROPAGATE;
-            restore();
+            if (event.type() === Clutter.EventType.TOUCH_BEGIN) {
+                if (this._closeButtonVisible) {
+                    const [x, y] = event.get_coords();
+                    const [ok, lx, ly] = this.transform_stage_point(x, y);
+                    if (ok && lx >= this.width - 28 && lx <= this.width && ly >= 0 && ly <= 28) {
+                        this._window.delete(global.get_current_time());
+                        return Clutter.EVENT_STOP;
+                    }
+                }
+                restore();
+            }
             return Clutter.EVENT_STOP;
         });
 
@@ -210,11 +271,42 @@ const MiniatureClickOverlay = GObject.registerClass({
         // and focus-follows-mouse never sees the miniature. Do the hover focus ourselves.
         this.connect('motion-event', () => {
             this._onHover();
+            this._showCloseButton();
             return Clutter.EVENT_PROPAGATE;
         });
         this.connect('leave-event', () => {
             this._cancelHoverRest();
+            this._hideCloseButton();
             return Clutter.EVENT_PROPAGATE;
+        });
+    }
+
+    _showCloseButton() {
+        if (this._destroyed || !this._closeButton || this._closeButtonVisible) return;
+        this._closeButtonVisible = true;
+
+        const parent = this.get_parent();
+        if (parent) {
+            parent.set_child_above_sibling(this, null);
+            parent.set_child_above_sibling(this._closeButton, null);
+        }
+
+        this._closeButton.remove_all_transitions();
+        this._closeButton.ease({
+            opacity: 255,
+            duration: 150,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        });
+    }
+
+    _hideCloseButton() {
+        if (this._destroyed || !this._closeButton || !this._closeButtonVisible) return;
+        this._closeButtonVisible = false;
+        this._closeButton.remove_all_transitions();
+        this._closeButton.ease({
+            opacity: 0,
+            duration: 150,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         });
     }
 
@@ -260,8 +352,8 @@ const MiniatureClickOverlay = GObject.registerClass({
         const preSize = WindowState.get(this._window, PRE_MINIATURE_SIZE);
 
         if (tgt && scale && preSize) {
-            this.set_position(tgt.x, tgt.y);
-            this.set_size(preSize.width * scale, preSize.height * scale);
+            this.set_position(tgt.x - 12, tgt.y - 12);
+            this.set_size(preSize.width * scale + 24, preSize.height * scale + 24);
         }
     }
 
@@ -272,14 +364,14 @@ const MiniatureClickOverlay = GObject.registerClass({
         const preSize = WindowState.get(this._window, PRE_MINIATURE_SIZE);
 
         if (tgt && scale && preSize) {
-            this.remove_all_transitions();
             this.ease({
-                x: tgt.x,
-                y: tgt.y,
-                duration,
+                x: tgt.x - 12,
+                y: tgt.y - 12,
+                width: preSize.width * scale + 24,
+                height: preSize.height * scale + 24,
+                duration: duration,
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
-            this.set_size(preSize.width * scale, preSize.height * scale);
         }
     }
 
