@@ -1602,6 +1602,11 @@ export const TilingManager = GObject.registerClass({
     // (a row moves as one); the level ahead is the floor, since past it the mosaic collapses.
     _slideTowardNeighbors(levelUnits, vertical, work_area, spacing) {
         const boxes = levelUnits.map(units => units.map(u => this._unitBox(u, vertical)));
+        // Skip a single-unit level, or its own lead would floor itself and cancel every slide.
+        // For a multi-row level, this stops a row that shares no perpendicular overlap from
+        // sliding clean through into the neighbor level's slot and splitting its own column.
+        const levelFloors = boxes.map(units => units.length > 1
+            ? Math.min(...units.map(b => b.lead)) : -Infinity);
         const placed = [];
         let prevLead = null;
         let recovered = 0;
@@ -1609,7 +1614,8 @@ export const TilingManager = GObject.registerClass({
         for (const [l, units] of boxes.entries()) {
             let levelLead = Infinity;
             for (const [u, box] of units.entries()) {
-                const slack = box.lead - this._slideFloor(box, placed, spacing, prevLead ?? box.lead);
+                const floor = Math.max(prevLead ?? box.lead, levelFloors[l]);
+                const slack = box.lead - this._slideFloor(box, placed, spacing, floor);
                 if (slack > 0) {
                     recovered += slack;
                     box.lead -= slack;
