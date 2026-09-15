@@ -3904,6 +3904,36 @@ export const TilingManager = GObject.registerClass({
             const { miniSize } = this._markPendingMiniature(d);
             Logger.log(`[SMART RESIZE] ${w.get_id()}: miniaturizing to make room (${miniSize.width}x${miniSize.height})`);
 
+            if (!this._tile(buildSimulated(0.0), workArea, true).overflow) return;
+        }
+
+        if (this._tile(buildSimulated(0.0), workArea, true).overflow)
+            this._reshrinkExistingMiniatures(allWindows, windowData, buildSimulated, workArea);
+    }
+
+    // Last resort inside _sacrificeUntilMinFits: existing miniatures are normally a fixed
+    // footprint, but here there is nothing else left to try. Squeezes the biggest ones first,
+    // since that recovers the most space per window touched. The caller only reaches here when
+    // overflow is still confirmed, so every candidate here genuinely shrinks by at least one pixel.
+    _reshrinkExistingMiniatures(allWindows, windowData, buildSimulated, workArea) {
+        const sizeOf = w => Math.max(windowData.get(w.get_id()).current.width, windowData.get(w.get_id()).current.height);
+        const existingMinis = allWindows
+            .filter(w => WindowState.get(w, IS_MINIATURE))
+            .sort((a, b) => sizeOf(b) - sizeOf(a));
+
+        for (const w of existingMinis) {
+            const d = windowData.get(w.get_id());
+            const ceilingPx = sizeOf(w);
+            const targetPx = this._findLargestMiniatureSize(ceilingPx, (px) => {
+                d.current = this._scaledMiniSize(w, px);
+                return !this._tile(buildSimulated(0.0), workArea, true).overflow;
+            });
+
+            const newSize = this._scaledMiniSize(w, targetPx);
+            d.current = newSize;
+            (this._pendingReshrinks ??= []).push({ window: w, miniSize: newSize });
+            Logger.log(`[SMART RESIZE] ${w.get_id()}: reshrinking existing miniature to make room (${newSize.width}x${newSize.height})`);
+
             if (!this._tile(buildSimulated(0.0), workArea, true).overflow) break;
         }
     }
