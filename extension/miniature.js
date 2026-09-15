@@ -618,6 +618,55 @@ export const MiniatureManager = GObject.registerClass({
         if (this._overviewActive) overlay.setIconSuppressed('overview', true);
     }
 
+    // Shrinks an already-miniaturized window further in place: same actor, same overlay,
+    // just a smaller scale. No-op if the window isn't currently a miniature.
+    reshrinkMiniature(window, region, targetSize) {
+        if (!WindowState.get(window, IS_MINIATURE)) return false;
+
+        const windowActor = window.get_compositor_private();
+        if (!windowActor) return false;
+
+        this._animationsManager?.removeAnimatingWindow(window.get_id());
+
+        const preSize = WindowState.get(window, PRE_MINIATURE_SIZE);
+        const scale = Math.max(targetSize.width, targetSize.height) / Math.max(preSize.width, preSize.height);
+        const extLeft = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
+        const extTop = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
+        const targetX = region.x;
+        const targetY = region.y;
+
+        // get_position() is the actor's stable, untransformed allocation; scale/translation are
+        // separate transforms layered on top of it, so this holds regardless of the miniature's
+        // current scale — the same property applyMiniatureActorState already relies on.
+        const [ax, ay] = windowActor.get_position();
+        const tx = targetX - ax - extLeft * scale;
+        const ty = targetY - ay - extTop * scale;
+
+        windowActor.remove_all_transitions();
+        windowActor.set_pivot_point(0, 0);
+        windowActor.ease({
+            scale_x: scale,
+            scale_y: scale,
+            translation_x: tx,
+            translation_y: ty,
+            duration: constants.MINIATURE_ANIM_MS,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onStopped: (isFinished) => {
+                if (isFinished) applyMiniatureActorState(windowActor, scale, extLeft, extTop, targetX, targetY);
+            },
+        });
+
+        WindowState.set(window, MINIATURE_SCALE, scale);
+        WindowState.set(window, MINIATURE_TARGET_POS, { x: targetX, y: targetY });
+
+        const overlay = WindowState.get(window, MINIATURE_OVERLAY);
+        if (overlay)
+            overlay.set({ x: targetX, y: targetY, width: preSize.width * scale, height: preSize.height * scale });
+
+        Logger.log(`[MINIATURE] reshrinkMiniature ${window.get_id()}: scale=${scale.toFixed(4)} size=${Math.round(preSize.width * scale)}x${Math.round(preSize.height * scale)}`);
+        return true;
+    }
+
     restoreMiniature(window, _newSlot, { activate = true } = {}) {
         if (!WindowState.get(window, IS_MINIATURE)) return false;
 
