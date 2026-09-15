@@ -3065,6 +3065,15 @@ export const TilingManager = GObject.registerClass({
         ComputedLayouts.set(win, region);
     }
 
+    _applyPendingReshrinks(computedRegions, tileArea) {
+        if (!(this._pendingReshrinks?.length > 0) || !this._extension?.miniatureManager) return;
+        for (const { window: win, miniSize } of this._pendingReshrinks) {
+            const region = computedRegions.get(win.get_id()) ?? tileArea;
+            this._extension.miniatureManager.reshrinkMiniature(win, region, miniSize);
+        }
+        this._pendingReshrinks = [];
+    }
+
     // Guards that make a tile pass a no-op before any lock or work is taken.
     _tileRequestBlocked(workspace, _monitor) {
         if (!workspace || workspace.index() < 0) {
