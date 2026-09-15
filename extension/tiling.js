@@ -3902,9 +3902,9 @@ export const TilingManager = GObject.registerClass({
 
     // Stamp pendingMiniature + miniSize + pre-size from the live frame (scaled so the visual
     // fills the mini region), and return the computed miniSize.
-    _markPendingMiniature(d) {
+    _markPendingMiniature(d, targetPx = constants.MINIATURE_TARGET_SIZE_PX) {
         const frame = d.window.get_frame_rect();
-        const scale = constants.MINIATURE_TARGET_SIZE_PX / Math.max(frame.width, frame.height);
+        const scale = targetPx / Math.max(frame.width, frame.height);
         d.pendingMiniature = true;
         d.miniSize = { width: Math.round(frame.width * scale), height: Math.round(frame.height * scale) };
         d.pendingPreSize = { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
