@@ -3860,6 +3860,23 @@ export const TilingManager = GObject.registerClass({
         return lo;
     }
 
+    // Binary-searches the largest longest-side (px) between MINIATURE_TARGET_SIZE_PX and ceilingPx
+    // for which fitsAtSize(sizePx) reports fit. Falls back to the floor if nothing above it
+    // fits, reproducing the fixed-256px behavior exactly. fitsAtSize is assumed monotonic:
+    // larger sizes leave less room for everything else, so fit can only get harder as px grows.
+    _findLargestMiniatureSize(ceilingPx, fitsAtSize) {
+        const floor = constants.MINIATURE_TARGET_SIZE_PX;
+        if (ceilingPx <= floor || !fitsAtSize(floor)) return floor;
+        if (fitsAtSize(ceilingPx)) return ceilingPx;
+
+        let lo = floor, hi = ceilingPx;
+        while (hi - lo > 1) {
+            const mid = Math.round((lo + hi) / 2);
+            if (fitsAtSize(mid)) lo = mid; else hi = mid;
+        }
+        return lo;
+    }
+
     // The user-active window (never sacrificed). focusedWindowOverride lets callers treat a
     // specific window as active when Mutter's focus hasn't shifted yet.
     _resizeFocusedId(focusedWindowOverride) {
