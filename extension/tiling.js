@@ -23,6 +23,7 @@ import {
     MINIATURE_OVERLAY,
     ANIMATING_MINIATURE,
     PENDING_MINIATURE,
+    PRE_MINIATURE_SIZE,
 } from './windowState.js';
 import { getMiniatureSize, applyMiniatureActorState, animateMiniatureToTarget } from './miniature.js';
 import { isWindowAlive } from './liveness.js';
@@ -3898,6 +3899,15 @@ export const TilingManager = GObject.registerClass({
         if (WindowState.get(w, IS_MINIATURE)) return false;
         if (this._windowingManager.isMaximizedOrFullscreen(w)) return false;
         return d.isResizable;
+    }
+
+    // The original, never-changing frame from before this window was ever miniaturized is the
+    // scale reference, so reshrinking twice never compounds and always relates back to the truth
+    // restoreMiniature grows back to.
+    _scaledMiniSize(window, targetPx) {
+        const preSize = WindowState.get(window, PRE_MINIATURE_SIZE);
+        const scale = targetPx / Math.max(preSize.width, preSize.height);
+        return { width: Math.round(preSize.width * scale), height: Math.round(preSize.height * scale) };
     }
 
     // Stamp pendingMiniature + miniSize + pre-size from the live frame (scaled so the visual
