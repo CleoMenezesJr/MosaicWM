@@ -3917,15 +3917,21 @@ export const TilingManager = GObject.registerClass({
             if (!this._tile(buildSimulated(0.0), workArea, true).overflow) return;
         }
 
-        if (this._tile(buildSimulated(0.0), workArea, true).overflow)
-            this._reshrinkExistingMiniatures(allWindows, windowData, buildSimulated, workArea);
+        if (this._tile(buildSimulated(0.0), workArea, true).overflow) {
+            this._reshrinkExistingMiniatures(allWindows, windowData,
+                () => !this._tile(buildSimulated(0.0), workArea, true).overflow);
+        }
     }
 
-    // Last resort inside _sacrificeUntilMinFits: existing miniatures are normally a fixed
-    // footprint, but here there is nothing else left to try. Squeezes the biggest ones first,
-    // since that recovers the most space per window touched. The caller only reaches here when
-    // overflow is still confirmed, so every candidate here genuinely shrinks by at least one pixel.
-    _reshrinkExistingMiniatures(allWindows, windowData, buildSimulated, workArea) {
+    // Last resort: existing miniatures are normally a fixed footprint, but here there is
+    // nothing else left to try. Squeezes the biggest ones first, since that recovers the most
+    // space per window touched. fitsNow() is the caller's own notion of "good enough" — deep
+    // overflow (_sacrificeUntilMinFits) asks "does everyone still fit at minimum", the soft
+    // cascade (_miniaturizeBelowThreshold) asks "do the remaining candidates fully recover" —
+    // so this helper stays agnostic to which phase is calling it. The caller only reaches here
+    // when fitsNow() is already false, so every candidate here genuinely shrinks by at least
+    // one pixel.
+    _reshrinkExistingMiniatures(allWindows, windowData, fitsNow) {
         const sizeOf = w => Math.max(windowData.get(w.get_id()).current.width, windowData.get(w.get_id()).current.height);
         const existingMinis = allWindows
             .filter(w => WindowState.get(w, IS_MINIATURE))
@@ -3936,7 +3942,7 @@ export const TilingManager = GObject.registerClass({
             const ceilingPx = sizeOf(w);
             const targetPx = this._findLargestMiniatureSize(ceilingPx, (px) => {
                 d.current = this._scaledMiniSize(w, px);
-                return !this._tile(buildSimulated(0.0), workArea, true).overflow;
+                return fitsNow();
             });
 
             const newSize = this._scaledMiniSize(w, targetPx);
@@ -3944,7 +3950,7 @@ export const TilingManager = GObject.registerClass({
             (this._pendingReshrinks ??= []).push({ window: w, miniSize: newSize });
             Logger.log(`[SMART RESIZE] ${w.get_id()}: reshrinking existing miniature to make room (${newSize.width}x${newSize.height})`);
 
-            if (!this._tile(buildSimulated(0.0), workArea, true).overflow) break;
+            if (fitsNow()) break;
         }
     }
 
@@ -3995,7 +4001,21 @@ export const TilingManager = GObject.registerClass({
             const floor = this._tile(buildSimulated(lo), workArea, true).overflow ? 0.0 : lo;
             lo = this._binarySearchFitScale(buildSimulated, workArea, floor);
         }
-        return lo;
+
+        return this._recruitExistingMiniaturesIfNeeded(allWindows, windowData, buildSimulated, workArea, lo);
+    }
+
+    // Fresh candidates are exhausted but something still hasn't recovered to its preferred
+    // size: existing miniatures may have more to give. Deferred to the settled retile only
+    // (never mid-drag), since reshrinking mid-drag would restart its ease every ~16ms tick
+    // instead of playing one smooth transition.
+    _recruitExistingMiniaturesIfNeeded(allWindows, windowData, buildSimulated, workArea, lo) {
+        if (lo >= 1.0 || this.isResizing) return lo;
+
+        const floor = this._tile(buildSimulated(lo), workArea, true).overflow ? 0.0 : lo;
+        this._reshrinkExistingMiniatures(allWindows, windowData,
+            () => !this._tile(buildSimulated(1.0), workArea, true).overflow);
+        return this._binarySearchFitScale(buildSimulated, workArea, floor);
     }
 
     _miniatureThreshold(w, workArea) {
