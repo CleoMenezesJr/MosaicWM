@@ -2910,6 +2910,7 @@ export const TilingManager = GObject.registerClass({
     _finalizeTilePass(overflow, meta_windows, computedRegions, tileArea, workspace, isRecursive) {
         if (!isRecursive) {
             this._createPendingMiniatures(meta_windows, computedRegions, tileArea);
+            this._applyPendingReshrinks(computedRegions, tileArea);
         }
 
         const result = { overflow, layout: this._cachedTileResult?.windows || null, computedRegions };
