@@ -3328,6 +3328,21 @@ export const TilingManager = GObject.registerClass({
         }
     }
 
+    // A newly-discovered real minimum can exceed a preferredSize recorded before this window
+    // was ever asked to shrink, leaving it permanently smaller than its own floor everywhere
+    // that compares the two. Bumping it here, right where the floor becomes known, is the
+    // narrowest point that invariant can be restored.
+    raisePreferredSizeToMinimum(window) {
+        const preferred = WindowState.get(window, 'preferredSize');
+        if (!preferred) return;
+        const minW = WindowState.get(window, 'actualMinWidth') ?? preferred.width;
+        const minH = WindowState.get(window, 'actualMinHeight') ?? preferred.height;
+        if (preferred.width >= minW && preferred.height >= minH) return;
+        const raised = { width: Math.max(preferred.width, minW), height: Math.max(preferred.height, minH) };
+        WindowState.set(window, 'preferredSize', raised);
+        Logger.log(`[SMART RESIZE] Window ${window.get_id()} preferredSize raised to its own minimum: ${raised.width}x${raised.height}`);
+    }
+
     clearPreferredSize(window) {
         if (WindowState.has(window, 'preferredSize')) {
             WindowState.remove(window, 'preferredSize');
