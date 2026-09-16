@@ -3865,13 +3865,16 @@ export const TilingManager = GObject.registerClass({
     // for which fitsAtSize(sizePx) reports fit. Falls back to the floor if nothing above it
     // fits, reproducing the fixed-256px behavior exactly. fitsAtSize is assumed monotonic:
     // larger sizes leave less room for everything else, so fit can only get harder as px grows.
-    _findLargestMiniatureSize(ceilingPx, fitsAtSize) {
+    // tolerance trades a few px of slack for fewer probes; each is a real _tile() cost to the
+    // caller, and 1px precision is never visibly different from a few px off on something this
+    // small. Default keeps today's exact-pixel behavior for callers that don't opt in.
+    _findLargestMiniatureSize(ceilingPx, fitsAtSize, tolerance = 1) {
         const floor = constants.MINIATURE_TARGET_SIZE_PX;
         if (ceilingPx <= floor || !fitsAtSize(floor)) return floor;
         if (fitsAtSize(ceilingPx)) return ceilingPx;
 
         let lo = floor, hi = ceilingPx;
-        while (hi - lo > 1) {
+        while (hi - lo > tolerance) {
             const mid = Math.round((lo + hi) / 2);
             if (fitsAtSize(mid)) lo = mid; else hi = mid;
         }
@@ -3970,7 +3973,7 @@ export const TilingManager = GObject.registerClass({
             const targetPx = this._findLargestMiniatureSize(ceilingPx, (px) => {
                 d.current = this._scaledMiniSize(w, px);
                 return fitsNow();
-            });
+            }, constants.MINIATURE_RESHRINK_SEARCH_TOLERANCE_PX);
 
             const newSize = this._scaledMiniSize(w, targetPx);
             d.current = newSize;

@@ -120,6 +120,10 @@ export const MINIATURE_TARGET_SIZE_PX = 256;  // Longest side of a miniaturized 
 // left on the table is imperceptible at this size, so this trades exact-pixel convergence for
 // fewer iterations.
 export const FIT_SCALE_SEARCH_TOLERANCE_PX = 8;
+// Reconsidering an existing miniature runs one binary search per window touched, each a real
+// cost in _tile() calls; a few px of slack left on the table is imperceptible at this size, so
+// this trades exact-pixel convergence for fewer iterations, unlike the fresh-candidate search.
+export const MINIATURE_RESHRINK_SEARCH_TOLERANCE_PX = 8;
 export const MINIATURE_ICON_SIZE_PX = 64;     // Same size the Overview uses, so the icon can hand off without resizing
 export const MINIATURE_ICON_FADE_START = 0.5;  // Point in the icon's flight where it starts fading in; a fraction since an interrupted restore shortens the flight
 export const MINIATURE_ICON_FADE_OUT_MS = 90;  // Window is growing back underneath, so the icon has to clear out fast
