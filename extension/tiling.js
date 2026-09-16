@@ -2938,6 +2938,10 @@ export const TilingManager = GObject.registerClass({
             if (WindowState.get(win, IS_MINIATURE)) continue;
             this._createOnePendingMiniature(win, preSize, computedRegions, tileArea);
         }
+        // Every entry here is now either applied or superseded; nothing stays pending, or a
+        // later, independent pass (e.g. the no-ref overflow resolver) that appends onto this
+        // same array would find a stale entry here and apply it ahead of its own fresh one.
+        this._pendingMiniatureWindows = [];
     }
 
     _createOnePendingMiniature(win, preSize, computedRegions, tileArea) {
