@@ -3947,6 +3947,12 @@ export const TilingManager = GObject.registerClass({
 
             const newSize = this._scaledMiniSize(w, targetPx);
             d.current = newSize;
+            // Commit the new scale to WindowState now, same as fresh miniaturization already
+            // does via PENDING_MINIATURE: any independent retile that follows before the queued
+            // visual update below runs (e.g. tileWorkspaceWindows rebuilding its own descriptors
+            // from scratch) must see this window at its new size, not its stale live one.
+            const preSize = WindowState.get(w, PRE_MINIATURE_SIZE);
+            WindowState.set(w, MINIATURE_SCALE, targetPx / Math.max(preSize.width, preSize.height));
             (this._pendingReshrinks ??= []).push({ window: w, miniSize: newSize });
             Logger.log(`[SMART RESIZE] ${w.get_id()}: reshrinking existing miniature to make room (${newSize.width}x${newSize.height})`);
 
