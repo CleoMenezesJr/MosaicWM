@@ -1102,13 +1102,12 @@ export const TilingManager = GObject.registerClass({
     }
 
     _tile(windows, work_area, isSimulation = false, forcedOrientation = null) {
-        if (this._isEmptyTileRequest(windows)) return { levels: [], vertical: false, overflow: false };
-
         const hash = this._getLayoutHash(windows, work_area);
-        if (this._isTileCacheHit(hash, isSimulation)) {
-            Logger.log('_tile: Cache hit, reusing layout');
-            return this._cachedTileResult;
-        }
+        const early = this._resolveTileFastPath(windows, hash, isSimulation);
+        if (early) return early;
+
+        const simulationHit = this._simulationProbeHit(isSimulation, hash, forcedOrientation);
+        if (simulationHit) return simulationHit;
 
         const spacing = constants.WINDOW_SPACING;
         const useVerticalShelves = this._resolveOrientation(forcedOrientation, windows, work_area);
@@ -1126,11 +1125,39 @@ export const TilingManager = GObject.registerClass({
             this._cachedTileResult = result;
         }
 
+        this._rememberSimulationProbe(isSimulation, hash, forcedOrientation, result);
         return result;
+    }
+
+    // Empty input and the real-layout cache are both fast paths that bypass everything else; folded
+    // into one helper so _tile() spends only one branch on "is there already an answer" either way.
+    _resolveTileFastPath(windows, hash, isSimulation) {
+        if (this._isEmptyTileRequest(windows)) return { levels: [], vertical: false, overflow: false };
+        if (this._isTileCacheHit(hash, isSimulation)) {
+            Logger.log('_tile: Cache hit, reusing layout');
+            return this._cachedTileResult;
+        }
+        return null;
     }
 
     _isEmptyTileRequest(windows) {
         return !windows || windows.length === 0;
+    }
+
+    // The one-slot memo: only ever holds the single most recently computed simulation probe, keyed on
+    // both the layout hash and the forced orientation (the same hash can legitimately answer
+    // differently depending on whether an orientation was forced). Self-invalidates the instant a
+    // different probe arrives, so there is nothing to explicitly clear anywhere.
+    _simulationProbeHit(isSimulation, hash, forcedOrientation) {
+        if (!isSimulation || !this._lastSimulationProbe) return null;
+        const p = this._lastSimulationProbe;
+        if (p.hash !== hash || p.forcedOrientation !== forcedOrientation) return null;
+        return { overflow: p.overflow, vertical: p.vertical };
+    }
+
+    _rememberSimulationProbe(isSimulation, hash, forcedOrientation, result) {
+        if (!isSimulation) return;
+        this._lastSimulationProbe = { hash, forcedOrientation, overflow: result.overflow, vertical: result.vertical };
     }
 
     // A caller passing forcedOrientation has already proven, with the full unlocked retry,
