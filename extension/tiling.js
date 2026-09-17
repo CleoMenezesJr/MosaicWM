@@ -1101,8 +1101,8 @@ export const TilingManager = GObject.registerClass({
         return `${snap(work_area.width)}x${snap(work_area.height)}|${parts.join(',')}`;
     }
 
-    _tile(windows, work_area, isSimulation = false) {
-        if (!windows || windows.length === 0) return { levels: [], vertical: false, overflow: false };
+    _tile(windows, work_area, isSimulation = false, forcedOrientation = null) {
+        if (this._isEmptyTileRequest(windows)) return { levels: [], vertical: false, overflow: false };
 
         const hash = this._getLayoutHash(windows, work_area);
         if (this._isTileCacheHit(hash, isSimulation)) {
@@ -1111,14 +1111,14 @@ export const TilingManager = GObject.registerClass({
         }
 
         const spacing = constants.WINDOW_SPACING;
-        const useVerticalShelves = this._orientationFor(windows, work_area);
+        const useVerticalShelves = this._resolveOrientation(forcedOrientation, windows, work_area);
         const tilingFn = useVerticalShelves ? this._verticalShelves : this._horizontalShelves;
 
         const forced = this._tryForcedShape(windows, work_area, spacing, useVerticalShelves, isSimulation, hash);
         if (forced) return forced;
 
         let result = this._chooseTileResult(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation);
-        if (result.overflow)
+        if (this._wantsOrientationRetry(result, forcedOrientation))
             result = this._tryOppositeOrientation(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation, result);
 
         if (!isSimulation && !this.isDragging) {
@@ -1127,6 +1127,22 @@ export const TilingManager = GObject.registerClass({
         }
 
         return result;
+    }
+
+    _isEmptyTileRequest(windows) {
+        return !windows || windows.length === 0;
+    }
+
+    // A caller passing forcedOrientation has already proven, with the full unlocked retry,
+    // which orientation wins across its whole search range, so there's nothing left to guess.
+    _resolveOrientation(forcedOrientation, windows, work_area) {
+        return forcedOrientation ?? this._orientationFor(windows, work_area);
+    }
+
+    // The retry exists to discover an orientation; a caller that forced one already did that
+    // discovery itself, so there's nothing left for the retry to find.
+    _wantsOrientationRetry(result, forcedOrientation) {
+        return result.overflow && forcedOrientation === null;
     }
 
     // A window as wide as the work area leaves no room for a second column, yet the same set fits
