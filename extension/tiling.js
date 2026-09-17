@@ -754,46 +754,64 @@ export const TilingManager = GObject.registerClass({
         return descriptors;
     }
 
-    _generatePermutations(arr, maxPermutations = 120) {
-        if (arr.length <= 1) return [arr];
-        if (arr.length === 2) return [arr, [arr[1], arr[0]]];
+    _heuristicOrderings(arr) {
+        const byAreaDesc = [...arr].sort((a, b) => (b.width * b.height) - (a.width * a.height));
+        const byAreaAsc = [...arr].sort((a, b) => (a.width * a.height) - (b.width * b.height));
+        const byWidthDesc = [...arr].sort((a, b) => b.width - a.width);
+        const byHeightDesc = [...arr].sort((a, b) => b.height - a.height);
+        const candidates = [arr, byAreaDesc, byAreaAsc, byWidthDesc, byHeightDesc];
+        if (this._positionSnapshot) {
+            const byPosX = [...arr].sort((a, b) => {
+                const sa = this._positionSnapshot.get(a.id);
+                const sb = this._positionSnapshot.get(b.id);
+                return (sa?.cx ?? 0) - (sb?.cx ?? 0);
+            });
+            candidates.push(byPosX);
+        }
+        return candidates;
+    }
+
+    *_generatePermutations(arr, maxPermutations = 120) {
+        if (arr.length <= 1) {
+            yield arr;
+            return;
+        }
+        if (arr.length === 2) {
+            yield arr;
+            yield [arr[1], arr[0]];
+            return;
+        }
 
         // Use heuristic orderings for 6+ windows
         if (arr.length >= 6) {
-            const byAreaDesc = [...arr].sort((a, b) => (b.width * b.height) - (a.width * a.height));
-            const byAreaAsc = [...arr].sort((a, b) => (a.width * a.height) - (b.width * b.height));
-            const byWidthDesc = [...arr].sort((a, b) => b.width - a.width);
-            const byHeightDesc = [...arr].sort((a, b) => b.height - a.height);
-            const candidates = [arr, byAreaDesc, byAreaAsc, byWidthDesc, byHeightDesc];
-            if (this._positionSnapshot) {
-                const byPosX = [...arr].sort((a, b) => {
-                    const sa = this._positionSnapshot.get(a.id);
-                    const sb = this._positionSnapshot.get(b.id);
-                    return (sa?.cx ?? 0) - (sb?.cx ?? 0);
-                });
-                candidates.push(byPosX);
-            }
-            return candidates;
+            yield* this._heuristicOrderings(arr);
+            return;
         }
 
-        const result = [];
-        const heap = (n, arr) => {
+        let count = 0;
+        function* heap(n, a) {
+            if (count >= maxPermutations) return;
             if (n === 1) {
-                result.push([...arr]);
+                count++;
+                yield [...a];
                 return;
             }
             for (let i = 0; i < n; i++) {
-                heap(n - 1, arr);
-                if (result.length >= maxPermutations) return;
+                yield* heap(n - 1, a);
+                if (count >= maxPermutations) return;
                 if (n % 2 === 0) {
-                    [arr[i], arr[n - 1]] = [arr[n - 1], arr[i]];
+                    [a[i], a[n - 1]] = [a[n - 1], a[i]];
                 } else {
-                    [arr[0], arr[n - 1]] = [arr[n - 1], arr[0]];
+                    [a[0], a[n - 1]] = [a[n - 1], a[0]];
                 }
             }
-        };
-        heap(arr.length, [...arr]);
-        return result;
+        }
+        yield* heap(arr.length, [...arr]);
+    }
+
+    *_candidateOrders(windows) {
+        yield* this._preservingCandidates(windows);
+        yield* this._generatePermutations(windows);
     }
 
     // Stacking two windows would beat side by side on a 16:9 if both axes shared one scale,
@@ -1046,7 +1064,7 @@ export const TilingManager = GObject.registerClass({
     // A simulation reads back nothing but whether the set fits, and the smart-resize loop runs one
     // per shrink step. Same scan and budget as the ranked search, or the two disagree on what fits.
     _findFittingLayout(windows, workArea, placers) {
-        const orders = [...this._preservingCandidates(windows), ...this._generatePermutations(windows)];
+        const orders = this._candidateOrders(windows);
         let fallback = null;
         let scanned = 0;
 
@@ -1070,7 +1088,7 @@ export const TilingManager = GObject.registerClass({
         const startTime = monotonicNow();
         // Preservers go first so a budget cut falls back to the previous order instead of
         // wherever the scan happened to stop.
-        const orders = [...this._preservingCandidates(windows), ...this._generatePermutations(windows)];
+        const orders = this._candidateOrders(windows);
         const currentIds = this._lastTiledOrder ?? windows.map(w => w.id);
         const scored = this._scoreCandidates(orders, placers, workArea, currentIds);
 
