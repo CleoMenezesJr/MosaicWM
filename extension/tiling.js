@@ -3437,9 +3437,19 @@ export const TilingManager = GObject.registerClass({
 
     _wouldStayMiniAtBestFit(candidateMini, descriptors, buildSim, sizeAt, workArea) {
         let lo = 0.0, hi = 1.0;
-        for (let i = 0; i < 15; i++) {
+        const atMin = buildSim(0.0), atMax = buildSim(1.0);
+        const span = Math.max(1, ...atMax.map((w, i) =>
+            Math.max(w.width - atMin[i].width, w.height - atMin[i].height)));
+        const steps = Math.max(1, Math.ceil(
+            Math.log2((hi - lo) * span / constants.FIT_SCALE_SEARCH_TOLERANCE_PX)));
+
+        const loResult = this._tile(atMin, workArea, true);
+        const hiResult = this._tile(atMax, workArea, true);
+        const lockedOrientation = loResult.vertical === hiResult.vertical ? loResult.vertical : null;
+
+        for (let i = 0; i < steps; i++) {
             const mid = (lo + hi) / 2;
-            if (!this._tile(buildSim(mid), workArea, true).overflow) lo = mid;
+            if (!this._tile(buildSim(mid), workArea, true, lockedOrientation).overflow) lo = mid;
             else hi = mid;
         }
 
