@@ -754,6 +754,10 @@ export const TilingManager = GObject.registerClass({
         return descriptors;
     }
 
+    _snapshotPermutation(a) {
+        return [...a];
+    }
+
     _heuristicOrderings(arr) {
         const byAreaDesc = [...arr].sort((a, b) => (b.width * b.height) - (a.width * a.height));
         const byAreaAsc = [...arr].sort((a, b) => (a.width * a.height) - (b.width * b.height));
@@ -789,11 +793,12 @@ export const TilingManager = GObject.registerClass({
         }
 
         let count = 0;
+        const self = this;
         function* heap(n, a) {
             if (count >= maxPermutations) return;
             if (n === 1) {
                 count++;
-                yield [...a];
+                yield self._snapshotPermutation(a);
                 return;
             }
             for (let i = 0; i < n; i++) {
@@ -1106,7 +1111,7 @@ export const TilingManager = GObject.registerClass({
         }
 
         const elapsed = Math.round(monotonicNow() - startTime);
-        Logger.log(`_findOptimalLayout: ${windows.length} windows, ${orders.length} orders x ${placers.length} placers, ${scored.length} scored, ${settling ? 'settling' : 'packing'}, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
+        Logger.log(`_findOptimalLayout: ${windows.length} windows, ${scored.length / placers.length} orders x ${placers.length} placers, ${scored.length} scored, ${settling ? 'settling' : 'packing'}, ${elapsed}ms${this._restoreAnchor ? ` (restore anchor ${this._restoreAnchor.id})` : ''}`);
 
         return best ? { order: best.perm, place: best.place } : { order: windows, place: placers[0] };
     }
