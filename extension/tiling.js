@@ -3719,17 +3719,27 @@ export const TilingManager = GObject.registerClass({
     }
 
     // A probe that overflows scans the whole candidate space to prove no order fits, so stop as
-    // soon as the scale stops meaning anything: one pixel of the widest range. lo must already fit.
+    // soon as the scale stops meaning anything: one FIT_SCALE_SEARCH_TOLERANCE_PX-wide band on the
+    // widest range. lo must already fit.
     _binarySearchFitScale(buildSimulated, workArea, lo = 0.0) {
         let hi = 1.0;
         const atMin = buildSimulated(0.0), atMax = buildSimulated(1.0);
         const span = Math.max(1, ...atMax.map((w, i) =>
             Math.max(w.width - atMin[i].width, w.height - atMin[i].height)));
-        const steps = Math.max(1, Math.ceil(Math.log2((hi - lo) * span)));
+        const steps = Math.max(1, Math.ceil(
+            Math.log2((hi - lo) * span / constants.FIT_SCALE_SEARCH_TOLERANCE_PX)));
+
+        // Both ends of the exact range about to be bisected agree on orientation, each proven with
+        // today's full retry, so lock it for every step in between since there's nothing left for
+        // the retry to discover. Disagreement means orientation genuinely matters somewhere in this
+        // range, so every step keeps retrying, same as before this change.
+        const loResult = this._tile(buildSimulated(lo), workArea, true);
+        const hiResult = this._tile(atMax, workArea, true);
+        const lockedOrientation = loResult.vertical === hiResult.vertical ? loResult.vertical : null;
 
         for (let i = 0; i < steps; i++) {
             const mid = (lo + hi) / 2;
-            if (!this._tile(buildSimulated(mid), workArea, true).overflow)
+            if (!this._tile(buildSimulated(mid), workArea, true, lockedOrientation).overflow)
                 lo = mid;
             else
                 hi = mid;
