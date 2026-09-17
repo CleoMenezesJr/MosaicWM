@@ -1144,10 +1144,8 @@ export const TilingManager = GObject.registerClass({
         return !windows || windows.length === 0;
     }
 
-    // The one-slot memo: only ever holds the single most recently computed simulation probe, keyed on
-    // both the layout hash and the forced orientation (the same hash can legitimately answer
-    // differently depending on whether an orientation was forced). Self-invalidates the instant a
-    // different probe arrives, so there is nothing to explicitly clear anywhere.
+    // The one-slot memo: holds only the most recent simulation probe, keyed on hash and
+    // forcedOrientation. _rememberSimulationProbe clears it on any real pass, so a hit here is never stale.
     _simulationProbeHit(isSimulation, hash, forcedOrientation) {
         if (!isSimulation || !this._lastSimulationProbe) return null;
         const p = this._lastSimulationProbe;
@@ -1155,8 +1153,14 @@ export const TilingManager = GObject.registerClass({
         return { overflow: p.overflow, vertical: p.vertical };
     }
 
+    // A real (non-simulation) pass can change state the search path reads (_lastTiledOrder,
+    // _positionSnapshot) without going through this memo, so any real call evicts the slot
+    // outright rather than risk serving a hit computed under stale search state.
     _rememberSimulationProbe(isSimulation, hash, forcedOrientation, result) {
-        if (!isSimulation) return;
+        if (!isSimulation) {
+            this._lastSimulationProbe = null;
+            return;
+        }
         this._lastSimulationProbe = { hash, forcedOrientation, overflow: result.overflow, vertical: result.vertical };
     }
 
