@@ -440,6 +440,14 @@ export const WindowingManager = GObject.registerClass({
         );
     }
 
+    hasAnyRelatedWindows(workspace) {
+        const nMonitors = global.display.get_n_monitors();
+        for (let i = 0; i < nMonitors; i++) {
+            if (this.getMonitorWorkspaceWindows(workspace, i).length > 0) return true;
+        }
+        return false;
+    }
+
     renavigate(workspace, condition, lastVisitedIndex = null, monitorIndex = -1) {
         if (!condition) return;
 
@@ -448,13 +456,18 @@ export const WindowingManager = GObject.registerClass({
             const currentIndex = this._indexOfWorkspace(workspace);
             if (currentIndex < 0) return GLib.SOURCE_REMOVE;
 
+            if (!Meta.prefs_get_workspaces_only_on_primary() && this.hasAnyRelatedWindows(workspace)) {
+                Logger.log('[RENAVIGATE] Workspace still has windows on another monitor; skipping navigation');
+                return GLib.SOURCE_REMOVE;
+            }
+
             const target = this._pickRenavigateTarget(workspace, currentIndex, lastVisitedIndex);
 
             if (target && target.index() >= 0 && target.index() !== currentIndex) {
                 const currentWindows = workspace.list_windows();
-                if (currentWindows.some(w => w.is_on_all_workspaces())) {
+                if (currentWindows.some(w => this.isTrulySticky(w))) {
                     Logger.log(
-                        '[RENAVIGATE] Current WS has is_on_all_workspaces() windows; skipping to avoid GNOME Shell WorkspaceSwitcherPopup freeze'
+                        '[RENAVIGATE] Current WS has truly sticky windows; skipping to avoid GNOME Shell WorkspaceSwitcherPopup freeze'
                     );
                 } else {
                     target.activate(this.getTimestamp());
@@ -546,9 +559,9 @@ export const WindowingManager = GObject.registerClass({
         if (!workspace) return;
 
         const wsWindows = workspace.list_windows();
-        if (wsWindows.some(w => w.is_on_all_workspaces())) {
+        if (wsWindows.some(w => this.isTrulySticky(w))) {
             Logger.log(
-                '[SWITCHER] Workspace has is_on_all_workspaces() windows; skipping to avoid GNOME Shell WorkspaceSwitcherPopup freeze'
+                '[SWITCHER] Workspace has truly sticky windows; skipping to avoid GNOME Shell WorkspaceSwitcherPopup freeze'
             );
             return;
         }
