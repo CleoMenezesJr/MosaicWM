@@ -324,12 +324,13 @@ export const ResizeHandler = GObject.registerClass({
     // maximizedUndoInfo gets removed right after use, so calling this twice for the
     // same exit is safe; the second call just finds nothing left to undo.
     tryExitSacred(window) {
-        // Born-maximized windows: don't set unmaximizing flag or try undo
-        if (WindowState.get(window, 'openedMaximized')) {
+        const maxInfo = WindowState.get(window, 'maximizedUndoInfo');
+
+        // Born-maximized with no undo info was never isolated - nothing to undo.
+        if (WindowState.get(window, 'openedMaximized') && !maxInfo) {
             return;
         }
         WindowState.set(window, 'unmaximizing', true);
-        const maxInfo = WindowState.get(window, 'maximizedUndoInfo');
         if (maxInfo) {
             Logger.log(`[SACRED-EXIT] Window ${window.get_id()} was unmaximized - attempting undo`);
             this.handleUnmaximizeUndo(window, maxInfo);
@@ -930,6 +931,7 @@ export const ResizeHandler = GObject.registerClass({
         this._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS + 100, () => {
             WindowState.remove(window, 'unmaximizing');
             WindowState.remove(window, 'targetRestoredSize');
+            WindowState.remove(window, 'openedMaximized');
             return GLib.SOURCE_REMOVE;
         }, 'resizeHandler_settleUnmaximizeSame');
     }
