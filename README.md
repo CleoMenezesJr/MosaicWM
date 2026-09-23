@@ -12,7 +12,7 @@ It is also a testbed. The point is not to maintain an extension indefinitely, bu
 
 Early, and moving fast. Behaviour changes between commits, and something that worked last week may not work today.
 
-- Requires **GNOME Shell 50**. Earlier versions are not supported.
+- Requires **GNOME Shell 51**. For GNOME Shell 50, check out the [`gnome-50`](https://github.com/CleoMenezesJr/MosaicWM/releases/tag/gnome-50) tag instead; it no longer receives updates.
 - Wayland is the target session.
 - Code contributions are unlikely to be accepted right now. See [Contributing](#contributing).
 
