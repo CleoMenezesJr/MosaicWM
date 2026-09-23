@@ -29,6 +29,7 @@ import { DrawingManager } from './drawing.js';
 import { AnimationsManager } from './animations.js';
 import { MosaicLayoutStrategy } from './overviewLayout.js';
 import { MosaicRenderer } from './mosaicRenderer.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 import { TimeoutRegistry, createDebounced, afterAnimations } from './timing.js';
 import { WindowHandler } from './windowHandler.js';
 import { DragHandler } from './dragHandler.js';
@@ -85,6 +86,7 @@ export default class WindowMosaicExtension extends Extension {
         this._injectionManager = null;
 
         this._timeoutRegistry = null;
+        this._pendingOverviewHiddenCallbacks = [];
 
         this._disabledWorkspaceStates = new WeakMap();
         this._mosaicDisabledByDefault = false;
@@ -192,7 +194,6 @@ export default class WindowMosaicExtension extends Extension {
 
         this._currentWorkspaceIndex = newIndex;
 
-        // Tiling while the switch animation runs races it; wait until it finishes.
         afterAnimations(this.animationsManager, () => {
             Logger.log(`Workspace animation complete - ready for operations on workspace ${newIndex}`);
         }, this._timeoutRegistry);
@@ -228,6 +229,7 @@ export default class WindowMosaicExtension extends Extension {
         this._disabledWorkspaceStates = new WeakMap();
         this._mosaicDisabledByDefault = false;
         this._timeoutRegistry = new TimeoutRegistry();
+        this._pendingOverviewHiddenCallbacks = [];
         this._workspaceManager = global.workspace_manager;
 
         // SettingsOverrider already handles a stale override from a previous
@@ -305,8 +307,6 @@ export default class WindowMosaicExtension extends Extension {
             new GLib.Variant('b', false)
         );
 
-        // Disable attach-modal-dialogs to prevent squashed Overview previews
-        // When enabled, attached dialogs expand the window bounding box causing layout issues
         this._settingsOverrider.add(
             this._mutterSettings,
             'attach-modal-dialogs',
@@ -532,12 +532,19 @@ export default class WindowMosaicExtension extends Extension {
         // Mutter already accepts move_resize_frame here, so real windows are in place
         // before the closing animation finishes and nothing flashes untiled.
         this._onOverviewHidingId = Main.overview.connect('hiding', () => {
+            // A restored window's group region is still its old miniature size here, so flushing
+            // would shrink it before the pass deferred to 'hidden' grows it back.
+            if (this._pendingOverviewHiddenCallbacks.length > 0) return;
             Logger.log('[FLUSH] triggered by hiding');
             this._flushMosaicToWindows();
         });
         this._onOverviewHiddenId = Main.overview.connect('hidden', () => {
             this.animationsManager.setOverviewActive(false);
             this.miniatureManager?.setOverviewActive(false);
+            // Before the flush, so the deferred pass eases on the bare desktop instead of under the exit transition.
+            const deferred = this._pendingOverviewHiddenCallbacks;
+            this._pendingOverviewHiddenCallbacks = [];
+            for (const cb of deferred) cb();
             // A slot can get recomputed between 'hiding' and 'hidden'; this catches that window's final value.
             Logger.log('[FLUSH] triggered by hidden');
             this._flushMosaicToWindows();
@@ -845,7 +852,15 @@ export default class WindowMosaicExtension extends Extension {
             }
         };
 
-        doTile();
+        // Miniaturization rides the actor scale while the frame stays full-size, so running it
+        // now would let the overview's exit transition animate the sibling to its full frame
+        // and then snap it small.
+        if (Main.overview.visible) {
+            Logger.log('Deferring miniature restore tiling until the overview hides');
+            this._pendingOverviewHiddenCallbacks.push(doTile);
+        } else {
+            doTile();
+        }
     }
 
     // One restore can leave enough room for the next MRU miniature too; restoreMiniature
@@ -940,7 +955,8 @@ export default class WindowMosaicExtension extends Extension {
         switch (intent.kind) {
             case 'tile': {
                 const workArea = workspace.get_work_area_for_monitor(window.get_monitor());
-                this.edgeTilingManager.applyTile(window, intent.zone, workArea);
+                if (!this.edgeTilingManager.applyTile(window, intent.zone, workArea))
+                    this._signalRefusal(window);
                 break;
             }
             case 'restore':
@@ -954,8 +970,16 @@ export default class WindowMosaicExtension extends Extension {
                 break;
             case 'maximize':
                 if (window.can_maximize()) window.maximize();
+                else this._signalRefusal(window);
                 break;
         }
+    }
+
+    // A window that refuses the zone, or refuses to maximize, would otherwise eat the keystroke
+    // in silence and read as a dead shortcut.
+    _signalRefusal(window) {
+        Logger.log(`Arrow refused by window ${window.get_id()}`);
+        this.animationsManager?.shakeRefusal(window.get_compositor_private());
     }
 
     // Mirrors the stock handlers we replaced, which never force a window that says it can't.
@@ -1164,8 +1188,10 @@ export default class WindowMosaicExtension extends Extension {
         this.animationsManager = null;
         this.mosaicRenderer?.destroy();
         this.mosaicRenderer = null;
+        MosaicConstraints.destroy();
         this.windowingManager = null;
         this._timeoutRegistry = null;
+        this._pendingOverviewHiddenCallbacks = [];
         this._mutterSettings = null;
         this._settingsOverrider = null;
         this._injectionManager = null;

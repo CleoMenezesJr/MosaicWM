@@ -4,6 +4,7 @@
 
 import * as Logger from './logger.js';
 import { MosaicModel } from './mosaicModel.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 import { isWindowAlive } from './liveness.js';
 import * as WindowState from './windowState.js';
 import { IS_MINIATURE } from './windowState.js';
@@ -52,15 +53,20 @@ export class MosaicRenderer {
     // Applies what the layout already decided instead of recomputing it, so the desktop
     // lands on exactly the geometry the overview was showing.
     flushToWindows(workspace, monitor) {
-        const entries = MosaicModel.entriesFor(workspace, monitor);
-        if (entries.length === 0) return;
+        const group = MosaicModel.store.groupFor(workspace.index(), monitor);
+        if (!group || group.size === 0) return;
 
-        Logger.log(`[FLUSH] Applying ${entries.length} slot(s) to WS-${workspace.index()} monitor ${monitor}`);
-        for (const { window, slot } of entries) {
-            if (!isWindowAlive(window)) continue;
-            if (WindowState.get(window, IS_MINIATURE)) continue;
-            window.move_resize_frame(false, slot.x, slot.y, slot.width, slot.height);
+        let applied = 0;
+        for (const member of group.members()) {
+            if (!isWindowAlive(member.window)) continue;
+            // createMiniature drives the miniature through the actor's scale, so moving the
+            // frame here would compound on top of it.
+            if (WindowState.get(member.window, IS_MINIATURE)) continue;
+            const r = member.region;
+            MosaicConstraints.commitRegion(member.window, r);
+            applied++;
         }
+        Logger.log(`[FLUSH] Applied ${applied} region(s) to WS-${workspace.index()} monitor ${monitor}`);
     }
 
     destroy() {

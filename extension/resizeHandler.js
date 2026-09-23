@@ -78,6 +78,7 @@ export const ResizeHandler = GObject.registerClass({
         // target and shouldn't be pinned as a minimum.
         if (rect.width > pendingSmartSize.width + 2) WindowState.set(window, 'actualMinWidth', rect.width);
         if (rect.height > pendingSmartSize.height + 2) WindowState.set(window, 'actualMinHeight', rect.height);
+        this.tilingManager.raisePreferredSizeToMinimum(window);
         this._disarmClampVerification(window);
 
         // A window we just placed can clamp a few px against its own minimum.
@@ -657,7 +658,6 @@ export const ResizeHandler = GObject.registerClass({
             return;
         }
 
-        // GHOST MODE: Reduce opacity to signal that the window no longer fits.
         this._resizeInOverflow = true;
         this._resizeOverflowWindow = window;
         const actor = window.get_compositor_private();

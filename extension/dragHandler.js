@@ -299,6 +299,12 @@ export const DragHandler = GObject.registerClass({
     }
 
     _dropByTiling(window, workArea) {
+        if (!this.edgeTilingManager.zoneFits(window, this._currentZone, workArea)) {
+            Logger.log(`DnD: zone ${this._currentZone} refused, the window cannot live in it`);
+            this._abandonDrop();
+            return;
+        }
+
         Logger.log(`DnD: zone ${this._currentZone} empty, applying tile`);
 
         this._skipNextTiling = window.get_id();
@@ -316,10 +322,15 @@ export const DragHandler = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
             }, 'dragHandler_skipTilingApply');
         } else {
-            this.clearGhostWindows();
-            this._restorePreviewMiniatures();
-            this._skipNextTiling = null;
+            this._abandonDrop();
         }
+    }
+
+    // The window keeps whatever the mosaic had for it, which is where it came from.
+    _abandonDrop() {
+        this.clearGhostWindows();
+        this._restorePreviewMiniatures();
+        this._skipNextTiling = null;
     }
 
     _finishMoveDragCleanup() {
@@ -443,7 +454,7 @@ export const DragHandler = GObject.registerClass({
         }
         this._lastReorderMonitor = monitor;
         this.edgeTilingManager.setEdgeTilingActive(true, this._draggedWindow);
-        this.drawingManager.showTilePreview(zone, workArea, this._draggedWindow);
+        this._refreshZonePreview(zone, workArea);
 
         const remainingSpace = this.edgeTilingManager.calculateRemainingSpaceForZone(zone, workArea);
         this.tilingManager.setDragRemainingSpace(remainingSpace);
@@ -471,6 +482,18 @@ export const DragHandler = GObject.registerClass({
             Logger.log(`Edge tiling: previewing ${mosaicWindows[0].get_id()} as opposite half ${remainingSpace.width}x${remainingSpace.height}`);
             this.drawingManager.showCompanionTilePreview(remainingSpace);
         }
+
+    }
+
+    // The square just says which half it takes; whether the window can actually live there is a
+    // separate question, and a shake is how a no gets said before the drop.
+    _refreshZonePreview(zone, workArea) {
+        this.drawingManager.showTilePreview(zone, workArea, this._draggedWindow);
+
+        if (this.edgeTilingManager.zoneFits(this._draggedWindow, zone, workArea)) return;
+
+        Logger.log(`Edge tiling: zone ${zone} cannot hold the dragged window`);
+        this.animationsManager?.shakeRefusal(this.drawingManager.getTilePreviewActor());
     }
 
     _exitEdgeZone(workspace, monitor) {

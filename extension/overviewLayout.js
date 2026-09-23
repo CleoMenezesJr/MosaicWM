@@ -79,7 +79,9 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
             // The mosaic's computed layout beats the live frame; mid-animation the frame is
             // a transient size and the overview would mirror the blur.
             const rect = ComputedLayouts.get(mw) || mw.get_frame_rect();
-            if (!rect) continue;
+            // A window still mapping has no computed region and a 0x0 frame, which the gap
+            // subtraction below would turn into a negative size. The next pass republishes it.
+            if (!rect || rect.width <= 0 || rect.height <= 0) continue;
 
             const x = (rect.x - workArea.x) * scale + area.x + offsetX + gap;
             const y = (rect.y - workArea.y) * scale + area.y + offsetY + gap;

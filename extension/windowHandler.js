@@ -13,7 +13,8 @@ import * as constants from './constants.js';
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
 import { IS_MINIATURE } from './windowState.js';
-import { ComputedLayouts } from './mosaicModel.js';
+import { ComputedLayouts, MosaicModel } from './mosaicModel.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 import { isWindowAlive } from './liveness.js';
 import { afterWorkspaceSwitch, afterAnimations, afterWindowClose, monotonicNow } from './timing.js';
 
@@ -193,7 +194,7 @@ export const WindowHandler = GObject.registerClass({
         }));
 
         ids.push(window.connect('size-changed', (win) => {
-            ComputedLayouts.delete(win);
+            this._learnFrame(win);
             if (WindowState.get(win, 'isSmartResizing') || WindowState.get(win, 'isReverseSmartResizing')) {
                 // During queue evaluation, skip all processing so target sizes stay
                 // consistent for subsequent canFitWindow/tryFitWithResize calls
@@ -206,7 +207,7 @@ export const WindowHandler = GObject.registerClass({
         }));
 
         ids.push(window.connect('position-changed', (win) => {
-            ComputedLayouts.delete(win);
+            this._learnFrame(win);
         }));
 
         ids.push(window.connect('notify::above', (win) => this.handleExclusionStateChange(win)));
@@ -233,6 +234,7 @@ export const WindowHandler = GObject.registerClass({
         }
 
         ComputedLayouts.delete(window);
+        MosaicConstraints.detach(window);
 
         WindowState.remove(window, 'previousExclusionState');
         WindowState.remove(window, 'previousWorkspace');
@@ -244,6 +246,16 @@ export const WindowHandler = GObject.registerClass({
         const wa = ws && mon !== null ? ws.get_work_area_for_monitor(mon) : null;
         const frame = win.get_frame_rect();
         return !!wa && frame.width >= wa.width && frame.height >= wa.height;
+    }
+
+    // These signals only fire once a change has landed, so the frame is what the window really
+    // got, and taking it as the new intent is what keeps the model honest when a client refuses.
+    // Miniatures are skipped since their frame is unscaled and would overwrite what the scale
+    // is derived from.
+    _learnFrame(win) {
+        if (WindowState.get(win, IS_MINIATURE)) return;
+        const frame = win.get_frame_rect();
+        if (frame) MosaicModel.learn(win, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
     }
 
     // The state flips before the client commits the size that goes with it, so the frame
@@ -961,7 +973,7 @@ export const WindowHandler = GObject.registerClass({
         const targetW = Math.min(preferredSize.width, wa.width - constants.WINDOW_SPACING * 2);
         const targetH = Math.min(preferredSize.height, wa.height - constants.WINDOW_SPACING * 2);
         Logger.log(`DnD Solo: Fully restoring window to ${targetW}x${targetH}`);
-        win.move_resize_frame(true, currentRect.x, currentRect.y, targetW, targetH);
+        MosaicConstraints.commitRegion(win, { x: currentRect.x, y: currentRect.y, width: targetW, height: targetH }, true);
     }
 
     _dndRestoreExpansion(monitorWindows, workspace, monitor) {

@@ -15,7 +15,6 @@ export const RESIZE_GRAB_OPS = [
 
 export function isResizeGrabOp(grabOp) {
     if (RESIZE_GRAB_OPS.includes(grabOp)) return true;
-    // Composite resize bitmask: WINDOW_BASE (bit 0) + any directional bit
     return (grabOp & 0x1) !== 0 && (grabOp & 0x3000) !== 0;
 }
 

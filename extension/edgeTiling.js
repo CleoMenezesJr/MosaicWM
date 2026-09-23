@@ -10,6 +10,9 @@ import { TileZone, ZONE_SIDE, ZONE_HALF, ZONE_VERTICAL_PAIR, SIDE_ZONES } from '
 import * as WindowState from './windowState.js';
 import { IS_MINIATURE, ANIMATING_MINIATURE, MINIATURE_ANIM_KIND } from './windowState.js';
 import { getMiniatureSize } from './miniature.js';
+import { MosaicModel } from './mosaicModel.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
+import { splitAlongAxis } from './mosaicTileGroup.js';
 import { monotonicNow } from './timing.js';
 
 import GObject from 'gi://GObject';
@@ -230,7 +233,6 @@ export const EdgeTilingManager = GObject.registerClass({
         const workspace = windowToTile?.get_workspace();
         const monitor = windowToTile?.get_monitor();
         const halfWidth = Math.floor(workArea.width / 2);
-        const halfHeight = Math.floor(workArea.height / 2);
 
         const side = ZONE_SIDE[zone];
         const width = this._getExistingSideWidth(workspace, monitor, side) || halfWidth;
@@ -238,21 +240,20 @@ export const EdgeTilingManager = GObject.registerClass({
 
         // The quarter stacked against us already picked its height; we take what's left.
         const stackedHeight = this._getExistingQuarterHeight(workspace, monitor, ZONE_VERTICAL_PAIR[zone]);
+        const height = stackedHeight
+            ? workArea.height - stackedHeight
+            : this._plannedQuarterHeight(windowToTile, zone, workArea, workspace, monitor);
 
-        if (ZONE_HALF[zone] === 'top') {
-            return {
-                x,
-                y: workArea.y,
-                width,
-                height: stackedHeight ? (workArea.height - stackedHeight) : halfHeight
-            };
-        }
-        return {
-            x,
-            y: stackedHeight ? (workArea.y + stackedHeight) : (workArea.y + halfHeight),
-            width,
-            height: stackedHeight ? (workArea.height - stackedHeight) : (workArea.height - halfHeight)
-        };
+        // Measured off the far edge rather than from the split point, so an uneven split still
+        // ends flush with the bottom of the work area.
+        const y = ZONE_HALF[zone] === 'top' ? workArea.y : workArea.y + workArea.height - height;
+        return { x, y, width, height };
+    }
+
+    // A refused split still has to draw something, and the shake is what says it won't happen.
+    _plannedQuarterHeight(windowToTile, zone, workArea, workspace, monitor) {
+        const plan = this.planQuarterSplit(windowToTile, zone, workArea, workspace, monitor);
+        return plan ? plan.ownHeight : Math.floor(workArea.height / 2);
     }
 
     saveWindowState(window) {
@@ -389,6 +390,33 @@ export const EdgeTilingManager = GObject.registerClass({
         return { window: fullWindow, newZone: ZONE_VERTICAL_PAIR[zone] };
     }
 
+    // The split is even at drop time; whatever a client refuses gets settled afterwards, which
+    // is the only moment the real answer exists.
+    planQuarterSplit(window, zone, workArea, workspace, monitor) {
+        const even = Math.floor(workArea.height / 2);
+        const alone = { partner: null, ownHeight: even, partnerHeight: even };
+        if (!ZONE_HALF[zone] || !window || !workspace) return alone;
+
+        const conversion = this._planFullToQuarterConversion(window, zone, workspace, monitor);
+        if (!conversion) return alone;
+
+        return {
+            partner: conversion.window,
+            newZone: conversion.newZone,
+            ownHeight: even,
+            partnerHeight: workArea.height - even,
+        };
+    }
+
+    // Both halves of the question: whether the squeezed tile left any room, and whether the window
+    // arriving can live in what's left. Asking only the first lets a window snap into a space it
+    // will refuse the moment it lands.
+    zoneFits(window, zone, workArea) {
+        const rect = this.getZoneRect(zone, workArea, window);
+        if (!rect || rect.height <= 0 || rect.width <= 0) return false;
+        return this._canResize(window, rect.width, rect.height);
+    }
+
     calculateRemainingSpaceForZone(zone, workArea) {
         const halfWidth = Math.floor(workArea.width / 2);
 
@@ -439,7 +467,8 @@ export const EdgeTilingManager = GObject.registerClass({
                     const fullRect = this.getZoneRect(fullZone, workArea, adjacentWindow);
 
                     if (fullRect) {
-                        adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
+                        MosaicModel.setRegion(adjacentWindow, fullRect, workspace, monitor);
+                        MosaicConstraints.commitRegion(adjacentWindow, fullRect);
 
                         const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
                         if (adjacentState) adjacentState.zone = fullZone;
@@ -562,10 +591,11 @@ export const EdgeTilingManager = GObject.registerClass({
 
             const rect = this.getZoneRect(TileZone.LEFT_FULL, workArea, window);
             if (rect) {
+                MosaicModel.setRegion(window, rect, workspace, monitor);
                 if (this._animationsManager) {
                     this._animationsManager.animateWindow(window, rect, { subtle: true });
                 } else {
-                    window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+                    MosaicConstraints.commitRegion(window, rect);
                 }
             }
         }
@@ -583,10 +613,11 @@ export const EdgeTilingManager = GObject.registerClass({
 
             const rect = this.getZoneRect(TileZone.RIGHT_FULL, workArea, window);
             if (rect) {
+                MosaicModel.setRegion(window, rect, workspace, monitor);
                 if (this._animationsManager) {
                     this._animationsManager.animateWindow(window, rect, { subtle: true });
                 } else {
-                    window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+                    MosaicConstraints.commitRegion(window, rect);
                 }
             }
         }
@@ -653,7 +684,7 @@ export const EdgeTilingManager = GObject.registerClass({
         this._miniatureManager = miniatureManager;
     }
 
-    _canResize(window, _targetWidth, _targetHeight, aboutToUnmaximize = false) {
+    _canResize(window, targetWidth, targetHeight, aboutToUnmaximize = false) {
         if (window.window_type !== 0) { // Meta.WindowType.NORMAL
             Logger.log(`Window type ${window.window_type} is not suitable for edge tiling`);
             return false;
@@ -661,19 +692,28 @@ export const EdgeTilingManager = GObject.registerClass({
 
         // allows_resize() folds in the current maximized state, so it vetoes a window
         // applyTile is about to unmaximize. resizeable is the same hint minus that state.
-        if (aboutToUnmaximize && window.is_maximized()) {
-            if (!window.resizeable) {
-                Logger.log('Window does not allow resize');
-                return false;
-            }
-            return true;
-        }
+        const resizable = aboutToUnmaximize && window.is_maximized()
+            ? window.resizeable
+            : !window.allows_resize || window.allows_resize();
 
-        if (window.allows_resize && !window.allows_resize()) {
+        if (!resizable) {
             Logger.log('Window does not allow resize');
             return false;
         }
-        return true;
+
+        return this._fitsDeclaredMinimum(window, targetWidth, targetHeight);
+    }
+
+    // The window arriving can't be probed the way a sitting tile can, so what it declares is all
+    // we get. Skipping this hands a window a space it refuses the moment it lands.
+    _fitsDeclaredMinimum(window, targetWidth, targetHeight) {
+        if (targetWidth === undefined || targetHeight === undefined) return true;
+
+        const [known, minWidth, minHeight] = window.get_min_size?.() ?? [false, 0, 0];
+        if (!known || (minWidth <= targetWidth && minHeight <= targetHeight)) return true;
+
+        Logger.log(`Window ${window.get_id()} needs ${minWidth}x${minHeight}, zone offers ${targetWidth}x${targetHeight}`);
+        return false;
     }
 
     _breakAutoTilePairing(window) {
@@ -757,6 +797,10 @@ export const EdgeTilingManager = GObject.registerClass({
     }
 
     _placeTiledWindow(window, rect) {
+        // Same reason as the quarter split: the animated path never reaches move_resize_frame,
+        // and this is where a window first becomes an edge tile.
+        MosaicModel.setRegion(window, rect, window.get_workspace(), window.get_monitor());
+
         if (this._animationsManager) {
             this._animationsManager.animateWindow(window, rect, { subtle: true });
             return;
@@ -769,7 +813,7 @@ export const EdgeTilingManager = GObject.registerClass({
             actor.set_scale(1, 1);
             actor.set_translation(0, 0, 0);
         }
-        window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+        MosaicConstraints.commitRegion(window, rect);
     }
 
     // The sitting full tile keeps its width so the split lands where the user had already
@@ -786,28 +830,32 @@ export const EdgeTilingManager = GObject.registerClass({
         convertedRect.x = x;
         rect.x = x;
 
-        const halfHeight = Math.floor(workArea.height / 2);
+        const plan = this.planQuarterSplit(window, zone, workArea, workspace, monitor);
+        const ownHeight = plan ? plan.ownHeight : Math.floor(workArea.height / 2);
+        const partnerHeight = workArea.height - ownHeight;
+
+        // The converted tile takes whatever the incoming one didn't, so the pair covers the
+        // column exactly even when a proven minimum pushed the split off centre.
+        const convertedY = ZONE_HALF[zone] === 'top' ? workArea.y + ownHeight : workArea.y;
+        const ownY = ZONE_HALF[zone] === 'top' ? workArea.y : workArea.y + partnerHeight;
+
+        const convertedRegion = { x: convertedRect.x, y: convertedY, width: convertedRect.width, height: partnerHeight };
+        const windowRegion = { x: rect.x, y: ownY, width: rect.width, height: ownHeight };
+
+        // Recorded outside the branch on purpose: the animated path never calls
+        // move_resize_frame, so recording inside the else would blind the model to the normal case.
+        MosaicModel.setRegion(conversion.window, convertedRegion, workspace, monitor);
+        MosaicModel.setRegion(window, windowRegion, workspace, monitor);
 
         if (this._animationsManager) {
-            this._animationsManager.animateWindow(conversion.window, {
-                x: convertedRect.x,
-                y: convertedRect.y,
-                width: convertedRect.width,
-                height: halfHeight
-            }, { subtle: true });
-
-            this._animationsManager.animateWindow(window, {
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: halfHeight
-            });
+            this._animationsManager.animateWindow(conversion.window, convertedRegion, { subtle: true });
+            this._animationsManager.animateWindow(window, windowRegion);
         } else {
-            conversion.window.move_resize_frame(false, convertedRect.x, convertedRect.y, convertedRect.width, halfHeight);
-            window.move_resize_frame(false, rect.x, rect.y, rect.width, halfHeight);
+            MosaicConstraints.commitRegion(conversion.window, convertedRegion);
+            MosaicConstraints.commitRegion(window, windowRegion);
         }
 
-        Logger.log(`Applied quarter tiles with halfHeight=${halfHeight}px, width=${savedFullTileWidth}px`);
+        Logger.log(`Applied quarter tiles ${ownHeight}px/${partnerHeight}px, width=${savedFullTileWidth}px`);
 
         const convertedState = WindowState.get(conversion.window, 'edgeTilingState');
         if (convertedState) {
@@ -818,12 +866,13 @@ export const EdgeTilingManager = GObject.registerClass({
         this.emit('edge-tiling-changed', window, zone);
         this.emit('edge-tiling-changed', conversion.window, conversion.newZone);
 
-        this._settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, halfHeight);
+        this._settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, ownHeight, partnerHeight);
     }
 
-    // An app can refuse the halved height. Whoever won that argument dictates where the
-    // other one starts, so the pair still covers the side with no gap between them.
-    _settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, halfHeight) {
+    // The drop always asks for an even split, so this is where a client that won't take its half
+    // gets accommodated. Read rather than signalled because a refusal is silence: the frame simply
+    // doesn't change and nothing fires.
+    _settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, ownHeight, partnerHeight) {
         this._timeoutRegistry.add(constants.POLL_INTERVAL_MS, () => {
             if (!window.get_compositor_private() ||
                 !conversion.window.get_compositor_private()) {
@@ -833,9 +882,9 @@ export const EdgeTilingManager = GObject.registerClass({
             const actualConvertedFrame = conversion.window.get_frame_rect();
             const actualNewFrame = window.get_frame_rect();
 
-            if (actualConvertedFrame.height !== halfHeight || actualNewFrame.height !== halfHeight) {
+            if (actualConvertedFrame.height !== partnerHeight || actualNewFrame.height !== ownHeight) {
                 this._realignQuarterPair(window, zone, rect, convertedRect, workArea, conversion,
-                    actualNewFrame, actualConvertedFrame, halfHeight);
+                    actualNewFrame, actualConvertedFrame, ownHeight);
             }
 
             if (this._tilingManager) {
@@ -845,30 +894,38 @@ export const EdgeTilingManager = GObject.registerClass({
         });
     }
 
-    _realignQuarterPair(window, zone, rect, convertedRect, workArea, conversion, actualNewFrame, actualConvertedFrame, halfHeight) {
-        if (ZONE_HALF[zone] === 'bottom') {
-            if (actualNewFrame.height > halfHeight) {
-                const topHeight = workArea.height - actualNewFrame.height;
-                const bottomY = workArea.y + topHeight;
-                conversion.window.move_resize_frame(false, convertedRect.x, workArea.y, convertedRect.width, topHeight);
-                window.move_resize_frame(false, rect.x, bottomY, rect.width, actualNewFrame.height);
-            } else {
-                const bottomY = actualConvertedFrame.y + actualConvertedFrame.height;
-                const bottomHeight = (workArea.y + workArea.height) - bottomY;
-                window.move_resize_frame(false, rect.x, bottomY, rect.width, bottomHeight);
-            }
-            return;
-        }
+    _realignQuarterPair(window, zone, rect, convertedRect, workArea, conversion, actualNewFrame, actualConvertedFrame, ownHeight) {
+        const workspace = window.get_workspace();
+        const monitor = window.get_monitor();
 
-        if (actualNewFrame.height > halfHeight) {
-            const bottomHeight = workArea.height - actualNewFrame.height;
-            const bottomY = workArea.y + actualNewFrame.height;
-            conversion.window.move_resize_frame(false, convertedRect.x, bottomY, convertedRect.width, bottomHeight);
-        } else {
-            const bottomY = actualNewFrame.y + actualNewFrame.height;
-            const bottomHeight = (workArea.y + workArea.height) - bottomY;
-            conversion.window.move_resize_frame(false, convertedRect.x, bottomY, convertedRect.width, bottomHeight);
-        }
+        // The region recorded here is the real split, not the one we asked for. Eased rather
+        // than snapped since this lands a beat after the tile animation the user is watching.
+        const place = (win, region) => {
+            MosaicModel.setRegion(win, region, workspace, monitor);
+            if (this._animationsManager)
+                this._animationsManager.animateWindow(win, region, { subtle: true });
+            else
+                MosaicConstraints.commitRegion(win, region);
+        };
+
+        // Whoever turned down the height it was handed decides where the divider sits; the other
+        // absorbs the remainder. Handing the refuser back the very size it just rejected is what
+        // used to push it past the edge of its own column.
+        const partnerHeight = workArea.height - ownHeight;
+        let ownFinal = actualNewFrame.height;
+        if (actualNewFrame.height <= ownHeight && actualConvertedFrame.height > partnerHeight)
+            ownFinal = workArea.height - actualConvertedFrame.height;
+
+        ownFinal = Math.max(0, Math.min(ownFinal, workArea.height));
+        const partnerFinal = workArea.height - ownFinal;
+
+        const ownIsTop = ZONE_HALF[zone] === 'top';
+        const ownY = ownIsTop ? workArea.y : workArea.y + partnerFinal;
+        const partnerY = ownIsTop ? workArea.y + ownFinal : workArea.y;
+
+        Logger.log(`Settled quarter pair at ${ownFinal}px/${partnerFinal}px`);
+        place(window, { x: rect.x, y: ownY, width: rect.width, height: ownFinal });
+        place(conversion.window, { x: convertedRect.x, y: partnerY, width: convertedRect.width, height: partnerFinal });
     }
 
     removeTile(window, callback = null, placeAtCursor = false) {
@@ -996,7 +1053,8 @@ export const EdgeTilingManager = GObject.registerClass({
         const fullRect = this.getZoneRect(fullZone, workArea, adjacentWindow);
         if (!fullRect) return;
 
-        adjacentWindow.move_resize_frame(false, fullRect.x, fullRect.y, fullRect.width, fullRect.height);
+        MosaicModel.setRegion(adjacentWindow, fullRect, workspace, monitor);
+        MosaicConstraints.commitRegion(adjacentWindow, fullRect);
         const adjacentState = WindowState.get(adjacentWindow, 'edgeTilingState');
         if (adjacentState) adjacentState.zone = fullZone;
     }
@@ -1019,7 +1077,7 @@ export const EdgeTilingManager = GObject.registerClass({
         }
 
         Logger.log(`removeTile: Restoring window ${window.get_id()} to size ${savedWidth}x${savedHeight} at (${restoredX}, ${restoredY})`);
-        window.move_resize_frame(false, restoredX, restoredY, savedWidth, savedHeight);
+        MosaicConstraints.commitRegion(window, { x: restoredX, y: restoredY, width: savedWidth, height: savedHeight });
     }
 
     _evacuateMosaicToNewWorkspace(mosaicWindows, workspace, monitor) {
@@ -1239,31 +1297,16 @@ export const EdgeTilingManager = GObject.registerClass({
         if (resizedFrame.height > maxResizedHeight) return;
         if (newAdjacentHeight < minHeight) return;
 
-        const isResizedTop = (zone === TileZone.TOP_LEFT || zone === TileZone.TOP_RIGHT);
         this._isResizing = true;
 
         try {
-            if (isResizedTop) {
-                window.move_frame(false, resizedFrame.x, workArea.y);
-                window.move_resize_frame(false, resizedFrame.x, workArea.y, resizedFrame.width, resizedFrame.height);
+            const column = { x: resizedFrame.x, y: workArea.y, width: resizedFrame.width, height: workArea.height };
+            const [resizedRegion, adjacentRegion] = this._applyVerticalPair(
+                window, adjacentWindow, column, zone,
+                resizedFrame.height, newAdjacentHeight, workspace, monitor);
 
-                const adjacentY = workArea.y + resizedFrame.height;
-                adjacentWindow.move_frame(false, resizedFrame.x, adjacentY);
-                adjacentWindow.move_resize_frame(false, resizedFrame.x, adjacentY, resizedFrame.width, newAdjacentHeight);
-
-                WindowState.set(window, 'edgePreviousSize', { width: resizedFrame.width, height: resizedFrame.height, y: workArea.y });
-                WindowState.set(adjacentWindow, 'edgePreviousSize', { width: resizedFrame.width, height: newAdjacentHeight, y: adjacentY });
-            } else {
-                adjacentWindow.move_frame(false, resizedFrame.x, workArea.y);
-                adjacentWindow.move_resize_frame(false, resizedFrame.x, workArea.y, resizedFrame.width, newAdjacentHeight);
-
-                const resizedY = workArea.y + newAdjacentHeight;
-                window.move_frame(false, resizedFrame.x, resizedY);
-                window.move_resize_frame(false, resizedFrame.x, resizedY, resizedFrame.width, resizedFrame.height);
-
-                WindowState.set(adjacentWindow, 'edgePreviousSize', { width: resizedFrame.width, height: newAdjacentHeight, y: workArea.y });
-                WindowState.set(window, 'edgePreviousSize', { width: resizedFrame.width, height: resizedFrame.height, y: resizedY });
-            }
+            WindowState.set(window, 'edgePreviousSize', { width: resizedRegion.width, height: resizedRegion.height, y: resizedRegion.y });
+            WindowState.set(adjacentWindow, 'edgePreviousSize', { width: adjacentRegion.width, height: adjacentRegion.height, y: adjacentRegion.y });
         } finally {
             this._timeoutRegistry.add(constants.ISRESIZING_FLAG_RESET_MS, () => {
                 this._isResizing = false;
@@ -1272,7 +1315,56 @@ export const EdgeTilingManager = GObject.registerClass({
         }
     }
 
+    // The group has to hear about the geometry before Mutter does, otherwise a flush racing
+    // the commit would apply whatever stale region the partition still held.
+    _applyRegion(window, region, workspace, monitor) {
+        MosaicModel.setRegion(window, region, workspace, monitor);
+        window.move_frame(false, region.x, region.y);
+        MosaicConstraints.commitRegion(window, region);
+    }
+
+    _applyPair(windowA, regionA, windowB, regionB, workspace, monitor) {
+        this._applyRegion(windowA, regionA, workspace, monitor);
+        this._applyRegion(windowB, regionB, workspace, monitor);
+    }
+
+    // Returns the regions in resized/adjacent order because callers that track edgePreviousSize
+    // need to know which of the two they ended up with.
+    _applyHorizontalPair(resizedWindow, adjacentWindow, workArea, zone, resizedWidth, adjacentWidth, workspace, monitor) {
+        const isResizedLeft = (zone === TileZone.LEFT_FULL);
+        const [leftWindow, rightWindow] = isResizedLeft
+            ? [resizedWindow, adjacentWindow]
+            : [adjacentWindow, resizedWindow];
+        const [leftWidth, rightWidth] = isResizedLeft
+            ? [resizedWidth, adjacentWidth]
+            : [adjacentWidth, resizedWidth];
+        const [leftRegion, rightRegion] = splitAlongAxis(workArea, 'x', leftWidth, rightWidth);
+
+        this._applyPair(leftWindow, leftRegion, rightWindow, rightRegion, workspace, monitor);
+
+        return isResizedLeft ? [leftRegion, rightRegion] : [rightRegion, leftRegion];
+    }
+
+    // Quarters stack inside the column their side already owns, so the split runs down that
+    // column and never across the full work area.
+    _applyVerticalPair(resizedWindow, adjacentWindow, column, zone, resizedHeight, adjacentHeight, workspace, monitor) {
+        const isResizedTop = (zone === TileZone.TOP_LEFT || zone === TileZone.TOP_RIGHT);
+        const [topWindow, bottomWindow] = isResizedTop
+            ? [resizedWindow, adjacentWindow]
+            : [adjacentWindow, resizedWindow];
+        const [topHeight, bottomHeight] = isResizedTop
+            ? [resizedHeight, adjacentHeight]
+            : [adjacentHeight, resizedHeight];
+        const [topRegion, bottomRegion] = splitAlongAxis(column, 'y', topHeight, bottomHeight);
+
+        this._applyPair(topWindow, topRegion, bottomWindow, bottomRegion, workspace, monitor);
+
+        return isResizedTop ? [topRegion, bottomRegion] : [bottomRegion, topRegion];
+    }
+
     _resizeTiledPair(resizedWindow, adjacentWindow, workArea, zone) {
+        const workspace = resizedWindow.get_workspace();
+        const monitor = resizedWindow.get_monitor();
         const resizedFrame = resizedWindow.get_frame_rect();
 
         const previousState = WindowState.get(resizedWindow, 'edgePreviousSize');
@@ -1294,27 +1386,12 @@ export const EdgeTilingManager = GObject.registerClass({
         this._isResizing = true;
 
         try {
-            const isResizedLeft = (zone === TileZone.LEFT_FULL);
+            const [resizedRegion, adjacentRegion] = this._applyHorizontalPair(
+                resizedWindow, adjacentWindow, workArea, zone,
+                resizedFrame.width, newAdjacentWidth, workspace, monitor);
 
-            if (isResizedLeft) {
-                resizedWindow.move_frame(false, workArea.x, workArea.y);
-                resizedWindow.move_resize_frame(false, workArea.x, workArea.y, resizedFrame.width, workArea.height);
-
-                adjacentWindow.move_frame(false, workArea.x + resizedFrame.width, workArea.y);
-                adjacentWindow.move_resize_frame(false, workArea.x + resizedFrame.width, workArea.y, newAdjacentWidth, workArea.height);
-
-                WindowState.set(resizedWindow, 'edgePreviousSize', { width: resizedFrame.width, height: workArea.height, x: workArea.x });
-                WindowState.set(adjacentWindow, 'edgePreviousSize', { width: newAdjacentWidth, height: workArea.height, x: workArea.x + resizedFrame.width });
-            } else {
-                adjacentWindow.move_frame(false, workArea.x, workArea.y);
-                adjacentWindow.move_resize_frame(false, workArea.x, workArea.y, newAdjacentWidth, workArea.height);
-
-                resizedWindow.move_frame(false, workArea.x + newAdjacentWidth, workArea.y);
-                resizedWindow.move_resize_frame(false, workArea.x + newAdjacentWidth, workArea.y, resizedFrame.width, workArea.height);
-
-                WindowState.set(adjacentWindow, 'edgePreviousSize', { width: newAdjacentWidth, height: workArea.height, x: workArea.x });
-                WindowState.set(resizedWindow, 'edgePreviousSize', { width: resizedFrame.width, height: workArea.height, x: workArea.x + newAdjacentWidth });
-            }
+            WindowState.set(resizedWindow, 'edgePreviousSize', { width: resizedRegion.width, height: workArea.height, x: resizedRegion.x });
+            WindowState.set(adjacentWindow, 'edgePreviousSize', { width: adjacentRegion.width, height: workArea.height, x: adjacentRegion.x });
         } finally {
             this._timeoutRegistry.add(constants.ISRESIZING_FLAG_RESET_MS, () => {
                 this._isResizing = false;
@@ -1356,20 +1433,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
             this._isResizing = true;
             try {
-                const isResizedLeft = (zone === TileZone.LEFT_FULL);
-                if (isResizedLeft) {
-                    resizedWindow.move_frame(false, workArea.x, workArea.y);
-                    resizedWindow.move_resize_frame(false, workArea.x, workArea.y, newResizedWidth, workArea.height);
-
-                    adjacentWindow.move_frame(false, workArea.x + newResizedWidth, workArea.y);
-                    adjacentWindow.move_resize_frame(false, workArea.x + newResizedWidth, workArea.y, newAdjacentWidth, workArea.height);
-                } else {
-                    adjacentWindow.move_frame(false, workArea.x, workArea.y);
-                    adjacentWindow.move_resize_frame(false, workArea.x, workArea.y, newAdjacentWidth, workArea.height);
-
-                    resizedWindow.move_frame(false, workArea.x + newAdjacentWidth, workArea.y);
-                    resizedWindow.move_resize_frame(false, workArea.x + newAdjacentWidth, workArea.y, newResizedWidth, workArea.height);
-                }
+                this._applyHorizontalPair(resizedWindow, adjacentWindow, workArea, zone,
+                    newResizedWidth, newAdjacentWidth, workspace, monitor);
             } finally {
                 this._timeoutRegistry.add(100, () => {
                     this._isResizing = false;
@@ -1388,20 +1453,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
             this._isResizing = true;
             try {
-                const isResizedLeft = (zone === TileZone.LEFT_FULL);
-                if (isResizedLeft) {
-                    resizedWindow.move_frame(false, workArea.x, workArea.y);
-                    resizedWindow.move_resize_frame(false, workArea.x, workArea.y, newResizedWidth, workArea.height);
-
-                    adjacentWindow.move_frame(false, workArea.x + newResizedWidth, workArea.y);
-                    adjacentWindow.move_resize_frame(false, workArea.x + newResizedWidth, workArea.y, adjacentFrame.width, workArea.height);
-                } else {
-                    adjacentWindow.move_frame(false, workArea.x, workArea.y);
-                    adjacentWindow.move_resize_frame(false, workArea.x, workArea.y, adjacentFrame.width, workArea.height);
-
-                    resizedWindow.move_frame(false, workArea.x + adjacentFrame.width, workArea.y);
-                    resizedWindow.move_resize_frame(false, workArea.x + adjacentFrame.width, workArea.y, newResizedWidth, workArea.height);
-                }
+                this._applyHorizontalPair(resizedWindow, adjacentWindow, workArea, zone,
+                    newResizedWidth, adjacentFrame.width, workspace, monitor);
             } finally {
                 this._timeoutRegistry.add(100, () => {
                     this._isResizing = false;
@@ -1428,7 +1481,9 @@ export const EdgeTilingManager = GObject.registerClass({
                 try {
                     const isLeft = (zone === TileZone.LEFT_FULL);
                     const x = isLeft ? workArea.x : (workArea.x + workArea.width - maxWidth);
-                    edgeTiledWindow.move_resize_frame(false, x, workArea.y, maxWidth, workArea.height);
+                    const region = { x, y: workArea.y, width: maxWidth, height: workArea.height };
+                    MosaicModel.setRegion(edgeTiledWindow, region, workspace, monitor);
+                    MosaicConstraints.commitRegion(edgeTiledWindow, region);
                 } finally {
                     this._timeoutRegistry.add(50, () => {
                         this._isResizing = false;
@@ -1470,12 +1525,10 @@ export const EdgeTilingManager = GObject.registerClass({
             Logger.log(`Edge tile exceeds max (${edgeFrame.width} > ${maxEdgeWidth}) - constraining to mosaic boundary`);
             this._isResizing = true;
             try {
-                if (isLeft) {
-                    edgeTiledWindow.move_resize_frame(false, workArea.x, workArea.y, maxEdgeWidth, workArea.height);
-                } else {
-                    const newX = workArea.x + workArea.width - maxEdgeWidth;
-                    edgeTiledWindow.move_resize_frame(false, newX, workArea.y, maxEdgeWidth, workArea.height);
-                }
+                const x = isLeft ? workArea.x : (workArea.x + workArea.width - maxEdgeWidth);
+                const region = { x, y: workArea.y, width: maxEdgeWidth, height: workArea.height };
+                MosaicModel.setRegion(edgeTiledWindow, region, workspace, monitor);
+                MosaicConstraints.commitRegion(edgeTiledWindow, region);
             } finally {
                 this._timeoutRegistry.add(50, () => {
                     this._isResizing = false;
@@ -1505,6 +1558,7 @@ export const EdgeTilingManager = GObject.registerClass({
 
         const resizedFrame = resizedWindow.get_frame_rect();
         const adjacentFrame = adjacentWindow.get_frame_rect();
+        const column = { x: resizedFrame.x, y: workArea.y, width: resizedFrame.width, height: workArea.height };
         const absoluteMinHeight = constants.ABSOLUTE_MIN_HEIGHT;
         const minHeight = Math.max(adjacentFrame.height, absoluteMinHeight);
         const impliedAdjacentHeight = workArea.height - resizedFrame.height;
@@ -1515,22 +1569,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
             this._isResizing = true;
             try {
-                const isResizedTop = (zone === TileZone.TOP_LEFT || zone === TileZone.TOP_RIGHT);
-                if (isResizedTop) {
-                    resizedWindow.move_frame(false, resizedFrame.x, workArea.y);
-                    resizedWindow.move_resize_frame(false, resizedFrame.x, workArea.y, resizedFrame.width, newResizedHeight);
-
-                    const adjacentY = workArea.y + newResizedHeight;
-                    adjacentWindow.move_frame(false, resizedFrame.x, adjacentY);
-                    adjacentWindow.move_resize_frame(false, resizedFrame.x, adjacentY, resizedFrame.width, newAdjacentHeight);
-                } else {
-                    adjacentWindow.move_frame(false, resizedFrame.x, workArea.y);
-                    adjacentWindow.move_resize_frame(false, resizedFrame.x, workArea.y, resizedFrame.width, newAdjacentHeight);
-
-                    const resizedY = workArea.y + newAdjacentHeight;
-                    resizedWindow.move_frame(false, resizedFrame.x, resizedY);
-                    resizedWindow.move_resize_frame(false, resizedFrame.x, resizedY, resizedFrame.width, newResizedHeight);
-                }
+                this._applyVerticalPair(resizedWindow, adjacentWindow, column, zone,
+                    newResizedHeight, newAdjacentHeight, workspace, monitor);
             } finally {
                 this._timeoutRegistry.add(100, () => {
                     this._isResizing = false;
@@ -1548,22 +1588,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
             this._isResizing = true;
             try {
-                const isResizedTop = (zone === TileZone.TOP_LEFT || zone === TileZone.TOP_RIGHT);
-                if (isResizedTop) {
-                    resizedWindow.move_frame(false, resizedFrame.x, workArea.y);
-                    resizedWindow.move_resize_frame(false, resizedFrame.x, workArea.y, resizedFrame.width, newResizedHeight);
-
-                    const adjacentY = workArea.y + newResizedHeight;
-                    adjacentWindow.move_frame(false, resizedFrame.x, adjacentY);
-                    adjacentWindow.move_resize_frame(false, resizedFrame.x, adjacentY, resizedFrame.width, adjacentFrame.height);
-                } else {
-                    adjacentWindow.move_frame(false, resizedFrame.x, workArea.y);
-                    adjacentWindow.move_resize_frame(false, resizedFrame.x, workArea.y, resizedFrame.width, adjacentFrame.height);
-
-                    const resizedY = workArea.y + adjacentFrame.height;
-                    resizedWindow.move_frame(false, resizedFrame.x, resizedY);
-                    resizedWindow.move_resize_frame(false, resizedFrame.x, resizedY, resizedFrame.width, newResizedHeight);
-                }
+                this._applyVerticalPair(resizedWindow, adjacentWindow, column, zone,
+                    newResizedHeight, adjacentFrame.height, workspace, monitor);
             } finally {
                 this._timeoutRegistry.add(100, () => {
                     this._isResizing = false;

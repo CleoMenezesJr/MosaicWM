@@ -10,6 +10,7 @@ import * as constants from './constants.js';
 import * as WindowState from './windowState.js';
 import { MINIATURE_ANIM_KIND } from './windowState.js';
 import { getAnimationsEnabled, getSlowDownFactor } from './timing.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 
 import GObject from 'gi://GObject';
 
@@ -35,6 +36,28 @@ export const AnimationsManager = GObject.registerClass({
         this._isOverviewActive = false;
         // Toggled by setMembershipChangeBounce around a close-triggered retile pass.
         this._membershipChangeBounce = false;
+    }
+
+    // Runs even with animations off: it's the only signal that the drop will be refused, and
+    // honouring the preference here would turn the refusal into nothing happening at all.
+    shakeRefusal(actor) {
+        if (!actor || actor.is_destroyed?.()) return;
+
+        // home has to be a resting value. While another ease owns translation_x, reading it
+        // would capture a frame and the hops below would park the actor on that frame.
+        if (actor.get_transition('translation-x')) return;
+
+        const step = Math.ceil(constants.REFUSAL_SHAKE_MS / 4);
+        const home = actor.translation_x;
+
+        const hop = (dx, next) => actor.ease({
+            translation_x: home + dx,
+            duration: step,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onComplete: next,
+        });
+
+        hop(-8, () => hop(8, () => hop(-4, () => hop(0, null))));
     }
 
     setMembershipChangeBounce(active) {
@@ -77,7 +100,6 @@ export const AnimationsManager = GObject.registerClass({
         }
     }
 
-    // Used by async utilities to wait for animations to complete
     hasActiveAnimations() {
         this._pruneStaleAnimations();
         return this._animatingWindows.size > 0;
@@ -190,7 +212,7 @@ export const AnimationsManager = GObject.registerClass({
         // resize itself takes to land. The size mismatch in the meantime is already
         // covered by the scale animation below, which doesn't depend on this.
         window.move_frame(userOp, targetRect.x, targetRect.y);
-        window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        MosaicConstraints.commitRegion(window, targetRect, userOp);
 
         windowActor.set_translation(initialTx, initialTy, 0);
         if (!skipScale) {
@@ -218,12 +240,19 @@ export const AnimationsManager = GObject.registerClass({
         // the flush places this window for real once it hides, so skip entirely rather than
         // snapping to a position that never took effect and losing the animation.
         if (Main.overview.visible) {
+            // The map-time opacity=0 still has to be cleared here: no ease is running to do it,
+            // so the window would sit invisible until the 1s failsafe pops it in.
+            if (firstPlacement) {
+                WindowState.remove(window, 'pendingFirstPlacement');
+                const actor = window.get_compositor_private();
+                if (actor && !actor.is_destroyed()) actor.opacity = 255;
+            }
             if (onComplete) onComplete();
             return;
         }
 
         WindowState.set(window, 'isMosaicResizing', true);
-        window.move_resize_frame(userOp, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        MosaicConstraints.commitRegion(window, targetRect, userOp);
         this._clearMosaicResizingSoon(window);
         if (firstPlacement) {
             WindowState.remove(window, 'pendingFirstPlacement');
@@ -236,7 +265,7 @@ export const AnimationsManager = GObject.registerClass({
     _applyNoActor(window, targetRect, { firstPlacement, onComplete }) {
         Logger.log(`No actor for window ${window.get_id()}, skipping animation`);
         WindowState.set(window, 'isMosaicResizing', true);
-        window.move_resize_frame(false, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        MosaicConstraints.commitRegion(window, targetRect);
         this._clearMosaicResizingSoon(window);
         if (firstPlacement) WindowState.remove(window, 'pendingFirstPlacement');
         if (onComplete) onComplete();
@@ -393,7 +422,7 @@ export const AnimationsManager = GObject.registerClass({
             // the raw spawn position happens to already match the target, since it
             // owns clearing the opacity=0 onWindowAdded left it at and the slide-in offset.
             if (!needsMove && !isFirstPlacement) {
-                window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
+                MosaicConstraints.commitRegion(window, rect);
                 continue;
             }
 
