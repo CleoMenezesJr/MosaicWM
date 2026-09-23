@@ -271,42 +271,62 @@ export const TilingManager = GObject.registerClass({
     }
 
     findBestRestorationGain(windows, shrunkWindows, workArea) {
-        for (let gainFactor = 1.0; gainFactor >= 0.1; gainFactor -= 0.1) {
-            const simulatedWindows = windows.map(w => {
-                const shrunk = shrunkWindows.find(sw => sw.id === w.get_id());
-                if (!shrunk) {
-                    // Miniatures sit at their scaled region size, so use getMiniatureSize to match WindowDescriptor.
-                    const miniSize = getMiniatureSize(w);
-                    if (miniSize) return { id: w.get_id(), width: miniSize.width, height: miniSize.height };
-                    // Use targetSmartResizeSize when present since WindowDescriptor uses the same
-                    // value during actual tiling, and diverging here would make simulations inconsistent.
-                    const smartResizeSize = WindowState.get(w, 'targetSmartResizeSize');
-                    if (smartResizeSize)
-                        return { id: w.get_id(), width: smartResizeSize.width, height: smartResizeSize.height };
-                    const f = w.get_frame_rect();
-                    return { id: w.get_id(), width: f.width, height: f.height };
-                }
-
+        const buildSim = gainFactor => windows.map(w => {
+            const shrunk = shrunkWindows.find(sw => sw.id === w.get_id());
+            if (!shrunk) {
+                // Miniatures sit at their scaled region size, so use getMiniatureSize to match WindowDescriptor.
+                const miniSize = getMiniatureSize(w);
+                if (miniSize) return { id: w.get_id(), width: miniSize.width, height: miniSize.height };
+                // Use targetSmartResizeSize when present since WindowDescriptor uses the same
+                // value during actual tiling, and diverging here would make simulations inconsistent.
+                const smartResizeSize = WindowState.get(w, 'targetSmartResizeSize');
+                if (smartResizeSize)
+                    return { id: w.get_id(), width: smartResizeSize.width, height: smartResizeSize.height };
                 const f = w.get_frame_rect();
-                let nw = Math.floor(f.width + (shrunk.widthDeficit * gainFactor));
-                let nh = Math.floor(f.height + (shrunk.heightDeficit * gainFactor));
+                return { id: w.get_id(), width: f.width, height: f.height };
+            }
 
-                nw = Math.min(nw, shrunk.openingWidth);
-                nh = Math.min(nh, shrunk.openingHeight);
-                const maxSize = this.getWindowMaximumSize(w);
-                if (maxSize) {
-                    nw = Math.min(nw, maxSize.width);
-                    nh = Math.min(nh, maxSize.height);
-                }
+            const f = w.get_frame_rect();
+            let nw = Math.floor(f.width + (shrunk.widthDeficit * gainFactor));
+            let nh = Math.floor(f.height + (shrunk.heightDeficit * gainFactor));
 
-                return { id: w.get_id(), width: nw, height: nh };
-            });
+            nw = Math.min(nw, shrunk.openingWidth);
+            nh = Math.min(nh, shrunk.openingHeight);
+            const maxSize = this.getWindowMaximumSize(w);
+            if (maxSize) {
+                nw = Math.min(nw, maxSize.width);
+                nh = Math.min(nh, maxSize.height);
+            }
 
-            const tile_result = this._tile(simulatedWindows, workArea, true);
+            return { id: w.get_id(), width: nw, height: nh };
+        });
+
+        const maxSim = buildSim(1.0);
+        const maxResult = this._tile(maxSim, workArea, true);
+        if (!maxResult.overflow) {
+            Logger.log('findBestRestorationGain: Found workable factor 1.0');
+            return { gain: 1.0, layout: maxSim };
+        }
+
+        // Both ends of the remaining descent, each proven with today's full retry; agreement
+        // lets every step in between skip _tryOppositeOrientation, same lock as the searches
+        // above. Only paid for once 1.0 alone didn't resolve it.
+        const minSim = buildSim(0.1);
+        const minResult = this._tile(minSim, workArea, true);
+        const lockedOrientation = maxResult.vertical === minResult.vertical ? maxResult.vertical : null;
+
+        for (let gainFactor = 0.9; gainFactor >= 0.2; gainFactor -= 0.1) {
+            const simulatedWindows = buildSim(gainFactor);
+            const tile_result = this._tile(simulatedWindows, workArea, true, lockedOrientation);
             if (!tile_result.overflow) {
                 Logger.log(`findBestRestorationGain: Found workable factor ${gainFactor.toFixed(1)}`);
                 return { gain: gainFactor, layout: simulatedWindows };
             }
+        }
+
+        if (!minResult.overflow) {
+            Logger.log('findBestRestorationGain: Found workable factor 0.1');
+            return { gain: 0.1, layout: minSim };
         }
         return null;
     }
