@@ -3015,15 +3015,19 @@ export const TilingManager = GObject.registerClass({
     }
 
     _createOnePendingMiniature(win, preSize, computedRegions, tileArea) {
-        const region = computedRegions.get(win.get_id());
+        const region = computedRegions.get(win.get_id()) ?? { x: tileArea.x, y: tileArea.y, width: tileArea.width, height: tileArea.height };
         Logger.log(`[MINIATURE] Creating ${win.get_id()} with stored preSize=${preSize?.width}x${preSize?.height}`);
-        if (region) {
+        if (computedRegions.get(win.get_id())) {
             Logger.log(`[MINIATURE] Creating miniature for window ${win.get_id()} at region (${region.x},${region.y}) size (${region.width}x${region.height})`);
-            this._extension.miniatureManager.createMiniature(win, region, preSize);
         } else {
             Logger.warn(`[MINIATURE] No computed region for window ${win.get_id()}, using workArea`);
-            this._extension.miniatureManager.createMiniature(win, { x: tileArea.x, y: tileArea.y, width: tileArea.width, height: tileArea.height }, preSize);
         }
+        this._extension.miniatureManager.createMiniature(win, region, preSize);
+        // MosaicLayoutStrategy reads ComputedLayouts for the overview region; the drag-reorder
+        // path already keeps this in sync (_applyDragLayoutMiniature), but a miniature born here,
+        // outside of a drag, needs the same so the overview doesn't fall back to the window's
+        // real (unshrunk) frame rect.
+        ComputedLayouts.set(win, region);
     }
 
     // Guards that make a tile pass a no-op before any lock or work is taken.
