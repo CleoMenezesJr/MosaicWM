@@ -162,7 +162,7 @@ export const WindowHandler = GObject.registerClass({
                         if (!WindowState.get(win, 'openedMaximized')) {
                             this._ext.resizeHandler.tryEnterSacred(win);
                         }
-                    } else if (WindowState.get(win, 'openedMaximized')) {
+                    } else if (WindowState.get(win, 'openedMaximized') && !WindowState.get(win, 'unmaximizing')) {
                         Logger.log(`Window ${win.get_id()} born maximized - skipping sacred exit, treating as normal unmaximize`);
                         WindowState.remove(win, 'openedMaximized');
                         WindowState.remove(win, 'unmaximizing');
@@ -182,7 +182,7 @@ export const WindowHandler = GObject.registerClass({
                 if (!WindowState.get(win, 'openedMaximized')) {
                     this._ext.resizeHandler.tryEnterSacred(win);
                 }
-            } else if (WindowState.get(win, 'openedMaximized')) {
+            } else if (WindowState.get(win, 'openedMaximized') && !WindowState.get(win, 'unmaximizing')) {
                 Logger.log(`Window ${win.get_id()} born fullscreen - skipping sacred exit, treating as normal`);
                 WindowState.remove(win, 'openedMaximized');
                 WindowState.remove(win, 'unmaximizing');
@@ -950,7 +950,19 @@ export const WindowHandler = GObject.registerClass({
 
         if (hasExistingSacred || (isIncomingSacred && otherWindows.length > 0)) {
             Logger.log(`Sacred Isolation triggered (IncomingSacred: ${isIncomingSacred}, HasExistingSacred: ${hasExistingSacred}) - isolating`);
-            return { handled: true, result: await this.windowingManager.moveOversizedWindow(window) };
+            const originalWorkspaceIndex = workspace.index();
+            const result = await this.windowingManager.moveOversizedWindow(window);
+
+            // Mirrors tryEnterSacred's undo record, for this window's later unmaximize.
+            if (isIncomingSacred && result) {
+                WindowState.set(window, 'maximizedUndoInfo', {
+                    originalWorkspace: originalWorkspaceIndex,
+                    currentWorkspace: result.index(),
+                    monitor,
+                    preMaxSize: null
+                });
+            }
+            return { handled: true, result };
         }
         return { handled: false };
     }
