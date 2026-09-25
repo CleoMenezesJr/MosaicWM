@@ -788,34 +788,11 @@ export const MiniatureManager = GObject.registerClass({
         // already handed off to whatever interrupted us by this point.
         const continueScaleUp = (isFinished) => {
             if (!windowActor || windowActor.is_destroyed()) return;
-
             if (!isFinished) {
-                if (WindowState.get(window, IS_MINIATURE)) return;
-                if (Math.abs(windowActor.scale_x - 1.0) < 0.001 && Math.abs(windowActor.scale_y - 1.0) < 0.001) {
-                    if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore')
-                        WindowState.remove(window, MINIATURE_ANIM_KIND);
-                    return;
-                }
-                windowActor.ease({
-                    scale_x: 1.0,
-                    scale_y: 1.0,
-                    duration,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                    onStopped: continueScaleUp,
-                });
+                this._resumeInterruptedRestore(window, windowActor, duration, continueScaleUp);
                 return;
             }
-
-            if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore')
-                WindowState.remove(window, MINIATURE_ANIM_KIND);
-            if (!WindowState.get(window, IS_MINIATURE)) {
-                windowActor.set_pivot_point(0, 0);
-                windowActor.set_scale(1.0, 1.0);
-                windowActor.set_translation(0, 0, 0);
-            }
-            const [finalAx, finalAy] = windowActor.get_position();
-            const [finalW, finalH] = windowActor.get_size();
-            Logger.log(`[MINIATURE] restoreMiniature animation complete ${window.get_id()}: FINAL actor=(${finalAx},${finalAy} ${finalW}x${finalH})`);
+            this._finishRestoreScaleUp(window, windowActor);
         };
 
         windowActor.ease({
@@ -827,6 +804,127 @@ export const MiniatureManager = GObject.registerClass({
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onStopped: continueScaleUp,
         });
+
+        // A concurrent smart resize (a sibling squeezing back in) can land a different
+        // real frame under this same actor while the ease above is still running.
+        // scale=1.0 always means "the actor's current native size", so when that native
+        // size changes mid-ease, the on-screen box jumps the instant the new buffer
+        // commits instead of continuing to interpolate. Re-anchor the moment that lands.
+        this._attachRestoreRaceGuard(window, windowActor, { actorW, actorH, extL, extT, duration, continueScaleUp });
+    }
+
+    // A retile can interrupt this mid-flight (it shares the actor with animateWindow's
+    // own position ease). Rather than snap to full size, pick the scale-up back up from
+    // wherever it got cut off; position is already handed off to whatever interrupted us.
+    _resumeInterruptedRestore(window, windowActor, duration, continueScaleUp) {
+        // The race guard's own remove_all_transitions() triggers this same callback with
+        // isFinished=false before it's had a chance to set the rebased scale/translation
+        // itself; racing a second "pick back up" ease against that rebase is exactly the
+        // kind of scale-property fight this whole mechanism exists to avoid, so stand
+        // down and let it finish.
+        if (WindowState.get(window, 'restoreRaceGuardRebasing')) return;
+        if (WindowState.get(window, IS_MINIATURE)) return;
+        if (Math.abs(windowActor.scale_x - 1.0) < 0.001 && Math.abs(windowActor.scale_y - 1.0) < 0.001) {
+            if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore')
+                WindowState.remove(window, MINIATURE_ANIM_KIND);
+            this._detachRestoreRaceGuard(window, windowActor);
+            return;
+        }
+        windowActor.ease({
+            scale_x: 1.0,
+            scale_y: 1.0,
+            duration,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onStopped: continueScaleUp,
+        });
+    }
+
+    _finishRestoreScaleUp(window, windowActor) {
+        if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore')
+            WindowState.remove(window, MINIATURE_ANIM_KIND);
+        this._detachRestoreRaceGuard(window, windowActor);
+        if (!WindowState.get(window, IS_MINIATURE)) {
+            windowActor.set_pivot_point(0, 0);
+            windowActor.set_scale(1.0, 1.0);
+            windowActor.set_translation(0, 0, 0);
+        }
+        const [finalAx, finalAy] = windowActor.get_position();
+        const [finalW, finalH] = windowActor.get_size();
+        Logger.log(`[MINIATURE] restoreMiniature animation complete ${window.get_id()}: FINAL actor=(${finalAx},${finalAy} ${finalW}x${finalH})`);
+    }
+
+    // See the comment above the call site for why this exists. Meta.Window's own
+    // 'size-changed' fires on the logical frame well before the actor's real pixel
+    // allocation catches up, so this watches the actor's own reallocation instead,
+    // reusing the "preserve the visual box" math animations.js's
+    // _computeInitialTransform relies on for ordinary resizes.
+    _attachRestoreRaceGuard(window, windowActor, { actorW, actorH, extL, extT, duration, continueScaleUp }) {
+        this._detachRestoreRaceGuard(window, windowActor);
+        let lastActorW = actorW;
+        let lastActorH = actorH;
+
+        const guardId = windowActor.connect('notify::allocation', () => {
+            if (!windowActor || windowActor.is_destroyed()) return;
+            if (WindowState.get(window, MINIATURE_ANIM_KIND) !== 'restore') return;
+
+            const [newActorW, newActorH] = windowActor.get_size();
+            if (Math.abs(newActorW - lastActorW) < 2 && Math.abs(newActorH - lastActorH) < 2) return;
+
+            const [ax, ay] = windowActor.get_position();
+            const [cpx, cpy] = windowActor.get_pivot_point();
+            const curScaleX = windowActor.scale_x;
+            const curScaleY = windowActor.scale_y;
+            const curTx = windowActor.translation_x;
+            const curTy = windowActor.translation_y;
+
+            // Absolute on-screen position of the logical (CSD-margin-excluded) content
+            // right now, against the actor size this ease was last baselined on.
+            const visualX = ax + cpx * lastActorW * (1 - curScaleX) + curTx + extL * curScaleX;
+            const visualY = ay + cpy * lastActorH * (1 - curScaleY) + curTy + extT * curScaleY;
+            const newScaleX = newActorW > 0 ? (lastActorW * curScaleX) / newActorW : curScaleX;
+            const newScaleY = newActorH > 0 ? (lastActorH * curScaleY) / newActorH : curScaleY;
+
+            // remove_all_transitions fires continueScaleUp(isFinished=false) synchronously,
+            // before this handler has set the rebased scale/translation; the flag tells it
+            // to stand down instead of racing its own "pick back up" ease against this one.
+            WindowState.set(window, 'restoreRaceGuardRebasing', true);
+            windowActor.remove_all_transitions();
+            windowActor.set_pivot_point(0, 0);
+            windowActor.set_scale(newScaleX, newScaleY);
+            windowActor.set_translation(visualX - ax - extL * newScaleX, visualY - ay - extT * newScaleY, 0);
+
+            Logger.log(`[MINIATURE] restore race guard rebased ${window.get_id()}: actor ${lastActorW}x${lastActorH} -> ${newActorW}x${newActorH}, scale ${curScaleX.toFixed(3)},${curScaleY.toFixed(3)} -> ${newScaleX.toFixed(3)},${newScaleY.toFixed(3)}`);
+
+            lastActorW = newActorW;
+            lastActorH = newActorH;
+
+            windowActor.ease({
+                scale_x: 1.0,
+                scale_y: 1.0,
+                translation_x: 0,
+                translation_y: 0,
+                duration,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onStopped: continueScaleUp,
+            });
+            WindowState.remove(window, 'restoreRaceGuardRebasing');
+        });
+
+        WindowState.set(window, 'restoreRaceGuardId', guardId);
+    }
+
+    _detachRestoreRaceGuard(window, windowActor) {
+        const guardId = WindowState.get(window, 'restoreRaceGuardId');
+        if (guardId === undefined) return;
+        WindowState.remove(window, 'restoreRaceGuardId');
+        if (!windowActor) return;
+        // The actor can already be fully disposed by the time this runs, not just
+        // Clutter-destroyed, so disconnect throws instead of returning cleanly.
+        try {
+            if (!windowActor.is_destroyed()) windowActor.disconnect(guardId);
+        } catch (_e) {
+            // Already gone; nothing to disconnect.
+        }
     }
 
     // Snapshot before clearing; layout scorer uses this to pull window back near its slot.
