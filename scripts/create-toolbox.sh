@@ -5,7 +5,7 @@
 set -e
 
 DEFAULT_TOOLBOX=gnome-ext-test
-DEFAULT_RELEASE=44
+DEFAULT_RELEASE=45
 CONFIG_FILE=${XDG_CONFIG_HOME:-$HOME/.config}/gnome-shell-toolbox-tools.conf
 
 PACKAGES=(
