@@ -89,6 +89,7 @@ export const EDGE_TILE_EXIT_SUPPRESSION_MS = RETILE_DELAY_MS + RESIZE_SETTLE_DEL
 export const RESIZE_CLAMP_SETTLE_WINDOW_MS = 1500; // Window age below which a clamp is treated as the client still settling
 export const RESIZE_CLAMP_VERIFY_DELAY_MS = 400; // Quiet time after a deferred clamp before the frame is committed as real
 export const PIN_OVERFLOW_GRACE_MS = 300; // Overflow must survive this long before a pinned shape is dropped for good
+export const MINI_AUTO_RESTORE_CHECK_THROTTLE_MS = 120; // canRestoreMiniature is a _tile() dry-run per candidate; checking it every resize tick scales with miniature count, so this runs coarser than the 16ms retile throttle
 export const ISRESIZING_FLAG_RESET_MS = 2;
 // Mutter can skip the size-changed confirmation on a fast maximize/unmaximize
 // toggle, so force the move after this long instead of leaving the window stuck.
@@ -120,10 +121,10 @@ export const MINIATURE_TARGET_SIZE_PX = 256;  // Longest side of a miniaturized 
 // left on the table is imperceptible at this size, so this trades exact-pixel convergence for
 // fewer iterations.
 export const FIT_SCALE_SEARCH_TOLERANCE_PX = 8;
-// Reconsidering an existing miniature runs one binary search per window touched, each a real
-// cost in _tile() calls; a few px of slack left on the table is imperceptible at this size, so
-// this trades exact-pixel convergence for fewer iterations, unlike the fresh-candidate search.
 export const MINIATURE_RESHRINK_SEARCH_TOLERANCE_PX = 8;
+// _wouldStayMiniAtBestFit only feeds a boolean threshold check with 100s of px of slack, not an
+// applied window size, so it can trade more slack for fewer _tile() probes than the apply path.
+export const MINIATURE_RESTORE_CHECK_TOLERANCE_PX = 32;
 export const MINIATURE_ICON_SIZE_PX = 64;     // Same size the Overview uses, so the icon can hand off without resizing
 export const MINIATURE_ICON_FADE_START = 0.5;  // Point in the icon's flight where it starts fading in; a fraction since an interrupted restore shortens the flight
 export const MINIATURE_ICON_FADE_OUT_MS = 90;  // Window is growing back underneath, so the icon has to clear out fast

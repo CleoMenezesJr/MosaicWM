@@ -511,20 +511,22 @@ export const MiniatureManager = GObject.registerClass({
         return iconFly;
     }
 
-    createMiniature(window, region, forcedPreSize = null, { animate = true } = {}) {
+    createMiniature(window, region, forcedPreSize = null, miniSize = null, { animate = true } = {}) {
         const windowActor = window.get_compositor_private();
         if (!windowActor) return false;
 
         this._animationsManager?.removeAnimatingWindow(window.get_id());
 
-        const { preSize, scale, targetX, targetY, actorBefore_x, actorBefore_y, currentFrame, extLeft, extTop } =
-            this._computeMiniatureGeometry(window, windowActor, region, forcedPreSize);
+        const { scale, targetX, targetY, actorBefore_x, actorBefore_y, logicalWidth, logicalHeight, currentFrame, extLeft, extTop } =
+            this._computeMiniatureGeometry(window, windowActor, region, forcedPreSize, miniSize);
 
-        this._storeMiniatureState(window, windowActor, { scale, preSize, targetX, targetY, extLeft, extTop });
+        this._storeMiniatureState(window, windowActor, { scale, logicalWidth, logicalHeight, targetX, targetY, extLeft, extTop });
 
-        // BinLayout gives icon center for free once flight translation reaches zero.
-        const endCenterX = targetX + preSize.width * scale / 2;
-        const endCenterY = targetY + preSize.height * scale / 2;
+        // BinLayout gives icon center for free once flight translation reaches zero. Uses the
+        // logical (CSD-margin-excluded) size, the same one scale was computed against, or the
+        // icon lands off from the miniature's real final center whenever the two disagree.
+        const endCenterX = targetX + logicalWidth * scale / 2;
+        const endCenterY = targetY + logicalHeight * scale / 2;
         let iconFly = { dx: 0, dy: 0, duration: 0 };
 
         if (animate) {
@@ -542,7 +544,7 @@ export const MiniatureManager = GObject.registerClass({
             applyMiniatureActorState(windowActor, scale, extLeft, extTop, targetX, targetY);
         }
 
-        Logger.log(`[MINIATURE] createMiniature ${window.get_id()}: miniSize=${Math.round(preSize.width * scale)}x${Math.round(preSize.height * scale)}`);
+        Logger.log(`[MINIATURE] createMiniature ${window.get_id()}: miniSize=${Math.round(logicalWidth * scale)}x${Math.round(logicalHeight * scale)}`);
 
         this._armMiniatureFocusGuard(window);
 
@@ -555,14 +557,11 @@ export const MiniatureManager = GObject.registerClass({
         return true;
     }
 
-    _computeMiniatureGeometry(window, windowActor, region, forcedPreSize) {
+    _computeMiniatureGeometry(window, windowActor, region, forcedPreSize, miniSize) {
         const preSize = forcedPreSize || window.get_frame_rect();
-        const scale = constants.MINIATURE_TARGET_SIZE_PX / Math.max(preSize.width, preSize.height);
-        Logger.log(`[MINIATURE] createMiniature ${window.get_id()}: preSize=${preSize.width}x${preSize.height} scale=${scale} forced=${!!forcedPreSize}`);
+        const targetPx = miniSize ? Math.max(miniSize.width, miniSize.height) : constants.MINIATURE_TARGET_SIZE_PX;
 
-        const targetX = region.x;
-        const targetY = region.y;
-
+        const [actorWidth, actorHeight] = windowActor.get_size();
         const [actorBefore_x, actorBefore_y] = windowActor.get_position();
         const currentFrame = window.get_frame_rect();
 
@@ -571,16 +570,33 @@ export const MiniatureManager = GObject.registerClass({
         const bufferRect = window.get_buffer_rect();
         const extLeft = currentFrame.x - bufferRect.x;
         const extTop = currentFrame.y - bufferRect.y;
-        Logger.log(`[MINIATURE] createMiniature ${window.get_id()} (${window.get_wm_class?.() ?? '?'}): preFrame=(${preSize.x},${preSize.y} ${preSize.width}x${preSize.height}) slot=${Math.round(preSize.width * scale)}x${Math.round(preSize.height * scale)} currentFrame=(${currentFrame.x},${currentFrame.y} ${currentFrame.width}x${currentFrame.height}) actorBefore=(${actorBefore_x},${actorBefore_y}) target=(${targetX},${targetY}) scale=${scale.toFixed(4)} extLeft=${extLeft} extTop=${extTop}`);
 
-        return { preSize, scale, targetX, targetY, actorBefore_x, actorBefore_y, currentFrame, extLeft, extTop };
+        // The scale transform multiplies the actor's own CSD-shadow-inclusive buffer, not the
+        // logical frame every other size in the mosaic (layout regions, miniSize, thresholds) is
+        // computed against. Dividing the margin back out (assumed symmetric, same as the position
+        // math above) makes the logical portion land on targetPx instead of the whole
+        // shadow-inclusive footprint overshooting the reserved slot.
+        const logicalWidth = actorWidth - 2 * extLeft;
+        const logicalHeight = actorHeight - 2 * extTop;
+        const scale = targetPx / Math.max(logicalWidth, logicalHeight);
+        Logger.log(`[MINIATURE] createMiniature ${window.get_id()}: preSize=${preSize.width}x${preSize.height} actorSize=${actorWidth}x${actorHeight} scale=${scale} forced=${!!forcedPreSize}`);
+
+        const targetX = region.x;
+        const targetY = region.y;
+
+        Logger.log(`[MINIATURE] createMiniature ${window.get_id()} (${window.get_wm_class?.() ?? '?'}): preFrame=(${preSize.x},${preSize.y} ${preSize.width}x${preSize.height}) slot=${Math.round(logicalWidth * scale)}x${Math.round(logicalHeight * scale)} currentFrame=(${currentFrame.x},${currentFrame.y} ${currentFrame.width}x${currentFrame.height}) actorBefore=(${actorBefore_x},${actorBefore_y}) target=(${targetX},${targetY}) scale=${scale.toFixed(4)} extLeft=${extLeft} extTop=${extTop}`);
+
+        return { scale, targetX, targetY, actorBefore_x, actorBefore_y, logicalWidth, logicalHeight, currentFrame, extLeft, extTop };
     }
 
-    _storeMiniatureState(window, windowActor, { scale, preSize, targetX, targetY, extLeft, extTop }) {
+    _storeMiniatureState(window, windowActor, { scale, logicalWidth, logicalHeight, targetX, targetY, extLeft, extTop }) {
         // Store before animation; enforce effect + workspace patch read these during anim.
         WindowState.set(window, IS_MINIATURE, true);
         WindowState.set(window, MINIATURE_SCALE, scale);
-        WindowState.set(window, PRE_MINIATURE_SIZE, { width: preSize.width, height: preSize.height });
+        // Logical (CSD-margin-excluded) size: getMiniatureSize() and every future reshrink scale
+        // off this, and it has to agree with the frame-space size layout regions and thresholds
+        // use elsewhere, or the reserved slot and the real render drift apart by the margin.
+        WindowState.set(window, PRE_MINIATURE_SIZE, { width: logicalWidth, height: logicalHeight });
         WindowState.set(window, MINIATURE_TARGET_POS, { x: targetX, y: targetY });
         WindowState.set(window, MINIATURE_EXT_LEFT, extLeft);
         WindowState.set(window, MINIATURE_EXT_TOP, extTop);
@@ -628,10 +644,15 @@ export const MiniatureManager = GObject.registerClass({
 
         this._animationsManager?.removeAnimatingWindow(window.get_id());
 
-        const preSize = WindowState.get(window, PRE_MINIATURE_SIZE);
-        const scale = Math.max(targetSize.width, targetSize.height) / Math.max(preSize.width, preSize.height);
         const extLeft = WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0;
         const extTop = WindowState.get(window, MINIATURE_EXT_TOP) ?? 0;
+        // Same margin correction as _computeMiniatureGeometry: scale multiplies the actor's own
+        // (CSD-shadow-inclusive) allocation, not PRE_MINIATURE_SIZE, which is logical. The real
+        // window never resizes while mini, so the actor's own size stays constant here.
+        const [actorWidth, actorHeight] = windowActor.get_size();
+        const logicalWidth = actorWidth - 2 * extLeft;
+        const logicalHeight = actorHeight - 2 * extTop;
+        const scale = Math.max(targetSize.width, targetSize.height) / Math.max(logicalWidth, logicalHeight);
         const targetX = region.x;
         const targetY = region.y;
 
@@ -661,9 +682,9 @@ export const MiniatureManager = GObject.registerClass({
 
         const overlay = WindowState.get(window, MINIATURE_OVERLAY);
         if (overlay)
-            overlay.set({ x: targetX, y: targetY, width: preSize.width * scale, height: preSize.height * scale });
+            overlay.set({ x: targetX, y: targetY, width: logicalWidth * scale, height: logicalHeight * scale });
 
-        Logger.log(`[MINIATURE] reshrinkMiniature ${window.get_id()}: scale=${scale.toFixed(4)} size=${Math.round(preSize.width * scale)}x${Math.round(preSize.height * scale)}`);
+        Logger.log(`[MINIATURE] reshrinkMiniature ${window.get_id()}: scale=${scale.toFixed(4)} size=${Math.round(logicalWidth * scale)}x${Math.round(logicalHeight * scale)}`);
         return true;
     }
 

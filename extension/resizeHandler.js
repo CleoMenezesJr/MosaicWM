@@ -107,7 +107,7 @@ export const ResizeHandler = GObject.registerClass({
 
     // Only the tiler sends geometry; a silent client gets its frame committed
     // as truth once the over-target signals go quiet.
-    _armClampVerification(window, pendingSmartSize) {
+    armClampVerification(window, pendingSmartSize) {
         this._disarmClampVerification(window);
 
         const verifyId = this._timeoutRegistry.add(constants.RESIZE_CLAMP_VERIFY_DELAY_MS, () => {
@@ -359,6 +359,15 @@ export const ResizeHandler = GObject.registerClass({
         if (this._ignoreSizeChange(window, rect)) return;
 
         if (this._handleClampAfterResize(window, rect)) return;
+
+        // Runs after clamp detection so a refused resize still gets caught; retiling here
+        // instead would act on an in-flight animation's intermediate frame.
+        if (WindowState.get(window, 'isSmartResizing') || WindowState.get(window, 'isReverseSmartResizing')) {
+            Logger.log(`[GUARD-BLOCK] onSizeChanged short-circuited for ${window.get_id()} - isSmartResizing=${WindowState.get(window, 'isSmartResizing')} isReverseSmartResizing=${WindowState.get(window, 'isReverseSmartResizing')}`);
+            this._sizeChanged = false;
+            return;
+        }
+
         if (this._handleSacredResizePhase(window)) return;
         if (this._handleMaxUnmaxResize(window)) return;
 
@@ -379,11 +388,6 @@ export const ResizeHandler = GObject.registerClass({
         if (WindowState.get(window, 'pendingInQueue')) return true;
         if (rect.width <= constants.ANIMATION_DIFF_THRESHOLD || rect.height <= constants.ANIMATION_DIFF_THRESHOLD) return true;
 
-        if (WindowState.get(window, 'isSmartResizing') || WindowState.get(window, 'isReverseSmartResizing')) {
-            Logger.log(`[GUARD-BLOCK] onSizeChanged short-circuited for ${window.get_id()} - isSmartResizing=${WindowState.get(window, 'isSmartResizing')} isReverseSmartResizing=${WindowState.get(window, 'isReverseSmartResizing')}`);
-            this._sizeChanged = false;
-            return true;
-        }
         return false;
     }
 
@@ -399,7 +403,7 @@ export const ResizeHandler = GObject.registerClass({
                 // A young client often acks a beat late, so this frame is stale
                 // rather than a real minimum; the verification settles it.
                 Logger.log(`[SMART RESIZE] Window ${window.get_id()} above target while settling: target=${pendingSmartSize.width}×${pendingSmartSize.height}, actual=${rect.width}×${rect.height}; deferring to verification`);
-                this._armClampVerification(window, pendingSmartSize);
+                this.armClampVerification(window, pendingSmartSize);
                 this._sizeChanged = false;
                 return true;
             }
@@ -679,9 +683,13 @@ export const ResizeHandler = GObject.registerClass({
         const excludeFromTiling = this._resizeInOverflow;
         this.tilingManager.tileWorkspaceWindows(workspace, excludeWindow, monitor, true, excludeFromTiling);
 
-        // Shrinking the dragged window can free up room for a sibling
-        // miniature mid-drag. The overflow path only checks the inverse.
-        if (!this._resizeInOverflow && this._ext.windowHandler) {
+        // Shrinking the dragged window can free up room for a sibling miniature mid-drag; the
+        // overflow path only checks the inverse. Throttled coarser than the 16ms retile tick
+        // since canRestoreMiniature dry-runs _tile() per candidate and this is secondary feedback.
+        const now = monotonicNow();
+        if (!this._resizeInOverflow && this._ext.windowHandler &&
+            (now - (this._lastMiniRestoreCheckTime ?? 0)) >= constants.MINI_AUTO_RESTORE_CHECK_THROTTLE_MS) {
+            this._lastMiniRestoreCheckTime = now;
             this._ext.windowHandler._tryAutoRestoreMiniature(mosaicWindows, workspace, monitor);
         }
     }
