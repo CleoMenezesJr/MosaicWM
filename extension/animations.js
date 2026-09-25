@@ -173,7 +173,13 @@ export const AnimationsManager = GObject.registerClass({
             return;
         }
 
+        // A miniature restore animates scale on this same actor and owns recovery
+        // if we cut it off below (see continueScaleUp in miniature.js), so piling our
+        // own scale ease on top would fight it for the same property.
+        const skipScale = WindowState.get(window, MINIATURE_ANIM_KIND) !== undefined;
+
         if (this._isRedundantRetile(window, targetRect)) {
+            Logger.log(`[ANIM-DIAG] redundant retile skipped for ${window.get_id()}: target=(${targetRect.x},${targetRect.y} ${targetRect.width}x${targetRect.height}), miniAnimKind=${WindowState.get(window, MINIATURE_ANIM_KIND)}, actorScale=${windowActor.scale_x?.toFixed(3)},${windowActor.scale_y?.toFixed(3)}`);
             if (onComplete) onComplete();
             return;
         }
@@ -185,20 +191,31 @@ export const AnimationsManager = GObject.registerClass({
         const currentScaleX = windowActor.scale_x;
         const currentScaleY = windowActor.scale_y;
 
-        // A miniature restore animates scale on this same actor and owns recovery
-        // if we cut it off below (see continueScaleUp in miniature.js), so piling our
-        // own scale ease on top would fight it for the same property.
-        const skipScale = WindowState.get(window, MINIATURE_ANIM_KIND) !== undefined;
-
         // remove_all_transitions fires old onStopped(isFinished=false);
         // the guard at the ease callback returns early without double cleanup.
         windowActor.remove_all_transitions();
 
         this._animatingWindows.set(window.get_id(), windowActor);
-        this._animatingTargets.set(window.get_id(), targetRect);
+        // skipScale rides along so a later call to the same target, once skipScale
+        // drops (the miniature ease that owned scale has since finished), isn't
+        // mistaken for already-delivered: that earlier pass never actually applied
+        // the scale/size half of this target, only position.
+        this._animatingTargets.set(window.get_id(), { ...targetRect, skipScale });
 
         const effectiveDuration = Math.ceil(duration * getSlowDownFactor());
         const animationMode = this._pickAnimationMode({ mode, subtle, firstPlacement });
+
+        this._primeAndEase(window, windowActor, targetRect, {
+            currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, slideInOffset,
+            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete,
+        });
+    }
+
+    // Sets the actor's starting transform (the "no jump" continuity math) and the real
+    // frame move together, then hands off to whichever ease path applies.
+    _primeAndEase(window, windowActor, targetRect, opts) {
+        const { currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, slideInOffset,
+            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete } = opts;
 
         const { initialTx, initialTy, initialScaleX, initialScaleY } = this._computeInitialTransform(
             { currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, targetRect, slideInOffset });
@@ -277,7 +294,9 @@ export const AnimationsManager = GObject.registerClass({
     // overshoot plays, replacing a full bounce with an imperceptible one.
     _isRedundantRetile(window, targetRect) {
         const lastTarget = this._animatingTargets.get(window.get_id());
-        return this._animatingWindows.has(window.get_id()) && lastTarget &&
+        // A skipScale delivery only ever applied position, so a later call for the
+        // same rect still has real work to do (the size/scale half) and isn't redundant.
+        return this._animatingWindows.has(window.get_id()) && lastTarget && !lastTarget.skipScale &&
             lastTarget.x === targetRect.x && lastTarget.y === targetRect.y &&
             lastTarget.width === targetRect.width && lastTarget.height === targetRect.height;
     }
