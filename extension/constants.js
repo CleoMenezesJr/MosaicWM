@@ -117,14 +117,11 @@ export const SLIDE_IN_FAILSAFE_MS = 1000;     // Re-check interval if a window's
 export const QUEUE_PROCESS_DELAY_MS = 100;   // Delay between processing window opening queue items (Mutter settling)
 
 export const MINIATURE_TARGET_SIZE_PX = 256;  // Longest side of a miniaturized window
-// _binarySearchFitScale and _wouldStayMiniAtBestFit both bisect a scale factor. A few px of slack
-// left on the table is imperceptible at this size, so this trades exact-pixel convergence for
-// fewer iterations.
+// _binarySearchFitScale and restoreSolver's solveScale both bisect a scale factor. A few px of
+// slack left on the table is imperceptible at this size, so this trades exact-pixel convergence
+// for fewer iterations.
 export const FIT_SCALE_SEARCH_TOLERANCE_PX = 8;
 export const MINIATURE_RESHRINK_SEARCH_TOLERANCE_PX = 8;
-// _wouldStayMiniAtBestFit only feeds a boolean threshold check with 100s of px of slack, not an
-// applied window size, so it can trade more slack for fewer _tile() probes than the apply path.
-export const MINIATURE_RESTORE_CHECK_TOLERANCE_PX = 32;
 export const MINIATURE_ICON_SIZE_PX = 64;     // Same size the Overview uses, so the icon can hand off without resizing
 export const MINIATURE_ICON_FADE_START = 0.5;  // Point in the icon's flight where it starts fading in; a fraction since an interrupted restore shortens the flight
 export const MINIATURE_ICON_FADE_OUT_MS = 90;  // Window is growing back underneath, so the icon has to clear out fast

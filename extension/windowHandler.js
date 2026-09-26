@@ -504,7 +504,7 @@ export const WindowHandler = GObject.registerClass({
         // canRestoreMiniature only simulates, so falling through to the next candidate
         // costs nothing; the most recent may not fit while an older one still does.
         for (const candidate of miniatureWindows) {
-            if (!this._ext.tilingManager.canRestoreMiniature(candidate, remainingWindows, workArea)) {
+            if (!this._ext.tilingManager.canRestoreMiniature(candidate, remainingWindows, workArea, workspace)) {
                 Logger.log(`_tryAutoRestoreMiniature: keeping mini ${candidate.get_id()}, would overflow if restored`);
                 continue;
             }

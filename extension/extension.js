@@ -799,8 +799,37 @@ export default class WindowMosaicExtension extends Extension {
         if (this.dragHandler?._suppressRestoreRetile) return;
 
         const monitor = window.get_monitor();
-        const workArea = this.tilingManager.getUsableWorkArea(workspace, monitor);
 
+        const doTile = () => {
+            if (!isWindowAlive(window)) return;
+            // Every restore path lands here, including the cascade's; no eject site may pick
+            // the window the user brought back while its own pass is running.
+            WindowState.set(window, 'restoringFromMiniature', true);
+            try {
+                this._applyMiniatureRestore(window, workspace, monitor);
+                // No grow-back pass after this: the plan already sized everyone, and a second
+                // decision would fight it.
+                this._tryCascadeMiniatureRestore(workspace, monitor);
+            } finally {
+                WindowState.remove(window, 'restoringFromMiniature');
+            }
+        };
+
+        // Miniaturization rides the actor scale while the frame stays full-size, so running it
+        // now would let the overview's exit transition animate the sibling to its full frame
+        // and then snap it small.
+        if (Main.overview.visible) {
+            Logger.log('Deferring miniature restore tiling until the overview hides');
+            this._pendingOverviewHiddenCallbacks.push(doTile);
+        } else {
+            doTile();
+        }
+    }
+
+    // Planned here rather than when the restore fired: a deferred pass would otherwise apply
+    // sizes to windows that closed while the overview was up.
+    _applyMiniatureRestore(window, workspace, monitor) {
+        const workArea = this.tilingManager.getUsableWorkArea(workspace, monitor);
         const existingWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
             .filter(w =>
                 isWindowAlive(w) &&
@@ -815,51 +844,21 @@ export default class WindowMosaicExtension extends Extension {
         // hasn't shifted yet (window.activate runs after the 250ms animation),
         // so the previously-focused sibling would otherwise be excluded from
         // miniaturization candidates and nothing would shrink.
-        const resizeResult = this.tilingManager.tryFitWithResize(window, existingWindows, workArea, workspace, window);
+        const restorePlan = this.tilingManager.planRestoreFit(window, existingWindows, workArea, workspace, window);
+        if (!restorePlan.success) {
+            this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
+            return;
+        }
 
-        const doTile = () => {
-            if (resizeResult?.success) {
-                this.tilingManager._isSmartResizingBlocked = true;
-                this.tilingManager._restoringWindowId = window.get_id();
-                try {
-                    this.tilingManager._pendingMiniatureWindows = resizeResult.pendingWindows ?? [];
-                    this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
-                } finally {
-                    this.tilingManager._isSmartResizingBlocked = false;
-                    this.tilingManager._restoringWindowId = null;
-                }
-            } else {
-                this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
-            }
-
-            // restoreMiniature only undoes the scale, not the frame. If this was last
-            // shrunk via Smart Resize's skip-resize miniaturize path, the real frame
-            // is still pre-restore size, so give reverse smart resize a chance to grow it back.
-            const allWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-                .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
-            const grew = this.tilingManager.tryRestoreWindowSizes(allWindows, workArea, null, null, workspace, monitor);
-            if (grew) {
-                this._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
-                    for (const w of allWindows) {
-                        WindowState.remove(w, 'isReverseSmartResizing');
-                    }
-                    this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, true);
-                    this._tryCascadeMiniatureRestore(workspace, monitor);
-                    return GLib.SOURCE_REMOVE;
-                }, 'miniatureRestoreGrowSettle');
-            } else {
-                this._tryCascadeMiniatureRestore(workspace, monitor);
-            }
-        };
-
-        // Miniaturization rides the actor scale while the frame stays full-size, so running it
-        // now would let the overview's exit transition animate the sibling to its full frame
-        // and then snap it small.
-        if (Main.overview.visible) {
-            Logger.log('Deferring miniature restore tiling until the overview hides');
-            this._pendingOverviewHiddenCallbacks.push(doTile);
-        } else {
-            doTile();
+        this.tilingManager._isSmartResizingBlocked = true;
+        this.tilingManager._restoringWindowId = window.get_id();
+        try {
+            const { pendingWindows } = this.tilingManager.applyRestorePlan(restorePlan);
+            this.tilingManager._pendingMiniatureWindows = pendingWindows;
+            this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
+        } finally {
+            this.tilingManager._isSmartResizingBlocked = false;
+            this.tilingManager._restoringWindowId = null;
         }
     }
 
