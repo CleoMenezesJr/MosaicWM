@@ -3426,7 +3426,16 @@ export const TilingManager = GObject.registerClass({
     }
 
     _isFixedParticipant(w, reference, resizingWindowId) {
-        return w.get_id() === resizingWindowId || !w.allows_resize?.() || !this._hasReliableSize(w, reference?.get_id());
+        return w.get_id() === resizingWindowId || (!w.allows_resize?.() && !this._isSizePinned(w)) ||
+            !this._hasReliableSize(w, reference?.get_id());
+    }
+
+    // A pinned window can't shrink but can still become a thumbnail; its min already equals its
+    // preferred, so the allocator never asks it to shrink as a window.
+    _isSizePinned(w) {
+        const min = frameMinSize(w);
+        const max = frameMaxSize(w);
+        return !!min && !!max && min.width >= max.width && min.height >= max.height;
     }
 
     // The pass's own subject (arrival, re-include, sacred return, restore) stays a window; the
