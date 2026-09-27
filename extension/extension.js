@@ -736,16 +736,12 @@ export default class WindowMosaicExtension extends Extension {
     }
 
     // Only a miniature that the user could sensibly want back qualifies; a maximized,
-    // excluded, or just-miniaturized window, or one mid smart-resize, is left alone.
+    // excluded window, or one mid smart-resize, is left alone.
     _focusEligibleForRestore(window) {
         if (!this.windowingManager.isRelated(window)) return false;
         if (this.windowingManager.isExcluded(window)) return false;
         if (this.windowingManager.isMaximizedOrFullscreen(window)) return false;
         if (!WindowState.get(window, IS_MINIATURE)) return false;
-        if (WindowState.get(window, 'justMiniaturized')) {
-            Logger.log(`[FOCUS] Skip restore ${window.get_id()}: justMiniaturized`);
-            return false;
-        }
         if (this.tilingManager._isSmartResizingBlocked) {
             Logger.log(`[FOCUS] Skip restore ${window.get_id()}: smartResizingBlocked`);
             return false;
