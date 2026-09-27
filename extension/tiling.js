@@ -3595,8 +3595,13 @@ export const TilingManager = GObject.registerClass({
         if (participants.length === 0) return null;
 
         const result = this._memoizedAllocation(participants, tileArea, resizingWindowId, workspace, !hasCandidate);
+        const byId = new Map(participants.map(p => [p.id, p]));
         Logger.log(`[ALLOCATOR] s=${result.s.toFixed(4)} fits=${result.fits} ${[...result.entries.values()]
-            .map(e => `${e.id}:${e.mode[0]}${e.size.width}x${e.size.height}`).join(' ')}`);
+            .map(e => {
+                const p = byId.get(e.id);
+                return `${e.id}:${e.mode[0]}${e.size.width}x${e.size.height}${p.fixed ? '(fixed)' : ''}` +
+                    `[min=${p.min.width}x${p.min.height} thr=${p.threshold.width}x${p.threshold.height}]`;
+            }).join(' ')}`);
         if (!result.fits) return result;
 
         this._borrowAllocatedSizes(result, participants, descriptors);
