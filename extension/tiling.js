@@ -363,6 +363,25 @@ export const TilingManager = GObject.registerClass({
         this.dragRemainingSpace = null;
     }
 
+    // What an edge preview drew is what the drop has to keep; the resting pass that follows would
+    // otherwise rank a different order for the same windows and move everything the user just saw.
+    _rememberEdgePreview(workspace, tile_info) {
+        if (!this.isDragging || !this.dragRemainingSpace || !(tile_info?.levels?.length > 0)) return;
+        this._lastEdgePreview = {
+            workspace,
+            shape: tile_info.levels.map(lv => lv.windows.length),
+            order: tile_info.levels.flatMap(lv => lv.windows.map(w => w.id)),
+            vertical: !!tile_info.vertical,
+        };
+    }
+
+    pinEdgePreview(workspace) {
+        const preview = this._lastEdgePreview;
+        this._lastEdgePreview = null;
+        if (preview?.workspace === workspace)
+            this.pinComposition(workspace, preview.shape, preview.order, preview.vertical);
+    }
+
     setExcludedWindow(window) {
         this._excludedWindow = window;
     }
@@ -1205,7 +1224,8 @@ export const TilingManager = GObject.registerClass({
     // as rows. Overflow costs a miniaturization or a push to the next workspace, so it's worth a
     // second pass in the other orientation before paying that.
     _tryOppositeOrientation(windows, work_area, spacing, tilingFn, useVerticalShelves, isSimulation, primary) {
-        if (this.isDragging && !isSimulation) return primary;
+        // A drag keeps its orientation; a probe that flips it reports a fit the drag never draws.
+        if (this.isDragging) return primary;
         // A packing search competes both orientations in one pass, so there is no other side to
         // try and rerunning it here just pays for the same candidates twice.
         if (primary.orderOptimized && windows.length > 2 && !this._sameWindowSetAsLastPass(windows))
@@ -1276,7 +1296,7 @@ export const TilingManager = GObject.registerClass({
             if (pinned) return pinned;
         }
 
-        if (this._dragLayoutHint?.shape && this.isDragging && !isSimulation) {
+        if (this._dragLayoutHint?.shape && this.isDragging) {
             const hinted = this._placeByShape(windows, work_area, spacing, this._dragLayoutHint.shape, useVerticalShelves);
             if (!hinted.overflow) {
                 Logger.log(`_tile: ${windows.length} windows honoring drag layout [${this._dragLayoutHint.shape.join(',')}]`);
@@ -1352,7 +1372,9 @@ export const TilingManager = GObject.registerClass({
         const currentResult = tilingFn.call(this, windows, work_area, spacing);
         const wantOptimal = this._ranksOrders(currentResult.overflow, isSimulation);
 
-        if (!wantOptimal || (this.isDragging && !isSimulation)) {
+        // A drag draws the order it has, so a probe during one has to judge that same order; a
+        // probe that reorders reports a fit the drawn pass never gets.
+        if (!wantOptimal || this.isDragging) {
             const reason = wantOptimal ? 'overflow (drag, no permute)' : 'stable order';
             Logger.log(`_tile: ${windows.length} windows, vertical=${useVerticalShelves}, ${reason}`);
             currentResult.orderOptimized = false;
@@ -2756,6 +2778,7 @@ export const TilingManager = GObject.registerClass({
         this._positionSnapshot = null;
         this._restoreAnchor = null;
         this._recordGroupStability(tile_info);
+        this._rememberEdgePreview(workspace, tile_info);
         Logger.log(`Drawing tiles - isDragging: ${this.isDragging}, using tileArea: x=${tileArea.x}, y=${tileArea.y}`);
 
         // Ejecting and miniaturizing above can both come back still overflowing, and the packer

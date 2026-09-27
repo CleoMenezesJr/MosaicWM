@@ -316,6 +316,7 @@ export const DragHandler = GObject.registerClass({
             // The preview's miniatures are the real thing already, so the tile just keeps them.
             Logger.log(`Edge tile confirmed - keeping ${this._previewMiniaturizedWindows.length} miniatures`);
             this._previewMiniaturizedWindows = [];
+            this.tilingManager.pinEdgePreview(window.get_workspace());
 
             this._timeoutRegistry.add(constants.RETILE_DELAY_MS, () => {
                 this._skipNextTiling = null;
@@ -361,7 +362,9 @@ export const DragHandler = GObject.registerClass({
         // Resize-end retiling is handled by resizeHandler.onResizeEnd below, which
         // keeps resizingWindowId set through the final retile to avoid animation
         // jiggle. Skip stopDrag's own retile here to avoid two overlapping tiling passes.
-        this.reorderingManager.stopDrag(window, false, skipTiling || isResizeEnd);
+        // An edge drop already pinned what its preview showed; the reorder's own layout still
+        // counts the window that just left for the tile.
+        this.reorderingManager.stopDrag(window, skipTiling && !isResizeEnd, skipTiling || isResizeEnd);
 
         if (isResizeEnd) {
             this._ext.resizeHandler.onResizeEnd(window, grabpo, skipTiling);
