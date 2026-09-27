@@ -25,6 +25,7 @@ import {
 } from './windowState.js';
 import { getMiniatureSize, applyMiniatureActorState, animateMiniatureToTarget } from './miniature.js';
 import { isWindowAlive } from './liveness.js';
+import { frameMinSize, frameMaxSize } from './sizeHints.js';
 import { getSlowDownFactor, monotonicNow } from './timing.js';
 
 const POSITION_STABILITY_WEIGHT = 40;
@@ -263,12 +264,10 @@ export const TilingManager = GObject.registerClass({
         let baseW = constants.SMART_RESIZE_MIN_WINDOW_WIDTH;
         let baseH = constants.SMART_RESIZE_MIN_WINDOW_HEIGHT;
 
-        if (window.get_min_size) {
-            const [hasHint, minW, minH] = window.get_min_size();
-            if (hasHint) {
-                baseW = Math.max(minW, baseW);
-                baseH = Math.max(minH, baseH);
-            }
+        const hint = frameMinSize(window);
+        if (hint) {
+            baseW = Math.max(hint.width, baseW);
+            baseH = Math.max(hint.height, baseH);
         }
 
         const actualMinW = WindowState.get(window, 'actualMinWidth');
@@ -289,12 +288,7 @@ export const TilingManager = GObject.registerClass({
     }
 
     getWindowMaximumSize(window) {
-        if (window.get_max_size) {
-            const [hasHint, maxW, maxH] = window.get_max_size();
-            if (hasHint && maxW > 0 && maxH > 0)
-                return { width: maxW, height: maxH };
-        }
-        return null;
+        return frameMaxSize(window);
     }
 
     isWindowAtMinimum(window, tolerance = 10) {

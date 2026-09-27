@@ -12,6 +12,7 @@ import { IS_MINIATURE, ANIMATING_MINIATURE, MINIATURE_ANIM_KIND } from './window
 import { getMiniatureSize } from './miniature.js';
 import { MosaicModel } from './mosaicModel.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
+import { frameMinSize, frameMaxSize } from './sizeHints.js';
 import { splitAlongAxis } from './mosaicTileGroup.js';
 import { monotonicNow } from './timing.js';
 
@@ -555,11 +556,9 @@ export const EdgeTilingManager = GObject.registerClass({
     // so such a window stays in the mosaic (miniaturized) instead of being paired as a half-tile.
     isEdgeTileable(window, zoneRect) {
         if (!this._canResize(window)) return false;
-        if (zoneRect && window.get_max_size) {
-            const [hasMax, maxW, maxH] = window.get_max_size();
-            if (hasMax && maxW > 0 && maxH > 0 && (maxW < zoneRect.width || maxH < zoneRect.height))
-                return false;
-        }
+        const max = zoneRect ? frameMaxSize(window) : null;
+        if (max && (max.width < zoneRect.width || max.height < zoneRect.height))
+            return false;
         return true;
     }
 
@@ -709,10 +708,10 @@ export const EdgeTilingManager = GObject.registerClass({
     _fitsDeclaredMinimum(window, targetWidth, targetHeight) {
         if (targetWidth === undefined || targetHeight === undefined) return true;
 
-        const [known, minWidth, minHeight] = window.get_min_size?.() ?? [false, 0, 0];
-        if (!known || (minWidth <= targetWidth && minHeight <= targetHeight)) return true;
+        const min = frameMinSize(window);
+        if (!min || (min.width <= targetWidth && min.height <= targetHeight)) return true;
 
-        Logger.log(`Window ${window.get_id()} needs ${minWidth}x${minHeight}, zone offers ${targetWidth}x${targetHeight}`);
+        Logger.log(`Window ${window.get_id()} needs ${min.width}x${min.height}, zone offers ${targetWidth}x${targetHeight}`);
         return false;
     }
 
