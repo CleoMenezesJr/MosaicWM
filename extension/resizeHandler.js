@@ -390,6 +390,21 @@ export const ResizeHandler = GObject.registerClass({
         if (!this.windowingManager.isRelated(window)) return true;
         // Windows pending in the evaluation queue haven't been processed yet, so ignore size changes
         if (WindowState.get(window, 'pendingInQueue')) return true;
+        // A thumbnail's frame can still land a resize that was in flight when it shrank. Its new
+        // proportions no longer match the slot the layout reserved, so the mosaic lays out again
+        // or the desktop and the overview disagree on its size.
+        if (WindowState.get(window, WindowState.IS_MINIATURE)) {
+            const workspace = window.get_workspace();
+            if (this._ext.miniatureManager?.refitToFrame(window) && workspace) {
+                this._sizeChanged = true;
+                try {
+                    this.tilingManager.retileWithAllocation(workspace, window.get_monitor(), null, { keepOversized: true });
+                } finally {
+                    this._sizeChanged = false;
+                }
+            }
+            return true;
+        }
         if (rect.width <= constants.ANIMATION_DIFF_THRESHOLD || rect.height <= constants.ANIMATION_DIFF_THRESHOLD) return true;
 
         return false;

@@ -663,6 +663,27 @@ export const MiniatureManager = GObject.registerClass({
         return true;
     }
 
+    // Every size reader scales from PRE_MINIATURE_SIZE, so it follows a late frame or the desktop,
+    // layout and overview disagree. Returns whether anything moved.
+    refitToFrame(window) {
+        const preSize = WindowState.get(window, PRE_MINIATURE_SIZE);
+        const frame = window.get_frame_rect();
+        if (!preSize || (Math.abs(frame.width - preSize.width) <= 2 && Math.abs(frame.height - preSize.height) <= 2)) return false;
+
+        const slot = getMiniatureSize(window);
+        const scale = Math.min(slot.width / frame.width, slot.height / frame.height);
+        WindowState.set(window, PRE_MINIATURE_SIZE, { width: frame.width, height: frame.height });
+        WindowState.set(window, MINIATURE_SCALE, scale);
+        Logger.log(`[MINIATURE] refitToFrame ${window.get_id()}: frame ${preSize.width}x${preSize.height} -> ${frame.width}x${frame.height}, scale=${scale.toFixed(4)}`);
+
+        // A running ease lands on MINIATURE_SCALE when it finishes, so it picks this up itself.
+        const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
+        const actor = window.get_compositor_private();
+        if (actor && tgt && !WindowState.get(window, ANIMATING_MINIATURE))
+            applyMiniatureActorState(actor, scale, tgt.x, tgt.y);
+        return true;
+    }
+
     restoreMiniature(window, _newSlot, { activate = true } = {}) {
         if (!WindowState.get(window, IS_MINIATURE)) return false;
 
