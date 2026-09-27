@@ -919,8 +919,8 @@ export const MiniatureManager = GObject.registerClass({
         WindowState.remove(window, MINIATURE_TARGET_POS);
         WindowState.remove(window, MINIATURE_EXT_LEFT);
         WindowState.remove(window, MINIATURE_EXT_TOP);
-        // Stale mini-target persists when min size blocks tryFitWithResize; clear so next layout
-        // doesn't use obsolete mini size.
+        // A shrink target left from before the window was a thumbnail is stale by now; the next
+        // layout would pack it instead of the restored size.
         WindowState.remove(window, 'targetSmartResizeSize');
 
         const timeoutId = WindowState.get(window, 'miniatureJustMiniaturizedTimeoutId');

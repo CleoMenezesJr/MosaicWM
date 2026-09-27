@@ -5,12 +5,11 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
-import Meta from 'gi://Meta';
 
 import * as Logger from './logger.js';
 import * as constants from './constants.js';
-import { TileZone, ZONE_SIDE } from './constants.js';
-import * as restoreSolver from './restoreSolver.js';
+import { ZONE_SIDE } from './constants.js';
+import * as sizeAllocator from './sizeAllocator.js';
 import * as WindowState from './windowState.js';
 import { ComputedLayouts, MosaicModel } from './mosaicModel.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
@@ -70,6 +69,19 @@ function clampToWorkArea(x, y, width, height, bounds) {
     };
 }
 
+// Only what the allocation reads and the apply never writes back: frames and targets move as the
+// apply settles, and MRU moves on focus alone, so neither may force a fresh search. A thumbnail's
+// frame is the exception, since it never moves unless a late resize lands.
+function allocationKey(participants, area) {
+    const parts = participants.map(p => [
+        p.id, p.mode, p.fixed ? 1 : 0, p.capAtThreshold ? 1 : 0,
+        p.preferred.width, p.preferred.height, p.min.width, p.min.height, p.threshold.width, p.threshold.height,
+        p.fixed ? `${p.current.width}x${p.current.height}` : '',
+        p.mode === 'thumbnail' ? `${p.aspectRef.width}x${p.aspectRef.height}` : '',
+    ].join(','));
+    return `${area.x},${area.y},${area.width},${area.height}|${parts.join(';')}`;
+}
+
 export const TilingManager = GObject.registerClass({
     GTypeName: 'MosaicTilingManager',
     Signals: {
@@ -99,8 +111,6 @@ export const TilingManager = GObject.registerClass({
         this._extension = null;
 
         this._isSmartResizingBlocked = false;
-        // Window ID being restored from miniature; shields it from the overflow handler
-        this._restoringWindowId = null;
 
         // Composition (windows-per-row shape) a deliberate drag/keyboard action pinned
         // per workspace, so a non-default layout survives the next re-tile. WeakMap since
@@ -130,6 +140,15 @@ export const TilingManager = GObject.registerClass({
         // Swap/reorder operations live per workspace, keyed by Meta.Workspace via WeakMap
         // to avoid monkey-patching native GObjects (same reason windowState.js exists).
         this._workspaceSwaps = new WeakMap();
+
+        this._tileCallCount = 0;
+        this._perfDepth = 0;
+
+        this._allocationCandidateSize = null;
+        // One slot per workspace and monitor area; a single shared slot gets evicted by every other
+        // monitor's pass and the next one re-searches with whatever MRU focus left behind.
+        this._allocationMemos = new WeakMap();
+        this.isApplyingAllocation = false;
     }
 
     setEdgeTilingManager(manager) {
@@ -148,16 +167,30 @@ export const TilingManager = GObject.registerClass({
         this._animationsManager = manager;
     }
 
+    // Only the outermost scope logs, so the passes an event triggers roll up into that event
+    // instead of printing once per nested retile.
+    measureEvent(label, fn) {
+        const outer = this._perfDepth++ === 0;
+        const calls = this._tileCallCount;
+        const start = monotonicNow();
+        try {
+            return fn();
+        } finally {
+            this._perfDepth--;
+            if (outer)
+                Logger.log(`[PERF] ${label}: ${this._tileCallCount - calls} _tile calls, ${Math.round(monotonicNow() - start)}ms`);
+        }
+    }
+
     // Smart Resize sites only ever change width/height at the window's current
     // position, so x/y always come from the frame already read at the call site.
     // A first placement window doesn't have a real position yet, only wherever
     // Mutter happened to spawn it, so applying that here would move_resize_frame
     // it to that meaningless spot.
     //
-    // deferToRetile: tryFitWithResize and rebalanceSmartResize both call this and
-    // then immediately call tileWorkspaceWindows in the same tick, which does its
-    // own move_resize_frame combining the same size with the window's real tiled
-    // position. Animating here too means two separate Wayland geometry requests
+    // deferToRetile: the allocation's apply calls this and the same tile pass then positions
+    // the window right after with its own move_resize_frame combining the same size with the
+    // window's real tiled position. Animating here too means two separate Wayland geometry requests
     // for the same window back to back: the first commit shows the resize at the
     // old spot, the second shows the push, reading as two sequential animations
     // instead of one. Skip the actual move+ease here and let that next pass be
@@ -168,10 +201,8 @@ export const TilingManager = GObject.registerClass({
         this._animationsManager?.animateWindow(window, { x: frame.x, y: frame.y, width, height });
     }
 
-    // Whichever window happens to be "newWindow" for a given tryFitWithResize call
-    // isn't necessarily the arriving one (a sibling's miniature-restore runs its
-    // own pass with itself as newWindow), so the shield lives on the window itself
-    // and drops the moment its arrival evaluation resolves placement.
+    // The arriving window isn't always a pass's reference, so the shield lives on the window and
+    // drops once its arrival resolves.
     _isArrivalPending(window) {
         return WindowState.get(window, 'arrivalPending') === true;
     }
@@ -271,67 +302,6 @@ export const TilingManager = GObject.registerClass({
         const minSize = this.getWindowMinimumSize(window);
         return currentSize.width <= minSize.width + tolerance &&
                currentSize.height <= minSize.height + tolerance;
-    }
-
-    findBestRestorationGain(windows, shrunkWindows, workArea) {
-        const buildSim = gainFactor => windows.map(w => {
-            const shrunk = shrunkWindows.find(sw => sw.id === w.get_id());
-            if (!shrunk) {
-                // Miniatures sit at their scaled region size, so use getMiniatureSize to match WindowDescriptor.
-                const miniSize = getMiniatureSize(w);
-                if (miniSize) return { id: w.get_id(), width: miniSize.width, height: miniSize.height };
-                // Use targetSmartResizeSize when present since WindowDescriptor uses the same
-                // value during actual tiling, and diverging here would make simulations inconsistent.
-                const smartResizeSize = WindowState.get(w, 'targetSmartResizeSize');
-                if (smartResizeSize)
-                    return { id: w.get_id(), width: smartResizeSize.width, height: smartResizeSize.height };
-                const f = w.get_frame_rect();
-                return { id: w.get_id(), width: f.width, height: f.height };
-            }
-
-            const f = w.get_frame_rect();
-            let nw = Math.floor(f.width + (shrunk.widthDeficit * gainFactor));
-            let nh = Math.floor(f.height + (shrunk.heightDeficit * gainFactor));
-
-            nw = Math.min(nw, shrunk.openingWidth);
-            nh = Math.min(nh, shrunk.openingHeight);
-            const maxSize = this.getWindowMaximumSize(w);
-            if (maxSize) {
-                nw = Math.min(nw, maxSize.width);
-                nh = Math.min(nh, maxSize.height);
-            }
-
-            return { id: w.get_id(), width: nw, height: nh };
-        });
-
-        const maxSim = buildSim(1.0);
-        const maxResult = this._tile(maxSim, workArea, true);
-        if (!maxResult.overflow) {
-            Logger.log('findBestRestorationGain: Found workable factor 1.0');
-            return { gain: 1.0, layout: maxSim };
-        }
-
-        // Both ends of the remaining descent, each proven with today's full retry; agreement
-        // lets every step in between skip _tryOppositeOrientation, same lock as the searches
-        // above. Only paid for once 1.0 alone didn't resolve it.
-        const minSim = buildSim(0.1);
-        const minResult = this._tile(minSim, workArea, true);
-        const lockedOrientation = maxResult.vertical === minResult.vertical ? maxResult.vertical : null;
-
-        for (let gainFactor = 0.9; gainFactor >= 0.2; gainFactor -= 0.1) {
-            const simulatedWindows = buildSim(gainFactor);
-            const tile_result = this._tile(simulatedWindows, workArea, true, lockedOrientation);
-            if (!tile_result.overflow) {
-                Logger.log(`findBestRestorationGain: Found workable factor ${gainFactor.toFixed(1)}`);
-                return { gain: gainFactor, layout: simulatedWindows };
-            }
-        }
-
-        if (!minResult.overflow) {
-            Logger.log('findBestRestorationGain: Found workable factor 0.1');
-            return { gain: 0.1, layout: minSim };
-        }
-        return null;
     }
 
     createMask(window) {
@@ -1138,11 +1108,6 @@ export const TilingManager = GObject.registerClass({
 
         return best ? { order: best.perm, place: best.place } : { order: windows, place: placers[0] };
     }
-    _simulationProbeKey(isSimulation, windows, work_area) {
-        if (!isSimulation) return null;
-        return `${work_area.width}x${work_area.height}|${windows.map(w => `${w.id}:${w.width}x${w.height}`).join(',')}`;
-    }
-
 
     // Order-sensitive hash: different input orders must never share a cache entry.
     _getLayoutHash(windows, work_area) {
@@ -1152,7 +1117,13 @@ export const TilingManager = GObject.registerClass({
         return `${snap(work_area.width)}x${snap(work_area.height)}|${parts.join(',')}`;
     }
 
+    _simulationProbeKey(isSimulation, windows, work_area) {
+        if (!isSimulation) return null;
+        return `${work_area.width}x${work_area.height}|${windows.map(w => `${w.id}:${w.width}x${w.height}`).join(',')}`;
+    }
+
     _tile(windows, work_area, isSimulation = false, forcedOrientation = null) {
+        this._tileCallCount++;
         const hash = this._getLayoutHash(windows, work_area);
         const early = this._resolveTileFastPath(windows, hash, isSimulation);
         if (early) return early;
@@ -1371,7 +1342,7 @@ export const TilingManager = GObject.registerClass({
         return this._useVerticalForDrag(windows, workArea);
     }
 
-    // Simulations (binary-search in tryFitWithResize) skip stability scoring for performance.
+    // Simulations (allocation probes) skip stability scoring for performance.
     // canFitWindow runs before _prepareTilePass takes the snapshot, so it ranks nothing either.
     _ranksOrders(overflow, isSimulation) {
         return overflow || (!!this._positionSnapshot && !isSimulation);
@@ -2467,47 +2438,10 @@ export const TilingManager = GObject.registerClass({
         this._animationsManager?.animateReTiling(layouts);
     }
 
-    // Re-apply mosaic from scratch with smart-resize + miniaturization. Used by
-    // extension enable and Quick Settings toggle-on, since tileWorkspaceWindows's
-    // overflow path needs a "newly added" reference window and can't handle this.
+    // Enable and the Quick Settings toggle squeeze what's there; ejecting on re-enable would scatter
+    // the user's windows.
     enforceWorkspaceFit(workspace, monitor) {
-        if (!workspace || workspace.index() < 0) return;
-        if (this._extension && !this._extension.isMosaicEnabledForWorkspace(workspace)) return;
-
-        const workArea = this._clampedWorkArea(workspace, monitor);
-        if (!workArea || workArea.width <= 0 || workArea.height <= 0) return;
-
-        const allWindows = this._windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-            .filter(w => !this._windowingManager.isExcluded(w)
-                && !this._windowingManager.isMaximizedOrFullscreen(w)
-                && !this._extension?.edgeTilingManager?.isEdgeTiled?.(w));
-
-        if (allWindows.length === 0) return;
-
-        // Pick the most recently focused as the protected "newcomer". Without one,
-        // every window is an equal miniaturization candidate, which is jarring on re-enable.
-        const tabList = global.display.get_tab_list(Meta.TabList.NORMAL, workspace);
-        const reference = tabList.find(w => allWindows.some(aw => aw.get_id() === w.get_id()))
-            ?? allWindows[0];
-        const others = allWindows.filter(w => w.get_id() !== reference.get_id());
-
-        const resizeResult = this.tryFitWithResize(reference, others, workArea, workspace, reference);
-        this._applyEnforcedFit(workspace, monitor, resizeResult);
-    }
-
-    _applyEnforcedFit(workspace, monitor, resizeResult) {
-        if (resizeResult?.success) {
-            this._isSmartResizingBlocked = true;
-            try {
-                this._pendingMiniatureWindows = resizeResult.pendingWindows ?? [];
-                this.tileWorkspaceWindows(workspace, null, monitor, false);
-            } finally {
-                this._isSmartResizingBlocked = false;
-            }
-        } else {
-            // Couldn't smart-resize to fit, so degrade to oversized tiling rather than crash.
-            this.tileWorkspaceWindows(workspace, null, monitor, true);
-        }
+        this.retileWithAllocation(workspace, monitor, null, { keepOversized: true });
     }
 
     // Releases a lock acquired by tileWorkspaceWindows for paths that bail out
@@ -2529,47 +2463,26 @@ export const TilingManager = GObject.registerClass({
             return { tile_info, referenceOverflowSkipped: true };
         }
 
-        if (WindowState.get(reference_meta_window, 'isSmartResizing') || WindowState.get(reference_meta_window, 'isRestoringSacred')) {
-            Logger.log(`Skipping overflow for ${reference_meta_window.get_id()} - smart resize/sacred restore in progress`);
-            // A sacred return must be made to fit even if it squishes everyone; only try once
-            // (guarded by isSmartResizing) to avoid loops.
-            if (WindowState.get(reference_meta_window, 'isRestoringSacred') && !WindowState.get(reference_meta_window, 'isSmartResizing')) {
-                return this._fitReturningSacred(reference_meta_window, workspace, monitor);
-            }
-            return { tile_info, referenceOverflowSkipped: false };
+        if (WindowState.get(reference_meta_window, 'isRestoringSacred')) {
+            Logger.log(`Skipping overflow for ${reference_meta_window.get_id()}: sacred restore in progress`);
+            // The allocation already gave way for a returning sacred window; still overflowing
+            // means it can't fit at all.
+            return this._abortSacredFit(workspace);
         }
 
         this._expelReferenceWindow(reference_meta_window, windows);
         return { tile_info: this._tile(windows, tileArea), referenceOverflowSkipped: false };
     }
 
-    _fitReturningSacred(reference_meta_window, workspace, monitor) {
-        Logger.log('Triggering Smart Resize for returning sacred window');
-        const workArea = this.getUsableWorkArea(workspace, monitor);
-        // windows above are descriptors; re-fetch MetaWindows for tryFitWithResize.
-        const realExisting = this._windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-            .filter(w => w.get_id() !== reference_meta_window.get_id() && !this._windowingManager.isExcluded(w));
-
-        const resizeResult = this.tryFitWithResize(reference_meta_window, realExisting, workArea, workspace);
-        if (!resizeResult?.success) {
-            Logger.log('Smart resize could not fit sacred window');
-            this._positionSnapshot = null;
-            this._restoreAnchor = null;
-            this._unlockWorkspaceEarlyReturn(workspace);
-            return { stop: true };
-        }
-
-        // Preserve any pending miniatures discovered during this resize pass.
-        if (resizeResult.pendingWindows?.length > 0) {
-            this._pendingMiniatureWindows = resizeResult.pendingWindows;
-        }
-        // Use the tile_info from tryFitWithResize (computed with miniature sizes).
-        return { tile_info: resizeResult.tileInfo, referenceOverflowSkipped: false };
+    _abortSacredFit(workspace) {
+        this._positionSnapshot = null;
+        this._restoreAnchor = null;
+        this._unlockWorkspaceEarlyReturn(workspace);
+        return { stop: true };
     }
 
-    // Newest goes, matching the victim the smart-resize rebalance already picks. A drag or live
-    // resize is exempt for the same reason the reference rung is: the drop decides, not the pass
-    // under the cursor.
+    // Newest goes. A drag or live resize is exempt for the same reason the reference rung is: the
+    // drop decides, not the pass under the cursor.
     _ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor) {
         if (!overflow || this.isDragging || this.isResizing) return false;
 
@@ -2591,16 +2504,10 @@ export const TilingManager = GObject.registerClass({
         this._windowingManager.moveOversizedWindow(newest).then((targetWorkspace) => {
             this.invalidateLayoutCache();
             this.tileWorkspaceWindows(workspace, null, monitor, true);
-
-            // newest already carries the miniature the no-ref resolver just created; alone (or
-            // with few others) on a fresh workspace it can easily qualify to restore, but the
-            // focus guard right after miniaturizing blocks the arrival's own activation from
-            // doing it, and nothing else re-checks once that guard expires.
-            if (targetWorkspace && WindowState.get(newest, IS_MINIATURE)) {
-                const destMonitor = newest.get_monitor();
-                const remaining = this._windowingManager.getMonitorWorkspaceWindows(targetWorkspace, destMonitor);
-                this._extension?.windowHandler?._tryAutoRestoreMiniature(remaining, targetWorkspace, destMonitor);
-            }
+            // The focus guard after miniaturizing blocks the arrival's own restore, so the
+            // destination has to be sized once it lands.
+            if (targetWorkspace)
+                this.retileWithAllocation(targetWorkspace, newest.get_monitor());
         }).catch(e => Logger.error(`Overflow eject failed: ${e}`));
 
         return true;
@@ -2823,20 +2730,21 @@ export const TilingManager = GObject.registerClass({
         if (ctx.done) return ctx.result;
         const { meta_windows, windows, work_area, monitor, workspace_windows, edgeTiledWindows } = ctx;
 
+        const tileArea = this._effectiveTileArea(work_area);
+        this._runAllocation(meta_windows, windows, tileArea, workspace, reference_meta_window, !dryRun);
+
         this._preapplyPendingMiniSizes(windows);
 
         // Computed regions from this pass, returned to the caller so it can find
         // miniature positions without depending on the ComputedLayouts side-channel.
         const computedRegions = new Map();
 
-        const tileArea = this._effectiveTileArea(work_area);
-
         this._prepareTilePass(meta_windows, windows, workspace);
 
         let tile_info = this._tile(windows, tileArea, dryRun);
         this._activePinnedShape = null;
         this._activePinnedVertical = null;
-        let overflow = this._determineOverflow(tile_info, workspace_windows);
+        const overflow = this._determineOverflow(tile_info, workspace_windows);
 
         if (dryRun) return this._dryRunResult(overflow, workspace);
 
@@ -2844,11 +2752,6 @@ export const TilingManager = GObject.registerClass({
             overflow, keep_oversized_windows, reference_meta_window, edgeTiledWindows, windows, tileArea, workspace, monitor, tile_info);
         if (refPhase.stop) return { overflow: true, layout: null };
         tile_info = refPhase.tile_info;
-
-        const resolved = this._resolveOverflowByMiniature(
-            overflow, reference_meta_window, refPhase.referenceOverflowSkipped, meta_windows, windows, workspace, tileArea, tile_info);
-        tile_info = resolved.tile_info;
-        overflow = resolved.overflow;
 
         this._positionSnapshot = null;
         this._restoreAnchor = null;
@@ -2930,16 +2833,6 @@ export const TilingManager = GObject.registerClass({
         return { done: false, meta_windows, windows, work_area, monitor, workspace_windows, edgeTiledWindows };
     }
 
-    // Nothing to eject (no reference, or its expulsion was skipped), so try
-    // miniaturizing candidates to reclaim space instead of painting overflow.
-    _resolveOverflowByMiniature(overflow, reference_meta_window, referenceOverflowSkipped, meta_windows, windows, workspace, tileArea, tile_info) {
-        if (!(overflow && this._noRefMiniaturizeAllowed(reference_meta_window, referenceOverflowSkipped) && this._extension?.miniatureManager))
-            return { tile_info, overflow };
-
-        const resolved = this._miniaturizeForNoRefOverflow(meta_windows, windows, workspace, reference_meta_window, tileArea);
-        return resolved ? resolved : { tile_info, overflow };
-    }
-
     _finalizeTilePass(overflow, meta_windows, computedRegions, tileArea, workspace, isRecursive) {
         if (!isRecursive) {
             this._createPendingMiniatures(meta_windows, computedRegions, tileArea);
@@ -2980,15 +2873,6 @@ export const TilingManager = GObject.registerClass({
         return !hasEdgeTiledWindows || !referenceIsEdgeTiled;
     }
 
-    // An edge preview already knows where the reference is going (the tile), so it can never be
-    // the one ejected; miniaturizing the rest is the entire point of the preview. Any other drag
-    // has no such destination, so leave the mosaic alone until the drop.
-    _noRefMiniaturizeAllowed(reference_meta_window, referenceOverflowSkipped) {
-        return this.isDragging
-            ? (!!this.dragRemainingSpace && this._dragMiniaturizationAllowed)
-            : (!reference_meta_window || referenceOverflowSkipped);
-    }
-
     _effectiveTileArea(work_area) {
         return this.isDragging && this.dragRemainingSpace ? this.dragRemainingSpace : work_area;
     }
@@ -3001,11 +2885,7 @@ export const TilingManager = GObject.registerClass({
     }
 
     // Pre-apply mini sizes so the initial _tile sees the correct footprint.
-    // Without this, pendingMiniature windows still have their full frame size,
-    // which causes spurious overflow and fires the no-ref overflow block as a
-    // second independent miniaturizer alongside tryFitWithResize.
     _preapplyPendingMiniSizes(windows) {
-        // Only reset if not already populated (to survive recursive calls from tryFitWithResize)
         if (!this._pendingMiniatureWindows) {
             this._pendingMiniatureWindows = [];
         }
@@ -3074,7 +2954,6 @@ export const TilingManager = GObject.registerClass({
         }
     }
 
-    // Top-level only, not inside recursive tryFitWithResize.
     _createPendingMiniatures(meta_windows, computedRegions, tileArea) {
         // Consume any restore anchor so it can't bleed into a later retile.
         for (const w of meta_windows) {
@@ -3092,7 +2971,7 @@ export const TilingManager = GObject.registerClass({
             this._createOnePendingMiniature(win, preSize, miniSize, computedRegions, tileArea);
         }
         // Every entry here is now either applied or superseded; nothing stays pending, or a
-        // later, independent pass (e.g. the no-ref overflow resolver) that appends onto this
+        // later, independent pass that appends onto this
         // same array would find a stale entry here and apply it ahead of its own fresh one.
         this._pendingMiniatureWindows = [];
     }
@@ -3154,78 +3033,6 @@ export const TilingManager = GObject.registerClass({
     _monitorGone(_monitor) {
         return _monitor !== null && _monitor !== undefined &&
             (_monitor < 0 || _monitor >= global.display.get_n_monitors());
-    }
-
-    // No reference to eject, so reclaim space by miniaturizing MRU-coldest candidates
-    // one at a time until the sim stops overflowing. Returns the resolved
-    // {tile_info, overflow} when it fits, or null to leave the caller's values alone.
-    _miniaturizeForNoRefOverflow(meta_windows, windows, workspace, reference_meta_window, tileArea) {
-        const focusedId = global.display.focus_window?.get_id();
-        const resizingId = this._animationsManager?.getResizingWindowId();
-        const mru = this._windowingManager.getMRUOrder(workspace);
-        const rank = w => mru.get(w.get_id()) ?? Number.MAX_SAFE_INTEGER;
-
-        const overflowCandidates = meta_windows
-            .filter(w =>
-                !WindowState.get(w, IS_MINIATURE) &&
-                w.get_id() !== focusedId &&
-                w.get_id() !== resizingId &&
-                w.get_id() !== (this._restoringWindowId ?? null) &&
-                w.get_id() !== (reference_meta_window?.get_id() ?? null) &&
-                !this._windowingManager.isMaximizedOrFullscreen(w)
-            )
-            .sort((a, b) => rank(b) - rank(a));
-
-        // Accumulate mini sizes across iterations so multiple windows can stack to resolve overflow.
-        const cumulativeSim = new Map(meta_windows.map(w => this._simFootprint(w)));
-        const pendingMinis = [];
-
-        for (const candidate of overflowCandidates) {
-            const frame = candidate.get_frame_rect();
-            const { width: miniW, height: miniH } =
-                this._sizeAtLongestSide(frame, constants.MINIATURE_TARGET_SIZE_PX);
-
-            cumulativeSim.set(candidate.get_id(), { width: miniW, height: miniH });
-            pendingMinis.push({ candidate, frame, miniW, miniH });
-
-            const simSizes = [...cumulativeSim.entries()].map(([id, s]) => ({ id, width: s.width, height: s.height }));
-
-            if (!this._tile(simSizes, tileArea, true).overflow) {
-                Logger.log(`[OVERFLOW] No-ref overflow resolved by miniaturizing ${pendingMinis.length} window(s)`);
-                return this._commitNoRefMinis(pendingMinis, windows, tileArea);
-            }
-        }
-
-        Logger.log('[OVERFLOW] No-ref overflow: miniaturizing all candidates still overflows, applying clamped positions');
-        return null;
-    }
-
-    // Current footprint of a window for the no-ref sim: mini size when miniaturized, frame otherwise.
-    _simFootprint(w) {
-        const f = w.get_frame_rect();
-        if (WindowState.get(w, IS_MINIATURE)) {
-            const ms = getMiniatureSize(w);
-            return [w.get_id(), ms ? { width: ms.width, height: ms.height } : { width: f.width, height: f.height }];
-        }
-        return [w.get_id(), { width: f.width, height: f.height }];
-    }
-
-    _commitNoRefMinis(pendingMinis, windows, tileArea) {
-        if (!this._pendingMiniatureWindows) this._pendingMiniatureWindows = [];
-        for (const { candidate: c, frame: f, miniW: mW, miniH: mH } of pendingMinis) {
-            Logger.log(`[OVERFLOW] Miniaturizing ${c.get_id()} (${mW}x${mH})`);
-            this._pendingMiniatureWindows.push({
-                window: c,
-                preSize: { x: f.x, y: f.y, width: f.width, height: f.height },
-                miniSize: { width: mW, height: mH },
-            });
-            WindowState.set(c, PENDING_MINIATURE, true);
-            const desc = windows.find(w => w.id === c.get_id());
-            if (desc) { desc.width = mW; desc.height = mH; }
-        }
-        this.invalidateLayoutCache();
-        const tile_info = this._tile(windows, tileArea);
-        return { tile_info, overflow: tile_info.overflow };
     }
 
     canFitWindow(window, workspace, monitor, relaxed = false, overrideSize = null) {
@@ -3415,7 +3222,6 @@ export const TilingManager = GObject.registerClass({
             const frame = window.get_frame_rect();
             MosaicConstraints.commitRegion(window, { x: frame.x, y: frame.y, width: preferredSize.width, height: preferredSize.height });
 
-            WindowState.set(window, 'isSmartResizing', false);
             WindowState.set(window, 'targetSmartResizeSize', null);
         } else {
             Logger.log(`restorePreferredSize: No preferred size found for ${window.get_id()}`);
@@ -3453,10 +3259,6 @@ export const TilingManager = GObject.registerClass({
     // States that own preferredSize themselves (smart resize, mosaic constraint) or shouldn't
     // record a transient frame (sacred/born-maximized) block the save.
     _preferredSaveBlocked(window) {
-        if (WindowState.get(window, 'isSmartResizing') || WindowState.get(window, 'isReverseSmartResizing')) {
-            Logger.log(`savePreferredSize: Skipping for ${window.get_id()} - during (reverse) smart resize`);
-            return true;
-        }
         if (WindowState.get(window, 'isConstrainedByMosaic')) {
             Logger.log(`savePreferredSize: Skipping for ${window.get_id()} - already constrained by smart resize`);
             return true;
@@ -3533,228 +3335,6 @@ export const TilingManager = GObject.registerClass({
         return WindowState.get(window, 'preferredSize') || null;
     }
 
-    canRestoreMiniature(candidateMini, remainingWindows, workArea, workspace) {
-        // Mid-grab a shrink-assisted fit flaps: the next drag event overflows it
-        // again and re-minis the window we just restored, so require a full-size fit
-        const resizingWindowId = this._animationsManager?.getResizingWindowId() ?? null;
-        const candidateId = candidateMini.get_id();
-        if (resizingWindowId !== null && remainingWindows.some(w => w.get_id() === resizingWindowId)) {
-            Logger.log(`canRestoreMiniature: resize grab active, keeping mini ${candidateId} until it fits at full size`);
-            return false;
-        }
-
-        const plan = this._solveRestore(remainingWindows, workArea, workspace, candidateId, resizingWindowId);
-        return this._planAllowsAutoRestore(candidateMini, plan, workArea);
-    }
-
-    _solveRestore(windows, workArea, workspace, restoringId, resizingWindowId) {
-        const mru = this._windowingManager.getMRUOrder(workspace);
-        const byId = new Map(windows.map(w => [w.get_id(), w]));
-        return restoreSolver.planRestore({
-            participants: windows.map(w => this._solverParticipant(w, workArea, resizingWindowId, restoringId)),
-            workArea,
-            isSacrificeCandidate: id => this._isSolverSacrificeCandidate(byId.get(id), restoringId, resizingWindowId),
-            mruRank: id => mru.get(id) ?? Number.MAX_SAFE_INTEGER,
-        });
-    }
-
-    // Restorable means the plan fits for free AND the candidate lands above its worth-showing
-    // threshold; otherwise the restore is a blink before the apply pass re-minis it.
-    _planAllowsAutoRestore(candidateMini, plan, workArea) {
-        const candidateId = candidateMini.get_id();
-        if (!plan.fits) {
-            Logger.log(`canRestoreMiniature: candidate=${candidateId} doesn't fit (${plan.reason ?? 'overflow'})`);
-            return false;
-        }
-
-        // Auto-restore only spends room that's actually free. Letting it sacrifice a sibling
-        // makes the cascade restore that sibling right back, which sacrifices this one again.
-        if (plan.miniaturize.length > 0) {
-            Logger.log(`canRestoreMiniature: candidate=${candidateId} would cost ${plan.miniaturize.join(',')} their tile, keeping it mini`);
-            return false;
-        }
-
-        // Everything at its own preferred size reads full-size; the threshold only
-        // judges shrunk candidates, same as the apply pass's preferred-size guard.
-        if (plan.scale === 1.0) {
-            Logger.log(`canRestoreMiniature: candidate=${candidateId} fits at natural size`);
-            return true;
-        }
-
-        return !this._wouldStayMiniAfterPlan(candidateMini, plan, workArea, candidateId);
-    }
-
-    // A shrunk candidate under its worth-showing threshold would come back as a
-    // miniature in the apply pass; restoring it is just a blink before that.
-    _wouldStayMiniAfterPlan(candidateMini, plan, workArea, candidateId) {
-        const candidateSize = plan.sizes.get(candidateId);
-        const { thresholdW, thresholdH } = this._miniatureThreshold(candidateMini, workArea);
-        const wouldStayMini = candidateSize.width < thresholdW || candidateSize.height < thresholdH;
-        Logger.log(`canRestoreMiniature: candidate=${candidateId}, scale=${plan.scale.toFixed(4)} → ${candidateSize.width}x${candidateSize.height} (threshold ${Math.round(thresholdW)}x${Math.round(thresholdH)}), wouldStayMini=${wouldStayMini}`);
-        return wouldStayMini;
-    }
-
-    // Solver participants are plain data: the range the window can occupy (min → current)
-    // plus its worth-showing threshold. The restoring window is judged by its natural
-    // size even while it still carries IS_MINIATURE.
-    _solverParticipant(w, workArea, resizingWindowId, restoringId = null) {
-        const id = w.get_id();
-        const { thresholdW, thresholdH } = this._miniatureThreshold(w, workArea);
-        const threshold = { width: thresholdW, height: thresholdH };
-        const preSize = WindowState.get(w, PRE_MINIATURE_SIZE);
-        if (id !== restoringId && WindowState.get(w, IS_MINIATURE) && preSize) {
-            const { min, current } = this._miniatureSizeRange(preSize, preSize, w, workArea);
-            return { id, min, current, resizable: true, isMiniature: true, threshold };
-        }
-
-        const pref = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'openingSize');
-        const frame = w.get_frame_rect();
-        const current = pref || { width: frame.width, height: frame.height };
-        const resizable = id !== resizingWindowId && w.allows_resize && w.allows_resize();
-        const rawMin = resizable ? this.getWindowMinimumSize(w) : current;
-        const min = {
-            width: Math.min(rawMin.width, current.width),
-            height: Math.min(rawMin.height, current.height),
-        };
-        // Same arguments _markPendingMiniature uses, so a sacrificed window lands at the size planned.
-        const miniRange = this._miniatureSizeRange(frame, current, w, workArea);
-        return { id, min, current, resizable, isMiniature: false, threshold, miniRange };
-    }
-
-    // Mirrors _isMiniaturizationCandidate: the window being restored, a grabbed window,
-    // pending arrivals, about-to-be minis and maximized windows never leave the tiling.
-    _isSolverSacrificeCandidate(w, restoringId, resizingWindowId) {
-        const id = w.get_id();
-        if (id === restoringId || id === resizingWindowId) return false;
-        if (this._isArrivalPending(w)) return false;
-        if (this._windowingManager.isMaximizedOrFullscreen(w)) return false;
-        if (WindowState.get(w, PENDING_MINIATURE)) return false;
-        return true;
-    }
-
-    // Decides only; nothing touches WindowState until applyRestorePlan.
-    planRestoreFit(newWindow, windows, workArea, workspace, focusedWindowOverride = null) {
-        const resizingWindowId = this._animationsManager?.getResizingWindowId() ?? null;
-        const restoringId = (focusedWindowOverride ?? newWindow).get_id();
-        const { allWindows, allResizable, windowData } =
-            this._collectResizeParticipants(windows, newWindow, resizingWindowId, workArea);
-        if (allResizable.length === 0)
-            return { success: false, reason: 'no-resizable-windows' };
-
-        const plan = this._solveRestore(allWindows, workArea, workspace, restoringId, resizingWindowId);
-
-        if (!plan.fits) {
-            Logger.log(`planRestoreFit: window ${restoringId} cannot fit (${plan.reason ?? 'overflow'}); refusing restore`);
-            return { success: false, reason: plan.reason ?? 'overflow' };
-        }
-
-        return { success: true, plan, windowData, allWindows, workArea };
-    }
-
-    // The returned pendingWindows only become miniatures in the retile the caller runs next.
-    applyRestorePlan(restorePlan) {
-        const { plan, windowData, allWindows, workArea } = restorePlan;
-        for (const id of plan.miniaturize)
-            this._markPendingMiniature(windowData.get(id), workArea);
-
-        const finalSizes = allWindows.map(w => {
-            const size = plan.sizes.get(w.get_id());
-            return { id: w.get_id(), width: size.width, height: size.height };
-        });
-        const { pendingWindows, grownWindows } = this._applyFitResults(finalSizes, windowData);
-        this._scheduleGrowSettle(grownWindows);
-        return { pendingWindows };
-    }
-
-    tryRestoreWindowSizes(windows, workArea, _freedWidth, _freedHeight, _workspace, _monitor) {
-        const shrunkWindows = this._collectShrunkWindows(windows);
-
-        if (shrunkWindows.length === 0) {
-            Logger.log(`tryRestoreWindowSizes: No shrunk windows to restore (0/${windows.length} windows had deficits > 2px)`);
-            return false;
-        }
-
-        Logger.log(`tryRestoreWindowSizes: Found ${shrunkWindows.length} shrunk windows`);
-
-        const totalWidthDeficit = shrunkWindows.reduce((sum, w) => sum + w.widthDeficit, 0);
-        const totalHeightDeficit = shrunkWindows.reduce((sum, w) => sum + w.heightDeficit, 0);
-
-        Logger.log(`tryRestoreWindowSizes: Total deficits: W=${totalWidthDeficit}px, H=${totalHeightDeficit}px`);
-
-        if (totalWidthDeficit <= 0 && totalHeightDeficit <= 0) {
-            Logger.log('tryRestoreWindowSizes: No deficit to fill');
-            return false;
-        }
-
-        const result = this.findBestRestorationGain(windows, shrunkWindows, workArea);
-        if (!result) {
-            Logger.log('tryRestoreWindowSizes: Restoration would cause overflow even at 10% - waiting');
-            for (const w of windows) {
-                WindowState.remove(w, 'isReverseSmartResizing');
-            }
-            return false;
-        }
-
-        Logger.log(`tryRestoreWindowSizes: Applying ${Math.round(result.gain * 100)}% restoration`);
-        this._applyRestoration(windows, shrunkWindows, result.layout);
-        return true;
-    }
-
-    // Windows the mosaic shrank below their preferred size (2px slop for rounding).
-    _collectShrunkWindows(windows) {
-        const shrunkWindows = [];
-        for (const window of windows) {
-            if (WindowState.get(window, IS_MINIATURE)) continue;
-            const preferredSize = WindowState.get(window, 'preferredSize');
-            if (!preferredSize) continue;
-
-            const frame = window.get_frame_rect();
-            const widthDiff = preferredSize.width - frame.width;
-            const heightDiff = preferredSize.height - frame.height;
-
-            Logger.log(`tryRestoreWindowSizes: Check ${window.get_id()}: frame=${frame.width}x${frame.height}, pref=${preferredSize.width}x${preferredSize.height}, diff=${widthDiff}x${heightDiff}`);
-
-            if (widthDiff > 2 || heightDiff > 2) {
-                shrunkWindows.push({
-                    window,
-                    id: window.get_id(),
-                    currentWidth: frame.width,
-                    currentHeight: frame.height,
-                    openingWidth: preferredSize.width,
-                    openingHeight: preferredSize.height,
-                    widthDeficit: Math.max(0, widthDiff),
-                    heightDeficit: Math.max(0, heightDiff)
-                });
-            }
-        }
-        return shrunkWindows;
-    }
-
-    _applyRestoration(windows, shrunkWindows, bestLayout) {
-        for (const sim of bestLayout) {
-            const w = windows.find(win => win.get_id() === sim.id);
-            if (!w || WindowState.get(w, IS_MINIATURE)) continue;
-
-            WindowState.set(w, 'isReverseSmartResizing', true);
-
-            const frame = w.get_frame_rect();
-            this._animateResize(w, frame, sim.width, sim.height);
-            // Wayland hasn't acked the resize yet when the settle retile runs, so stash the target here.
-            WindowState.set(w, 'targetRestoredSize', { width: sim.width, height: sim.height });
-
-            const shrunk = shrunkWindows.find(sw => sw.id === w.get_id());
-            if (!shrunk) continue;
-
-            // If fully restored (allow for small pixel rounding errors), remove constraint
-            if (sim.width >= shrunk.openingWidth - 2 && sim.height >= shrunk.openingHeight - 2) {
-                Logger.log(`tryRestoreWindowSizes: Window ${sim.id} fully restored!`);
-                WindowState.set(w, 'isConstrainedByMosaic', false);
-                WindowState.set(w, 'targetSmartResizeSize', null);
-            } else {
-                this._setSmartResizeTarget(w, sim);
-            }
-        }
-    }
     getWindowAreaRatio(frame, workArea) {
         const windowArea = frame.width * frame.height;
         const workspaceArea = workArea.width * workArea.height;
@@ -3772,428 +3352,267 @@ export const TilingManager = GObject.registerClass({
         return { x: area.x, y: area.y, width: Math.min(area.width, maxW), height: Math.min(area.height, maxH) };
     }
 
-    getUsableWorkArea(workspace, monitor) {
-        if (this._edgeTilingManager) {
-            const edgeTiledWindows = this._edgeTilingManager.getEdgeTiledWindows(workspace, monitor);
-            if (edgeTiledWindows.length > 0) {
-                // If the workspace is fully occupied (left + right), return zero/empty rect
-                const zones = edgeTiledWindows.map(w => w.zone);
-                const hasLeft = zones.some(z => [TileZone.LEFT_FULL, TileZone.TOP_LEFT, TileZone.BOTTOM_LEFT].includes(z));
-                const hasRight = zones.some(z => [TileZone.RIGHT_FULL, TileZone.TOP_RIGHT, TileZone.BOTTOM_RIGHT].includes(z));
-
-                if (hasLeft && hasRight) {
-                    return { x: 0, y: 0, width: 0, height: 0 };
-                }
-
-                return this._edgeTilingManager.calculateRemainingSpace(workspace, monitor);
-            }
-        }
-        return this._clampedWorkArea(workspace, monitor);
+    _hasReliableSize(w, referenceId) {
+        return w.get_id() === referenceId
+            || !!WindowState.get(w, 'preferredSize')
+            || !!WindowState.get(w, 'openingSize')
+            || !!WindowState.get(w, 'isConstrainedByMosaic');
     }
 
-    tryFitWithResize(newWindow, windows, workArea, workspace, focusedWindowOverride = null) {
-        if (this._isSmartResizingBlocked) {
-            Logger.log('[SMART RESIZE] tryFitWithResize BLOCKED by _isSmartResizingBlocked');
-            return { success: false };
+    _allocationParticipants(metaWindows, descriptors, tileArea, workspace, reference, resizingWindowId) {
+        const mru = this._windowingManager.getMRUOrder(workspace);
+        const byId = new Map(descriptors.map(d => [d.id, d]));
+        const out = [];
+        for (const w of metaWindows) {
+            // get_frame_rect on a disposed MetaWindow segfaults libmutter.
+            if (!isWindowAlive(w)) continue;
+            const d = byId.get(w.get_id());
+            if (d) out.push(this._allocationParticipant(w, d, tileArea, reference, resizingWindowId, mru));
         }
-        this._isSmartResizingBlocked = true;
-
-        this._extension?.resizeHandler?.resetConstraintRebalanceCount();
-
-        // Also exclude the window under an active manual resize grab, since focusedWindowOverride can point elsewhere.
-        const resizingWindowId = this._animationsManager?.getResizingWindowId();
-
-        try {
-            const { allWindows, allResizable, windowData } =
-                this._collectResizeParticipants(windows, newWindow, resizingWindowId, workArea);
-
-            if (allResizable.length === 0) return { success: false };
-
-            this._logResizeParticipants(allWindows, allResizable, windowData, workArea, workspace);
-
-            // Interpolate between min and current sizes at factor t (1=current, 0=min). A
-            // miniature's min/current span its own dynamic range (fixed floor to its own
-            // threshold) instead of real window geometry, so it rides the same t as everyone else.
-            const buildSimulated = (t) => allWindows.map(w => {
-                const d = windowData.get(w.get_id());
-                if (!d.isResizable)
-                    return { id: w.get_id(), width: d.current.width, height: d.current.height };
-
-                const effMinW = Math.min(d.min.width, d.current.width);
-                const effMinH = Math.min(d.min.height, d.current.height);
-                return {
-                    id: w.get_id(),
-                    width: Math.round(effMinW + (d.current.width - effMinW) * t),
-                    height: Math.round(effMinH + (d.current.height - effMinH) * t),
-                };
-            });
-
-            if (!this._tile(buildSimulated(1.0), workArea, true).overflow) {
-                Logger.log('[SMART RESIZE] Natural fit, no resize needed');
-                return { success: true, tileInfo: null, pendingWindows: [] };
-            }
-
-            if (this._tile(buildSimulated(0.0), workArea, true).overflow) {
-                Logger.log('[SMART RESIZE] Overflow inevitable, windows don\'t fit even at minimums');
-                this._sacrificeUntilMinFits(allWindows, windowData, buildSimulated, workArea, workspace, focusedWindowOverride, resizingWindowId);
-
-                if (this._tile(buildSimulated(0.0), workArea, true).overflow) {
-                    Logger.log('[SMART RESIZE] Still overflow after miniaturization, applying overflow logic');
-                    return { success: false, tileInfo: null, pendingWindows: [] };
-                }
-            }
-
-            let lo = this._binarySearchFitScale(buildSimulated, workArea);
-            Logger.log(`[SMART RESIZE] Optimal scale factor: ${lo.toFixed(4)}`);
-            lo = this._miniaturizeBelowThreshold(allWindows, allResizable, windowData, buildSimulated, workArea, workspace, focusedWindowOverride, resizingWindowId, lo);
-
-            const { pendingWindows, grownWindows } = this._applyFitResults(buildSimulated(lo), windowData);
-            this._scheduleGrowSettle(grownWindows);
-
-            const finalTileInfo = this._tile(windows, workArea);
-            Logger.log(`[TRYFIT] Returning pendingWindows len=${pendingWindows.length}`);
-            return { success: true, tileInfo: finalTileInfo, pendingWindows };
-        } finally {
-            this._isSmartResizingBlocked = false;
-        }
+        return out;
     }
 
-    _isUninitializedForResize(w, newWindow) {
-        // Unreliable geometry corrupts the binary search.
-        return w.get_id() !== newWindow.get_id()
-            && !WindowState.get(w, 'preferredSize')
-            && !WindowState.get(w, 'openingSize')
-            && !WindowState.get(w, 'isConstrainedByMosaic');
+    // A thumbnail scales off the frame it had when it left the tiling; a window about to become
+    // one scales off the frame it has now, same reference createMiniature fits the region with.
+    _allocationParticipant(w, d, tileArea, reference, resizingWindowId, mru) {
+        const id = w.get_id();
+        const isThumb = !!(WindowState.get(w, IS_MINIATURE) || WindowState.get(w, PENDING_MINIATURE));
+        const ref = (isThumb && WindowState.get(w, PRE_MINIATURE_SIZE)) || w.get_frame_rect();
+        const { preferred, min, threshold } = this._windowSizeBounds(w, tileArea);
+        return {
+            id,
+            mode: isThumb ? 'thumbnail' : 'window',
+            fixed: !isThumb && this._isFixedParticipant(w, reference, resizingWindowId),
+            capAtThreshold: !isThumb && this._isCappedParticipant(w, reference),
+            mruRank: mru.get(id) ?? Number.MAX_SAFE_INTEGER,
+            current: { width: d.width, height: d.height },
+            preferred,
+            min,
+            threshold,
+            aspectRef: { width: ref.width, height: ref.height },
+            floor: this._sizeAtLongestSide(ref, constants.MINIATURE_TARGET_SIZE_PX),
+        };
     }
 
-    // One participant's descriptor, or null to skip it. preferredSize is the ceiling for the
-    // deterministic binary search.
-    _classifyResizeParticipant(w, newWindow, resizingWindowId, workArea) {
-        // get_frame_rect on a disposed MetaWindow segfaults libmutter.
-        if (!isWindowAlive(w)) {
-            Logger.log(`[SMART RESIZE] Skipping destroyed window ${w?.get_id?.() ?? '?'}`);
-            return null;
-        }
-
-        // Already-miniaturized windows ride the same t as everyone else, between the fixed floor
-        // and their own threshold. This must precede the uninitialized check, since minis never
-        // get isConstrainedByMosaic and may lack preferredSize, so they'd be filtered out.
-        if (WindowState.get(w, IS_MINIATURE)) {
-            const ms = getMiniatureSize(w);
-            if (!ms) return null;
-            const preSize = WindowState.get(w, PRE_MINIATURE_SIZE);
-            const { min, current } = this._miniatureSizeRange(preSize, preSize, w, workArea);
-            return { window: w, current, min, isResizable: true };
-        }
-
-        if (this._isUninitializedForResize(w, newWindow)) {
-            Logger.log(`[SMART RESIZE] Skipping uninitialized window ${w.get_id()}`);
-            return null;
-        }
-
-        const preferred = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'openingSize');
-        const current = preferred || this.getEffectiveWindowSize(w);
+    // Neither preferred nor threshold may sit under what the client enforces: a saved preferred
+    // can, and the threshold falls back to the miniature floor when the published min reaches
+    // the preferred size.
+    _windowSizeBounds(w, tileArea) {
         const min = this.getWindowMinimumSize(w);
-        return { window: w, current, preferred, min, isResizable: this._isResizableParticipant(w, resizingWindowId) };
+        const saved = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'openingSize') || this.getEffectiveWindowSize(w);
+        const preferred = { width: Math.max(saved.width, min.width), height: Math.max(saved.height, min.height) };
+        const { thresholdW, thresholdH } = this._miniatureThreshold(w, tileArea);
+        const threshold = {
+            width: Math.round(Math.min(Math.max(thresholdW, min.width), preferred.width)),
+            height: Math.round(Math.min(Math.max(thresholdH, min.height), preferred.height)),
+        };
+        return { preferred, min: { width: min.width, height: min.height }, threshold };
     }
 
-    // The window under an active manual resize grab is fixed (its size can't lose to the pointer).
-    _isResizableParticipant(w, resizingWindowId) {
-        return w.get_id() !== resizingWindowId && w.allows_resize && w.allows_resize();
+    _isFixedParticipant(w, reference, resizingWindowId) {
+        return w.get_id() === resizingWindowId || !w.allows_resize?.() || !this._hasReliableSize(w, reference?.get_id());
     }
 
-    _collectResizeParticipants(windows, newWindow, resizingWindowId, workArea) {
-        const allResizable = [];
-        const allWindows = [];
-        const windowData = new Map();
+    // The pass's own subject (arrival, re-include, sacred return, restore) stays a window; the
+    // user just asked for it.
+    _isCappedParticipant(w, reference) {
+        return w.get_id() === reference?.get_id() || this._isArrivalPending(w) ||
+            WindowState.get(w, 'restoringFromMiniature') === true;
+    }
 
-        for (const w of [...windows, newWindow]) {
-            if (allWindows.some(aw => aw.get_id() === w.get_id())) continue;
-            const data = this._classifyResizeParticipant(w, newWindow, resizingWindowId, workArea);
-            if (!data) continue;
+    // postKey is the key the next pass will build once this result is applied (modes flipped),
+    // so the settle retile that follows every apply costs nothing.
+    _memoizedAllocation(participants, tileArea, resizingWindowId, workspace = null, remember = true) {
+        const key = allocationKey(participants, tileArea);
+        const slots = this._allocationSlots(workspace);
+        const slot = `${tileArea.x},${tileArea.y}`;
+        const memo = slots.get(slot);
+        // Restoring under a resize grab re-miniaturizes a tick later, so restores wait for release; an
+        // edge preview must show what the drop keeps, restores included.
+        const live = resizingWindowId !== null;
+        if (this._canReuseAllocation(memo, key, live, participants, tileArea)) return memo.result;
 
-            allWindows.push(w);
-            windowData.set(w.get_id(), data);
-            if (data.isResizable) allResizable.push(w);
+        const result = sizeAllocator.allocate({
+            participants,
+            fits: sizes => !this._tile(sizes, tileArea, true).overflow,
+            previousS: memo?.result.fits ? memo.result.s : null,
+            allowRestore: !live,
+        });
+        const flipped = participants.map(p => ({ ...p, mode: result.entries.get(p.id)?.mode ?? p.mode }));
+        if (remember)
+            slots.set(slot, { key, postKey: allocationKey(flipped, tileArea), result, at: monotonicNow() });
+        return result;
+    }
+
+    _allocationSlots(workspace) {
+        const owner = workspace ?? this;
+        let slots = this._allocationMemos.get(owner);
+        if (!slots) {
+            slots = new Map();
+            this._allocationMemos.set(owner, slots);
         }
-
-        return { allWindows, allResizable, windowData };
+        return slots;
     }
 
-    _logResizeParticipants(allWindows, allResizable, windowData, workArea, workspace) {
-        Logger.log(`[SMART RESIZE] tryFitWithResize: ${allWindows.length} windows (${allResizable.length} resizable), workArea: ${workArea.width}×${workArea.height}`);
-        const mruDiag = this._windowingManager.getMRUOrder(workspace);
-        for (const [id, d] of windowData) {
-            Logger.log(`[SMART RESIZE]   ${id}(${d.window.get_wm_class()}): current=${d.current.width}×${d.current.height}, min=${d.min.width}×${d.min.height}, resizable=${d.isResizable}, mruRank=${mruDiag.get(id) ?? '∞'}`);
+    _canReuseAllocation(memo, key, live, participants, tileArea) {
+        if (!memo) return false;
+        if (memo.key === key || memo.postKey === key) return true;
+        return live && memo.result.fits &&
+            monotonicNow() - memo.at < constants.ALLOCATOR_RESIZE_THROTTLE_MS &&
+            this._allocationStillFits(memo.result, participants, tileArea);
+    }
+
+    // A tick inside the throttle only reuses the old answer while it still packs with the grabbed
+    // window at its new size; the moment it doesn't, the tick pays for a real search.
+    _allocationStillFits(result, participants, tileArea) {
+        const sizes = [];
+        for (const p of participants) {
+            const size = p.fixed ? p.current : result.entries.get(p.id)?.size;
+            if (!size) return false;
+            sizes.push({ id: p.id, width: size.width, height: size.height });
+        }
+        return !this._tile(sizes, tileArea, true).overflow;
+    }
+
+    _applyAllocation(result, participants, metaWindows) {
+        const byId = new Map(metaWindows.map(w => [w.get_id(), w]));
+        const grown = [];
+        // A thumbnail this pass brings back fires miniature-restored synchronously; that handler
+        // must not start a second pass on top of this one.
+        this.isApplyingAllocation = true;
+        try {
+            for (const p of participants) {
+                const e = result.entries.get(p.id);
+                const w = byId.get(p.id);
+                if (p.fixed || !e || !w) continue;
+
+                if (p.mode === 'window' && e.mode === 'window') {
+                    if (this._applyAllocatedWindowSize(w, p, e.size)) grown.push(w);
+                } else if (p.mode === 'window') {
+                    this._applyAllocatedThumbnail(w, p, e.size);
+                } else if (e.mode === 'thumbnail') {
+                    this._applyAllocatedThumbnailSize(w, e.size);
+                } else {
+                    this._applyAllocatedRestore(w, p, e.size);
+                    grown.push(w);
+                }
+            }
+        } finally {
+            this.isApplyingAllocation = false;
+        }
+        this._scheduleGrowSettle(grown);
+    }
+
+    // Memo hits re-run the apply, so a window already at (or already headed to) its size is left
+    // alone; re-arming clamp verification every pass would read a settling frame as a clamp.
+    _applyAllocatedWindowSize(w, p, size) {
+        const near = (a, b) => a && Math.abs(a.width - b.width) <= 2 && Math.abs(a.height - b.height) <= 2;
+        const d = { window: w, current: p.preferred };
+        if (this._applyGrowBack(w, d, size)) return true;
+        if (size.width >= p.preferred.width - 2 && size.height >= p.preferred.height - 2) return false;
+        if (near(WindowState.get(w, 'targetSmartResizeSize'), size) || near(w.get_frame_rect(), size)) return false;
+        this._applyPlainShrink(w, d, size);
+        return false;
+    }
+
+    _applyAllocatedThumbnail(w, p, size) {
+        const frame = w.get_frame_rect();
+        const d = {
+            window: w,
+            naturalSize: p.preferred,
+            pendingPreSize: { x: frame.x, y: frame.y, width: frame.width, height: frame.height },
+            current: size,
+        };
+        WindowState.remove(w, 'targetRestoredSize');
+        (this._pendingMiniatureWindows ??= []).push(this._applyPendingMiniature(w, d, size));
+    }
+
+    // Scale goes to WindowState now, since a pass before the queued ease must pack the new size,
+    // not the live one.
+    _applyAllocatedThumbnailSize(w, size) {
+        const committed = getMiniatureSize(w);
+        if (!committed || (Math.abs(size.width - committed.width) <= 2 && Math.abs(size.height - committed.height) <= 2)) return;
+        const preSize = WindowState.get(w, PRE_MINIATURE_SIZE);
+        WindowState.set(w, MINIATURE_SCALE, Math.max(size.width, size.height) / Math.max(preSize.width, preSize.height));
+        this._pendingReshrinks = (this._pendingReshrinks ?? []).filter(r => r.window !== w);
+        this._pendingReshrinks.push({ window: w, miniSize: size });
+    }
+
+    _applyAllocatedRestore(w, p, size) {
+        if (WindowState.get(w, IS_MINIATURE)) {
+            this._extension?.miniatureManager?.restoreMiniature(w, null, { activate: false });
+        } else {
+            WindowState.remove(w, PENDING_MINIATURE);
+            this._pendingMiniatureWindows = (this._pendingMiniatureWindows ?? []).filter(pm => pm.window !== w);
+        }
+        WindowState.set(w, 'targetRestoredSize', { width: size.width, height: size.height });
+        const shrunk = size.width < p.preferred.width - 2 || size.height < p.preferred.height - 2;
+        WindowState.set(w, 'isConstrainedByMosaic', shrunk);
+        if (!shrunk) {
+            WindowState.set(w, 'targetSmartResizeSize', null);
+            return;
+        }
+        this._setSmartResizeTarget(w, size);
+        // The frame is still the size it had as a thumbnail, so a client that won't go this small
+        // never fires size-changed; only the verification catches it.
+        this._extension?.resizeHandler?.armClampVerification(w, { width: size.width, height: size.height });
+    }
+
+    // A dry run's reference may not be on this workspace yet (sacred return), so it's placed like
+    // canFitWindow does. An edge preview knows where the dragged window lands, so the rest can give
+    // way now; any other drag leaves sizes alone until the drop.
+    _runAllocation(metaWindows, descriptors, tileArea, workspace, reference, apply) {
+        if (this.isDragging && !(this.dragRemainingSpace && this._dragMiniaturizationAllowed)) return null;
+        const pool = this._allocationPool(metaWindows, descriptors, reference, apply);
+        // A dry run that adds a candidate asks about a mosaic that doesn't exist yet; remembering it
+        // would evict the answer for the one that does.
+        const hasCandidate = pool !== metaWindows;
+
+        const resizingWindowId = this._animationsManager?.getResizingWindowId() ?? null;
+        const participants = this._allocationParticipants(pool, descriptors, tileArea, workspace, reference, resizingWindowId);
+        if (participants.length === 0) return null;
+
+        const result = this._memoizedAllocation(participants, tileArea, resizingWindowId, workspace, !hasCandidate);
+        Logger.log(`[ALLOCATOR] s=${result.s.toFixed(4)} fits=${result.fits} ${[...result.entries.values()]
+            .map(e => `${e.id}:${e.mode[0]}${e.size.width}x${e.size.height}`).join(' ')}`);
+        if (!result.fits) return result;
+
+        this._borrowAllocatedSizes(result, participants, descriptors);
+        if (apply) this._applyAllocation(result, participants, pool);
+        return result;
+    }
+
+    _allocationPool(metaWindows, descriptors, reference, apply) {
+        if (apply || !reference || metaWindows.some(w => w.get_id() === reference.get_id()))
+            return metaWindows;
+        this._placeCandidateDescriptor(reference, descriptors, this._allocationCandidateSize);
+        return [...metaWindows, reference];
+    }
+
+    _borrowAllocatedSizes(result, participants, descriptors) {
+        const fixedIds = new Set(participants.filter(p => p.fixed).map(p => p.id));
+        for (const d of descriptors) {
+            const e = result.entries.get(d.id);
+            if (e && !fixedIds.has(d.id)) {
+                d.width = e.size.width;
+                d.height = e.size.height;
+            }
         }
     }
 
-    // A probe that overflows scans the whole candidate space to prove no order fits, so stop as
-    // soon as the scale stops meaning anything: one FIT_SCALE_SEARCH_TOLERANCE_PX-wide band on the
-    // widest range. lo must already fit.
-    _binarySearchFitScale(buildSimulated, workArea, lo = 0.0) {
-        let hi = 1.0;
-        const atMin = buildSimulated(0.0), atMax = buildSimulated(1.0);
-        const span = Math.max(1, ...atMax.map((w, i) =>
-            Math.max(w.width - atMin[i].width, w.height - atMin[i].height)));
-        const steps = Math.max(1, Math.ceil(
-            Math.log2((hi - lo) * span / constants.FIT_SCALE_SEARCH_TOLERANCE_PX)));
-
-        // Both ends of the exact range about to be bisected agree on orientation, each proven with
-        // today's full retry, so lock it for every step in between since there's nothing left for
-        // the retry to discover. Disagreement means orientation genuinely matters somewhere in this
-        // range, so every step keeps retrying, same as before this change.
-        const loResult = this._tile(buildSimulated(lo), workArea, true);
-        const hiResult = this._tile(atMax, workArea, true);
-        const lockedOrientation = loResult.vertical === hiResult.vertical ? loResult.vertical : null;
-
-        for (let i = 0; i < steps; i++) {
-            const mid = (lo + hi) / 2;
-            if (!this._tile(buildSimulated(mid), workArea, true, lockedOrientation).overflow)
-                lo = mid;
-            else
-                hi = mid;
+    // overrideSize only matters to a dry run that places the reference as a candidate.
+    retileWithAllocation(workspace, monitor, reference = null, { dryRun = false, keepOversized = false, overrideSize = null } = {}) {
+        this._allocationCandidateSize = overrideSize;
+        try {
+            return this.tileWorkspaceWindows(workspace, reference, monitor, keepOversized, false, dryRun);
+        } finally {
+            this._allocationCandidateSize = null;
         }
-        return lo;
     }
 
-    // Binary-searches the largest longest-side (px) between MINIATURE_TARGET_SIZE_PX and ceilingPx
-    // for which fitsAtSize(sizePx) reports fit. Falls back to the floor if nothing above it
-    // fits, reproducing the fixed-256px behavior exactly. fitsAtSize is assumed monotonic:
-    // larger sizes leave less room for everything else, so fit can only get harder as px grows.
-    // tolerance trades a few px of slack for fewer probes; each is a real _tile() cost to the
-    // caller, and 1px precision is never visibly different from a few px off on something this
-    // small. Default keeps today's exact-pixel behavior for callers that don't opt in.
-    _findLargestMiniatureSize(ceilingPx, fitsAtSize, tolerance = 1) {
-        const floor = constants.MINIATURE_TARGET_SIZE_PX;
-        if (ceilingPx <= floor || !fitsAtSize(floor)) return floor;
-        if (fitsAtSize(ceilingPx)) return ceilingPx;
-
-        let lo = floor, hi = ceilingPx;
-        while (hi - lo > tolerance) {
-            const mid = Math.round((lo + hi) / 2);
-            if (fitsAtSize(mid)) lo = mid; else hi = mid;
-        }
-        return lo;
-    }
-
-    // The user-active window (never sacrificed). focusedWindowOverride lets callers treat a
-    // specific window as active when Mutter's focus hasn't shifted yet.
-    _resizeFocusedId(focusedWindowOverride) {
-        return (focusedWindowOverride ?? global.display.focus_window)?.get_id();
-    }
-
-    // Non-miniature, non-pending count; Guard 1 refuses to miniaturize the last one.
-    _nonMiniatureCount(allWindows, windowData) {
-        return allWindows.filter(w =>
-            !WindowState.get(w, IS_MINIATURE) && !windowData.get(w.get_id())?.pendingMiniature
-        ).length;
-    }
-
-    // A window eligible to be miniaturized to make room: not already pending/mini/maximized,
-    // not the focused/resizing/arriving window, and resizable.
-    _isMiniaturizationCandidate(w, d, focusedId, resizingWindowId) {
-        if (!d || d.pendingMiniature) return false;
-        if (w.get_id() === focusedId || w.get_id() === resizingWindowId || this._isArrivalPending(w)) return false;
-        if (WindowState.get(w, IS_MINIATURE)) return false;
-        if (this._windowingManager.isMaximizedOrFullscreen(w)) return false;
-        return d.isResizable;
-    }
-
-    // Scales refSize so its longest side lands on targetPx, preserving aspect ratio.
     _sizeAtLongestSide(refSize, targetPx) {
         const scale = targetPx / Math.max(refSize.width, refSize.height);
         return { width: Math.round(refSize.width * scale), height: Math.round(refSize.height * scale) };
-    }
-
-    // The original, never-changing frame from before this window was ever miniaturized is the
-    // scale reference, so reshrinking twice never compounds and always relates back to the truth
-    // restoreMiniature grows back to.
-    _scaledMiniSize(window, targetPx) {
-        return this._sizeAtLongestSide(WindowState.get(window, PRE_MINIATURE_SIZE), targetPx);
-    }
-
-    // A miniature's own smart-resize range: shrinks toward the fixed floor, grows toward its own
-    // miniature threshold. The actor transform can only ever apply one uniform scale to refSize
-    // (the live frame, possibly mid-resize and a different aspect ratio than the window's true
-    // proportions), so the ceiling has to be the largest such scale that still keeps both axes
-    // under their own cap, checked independently: the window's real preferred size on that axis
-    // (the threshold alone can exceed it for a window with no max-size hint, since it falls back
-    // to the work area) and that axis's own miniature threshold. A single "longest side" target
-    // can't express two independent per-axis caps at once and silently overshoots whichever axis
-    // it wasn't computed from, which is exactly the reserved layout box the render must not miss.
-    _miniatureSizeRange(refSize, naturalSize, w, workArea) {
-        const { thresholdW, thresholdH } = this._miniatureThreshold(w, workArea);
-        const ceilingScale = Math.min(
-            naturalSize.width / refSize.width, naturalSize.height / refSize.height,
-            thresholdW / refSize.width, thresholdH / refSize.height,
-        );
-        const floorScale = constants.MINIATURE_TARGET_SIZE_PX / Math.max(refSize.width, refSize.height);
-        return {
-            min: { width: Math.round(refSize.width * floorScale), height: Math.round(refSize.height * floorScale) },
-            current: { width: Math.round(refSize.width * ceilingScale), height: Math.round(refSize.height * ceilingScale) },
-        };
-    }
-
-    // Stamp pendingMiniature + a size range from the live frame, and return its ceiling, the
-    // size this window renders at once the layout has room for it. dynamic=false pins min and
-    // current to the fixed floor, for deep overflow where every candidate has to shrink as far
-    // as possible right away rather than settle somewhere in between.
-    _markPendingMiniature(d, workArea, dynamic = true) {
-        const frame = d.window.get_frame_rect();
-        d.pendingMiniature = true;
-        d.pendingPreSize = { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
-        // A window can't be both "growing back toward a restored size" and "about to become a
-        // miniature". Either producer of targetRestoredSize (the grow-back in _applyFitResults,
-        // or the reverse smart-resize in _applyRestoration) can still have one in flight with its
-        // own settle cleanup not due yet; left alone, WindowDescriptor prefers that stale target
-        // over the fresh mini size and reserves the wrong footprint for this window.
-        WindowState.remove(d.window, 'targetRestoredSize');
-        // d.current is about to become the mini's own ceiling; stash the window's real preferred
-        // size first so _applyFitResults can still remember what to restore it to later.
-        d.naturalSize = d.current;
-
-        if (dynamic)
-            ({ min: d.min, current: d.current } = this._miniatureSizeRange(frame, d.naturalSize, d.window, workArea));
-        else
-            d.min = d.current = this._sizeAtLongestSide(frame, constants.MINIATURE_TARGET_SIZE_PX);
-
-        const scale = Math.max(d.current.width, d.current.height) / Math.max(d.naturalSize.width, d.naturalSize.height);
-        return { miniSize: d.current, scale };
-    }
-
-    // Windows don't fit even at minimum size: miniaturize least-recently-used ones (never the
-    // last visible one) until the min-size layout fits.
-    _sacrificeUntilMinFits(allWindows, windowData, buildSimulated, workArea, workspace, focusedWindowOverride, resizingWindowId) {
-        if (!this._extension?.miniatureManager) return;
-
-        const focusedId = this._resizeFocusedId(focusedWindowOverride);
-        // Higher MRU index means less recently used, so descending sacrifices whichever window
-        // the user has ignored longest.
-        const mru = this._windowingManager.getMRUOrder(workspace);
-        const rank = w => mru.get(w.get_id()) ?? Number.MAX_SAFE_INTEGER;
-        const ordered = [...allWindows].sort((a, b) => rank(b) - rank(a));
-
-        for (const w of ordered) {
-            const d = windowData.get(w.get_id());
-            if (!this._isMiniaturizationCandidate(w, d, focusedId, resizingWindowId)) continue;
-            if (this._nonMiniatureCount(allWindows, windowData) <= 1) break;
-
-            const { miniSize } = this._markPendingMiniature(d, workArea, false);
-            Logger.log(`[SMART RESIZE] ${w.get_id()}: miniaturizing to make room (${miniSize.width}x${miniSize.height})`);
-
-            if (!this._tile(buildSimulated(0.0), workArea, true).overflow) return;
-        }
-
-        if (this._tile(buildSimulated(0.0), workArea, true).overflow) {
-            this._reshrinkExistingMiniatures(allWindows, windowData,
-                () => !this._tile(buildSimulated(0.0), workArea, true).overflow);
-        }
-    }
-
-    // Last resort: there's nothing else left to try, so squeeze existing miniatures below where
-    // their own dynamic range would otherwise settle them. Squeezes the biggest ones first, since
-    // that recovers the most space per window touched. sizeOf reads the real committed size
-    // (not d.current, which is the range's ceiling) since that's what's actually being shrunk
-    // from. fitsNow() is the caller's own notion of "good enough": deep overflow
-    // (_sacrificeUntilMinFits) asks "does everyone still fit at minimum", the soft cascade
-    // (_miniaturizeBelowThreshold) asks "do the remaining candidates fully recover"; so this
-    // helper stays agnostic to which phase is calling it. The caller only reaches here when
-    // fitsNow() is already false, so every candidate here genuinely shrinks by at least one pixel.
-    _reshrinkExistingMiniatures(allWindows, windowData, fitsNow) {
-        const sizeOf = w => {
-            const ms = getMiniatureSize(w);
-            return Math.max(ms.width, ms.height);
-        };
-        const existingMinis = allWindows
-            .filter(w => WindowState.get(w, IS_MINIATURE))
-            .sort((a, b) => sizeOf(b) - sizeOf(a));
-
-        for (const w of existingMinis) {
-            const d = windowData.get(w.get_id());
-            const ceilingPx = sizeOf(w);
-            const targetPx = this._findLargestMiniatureSize(ceilingPx, (px) => {
-                d.current = this._scaledMiniSize(w, px);
-                return fitsNow();
-            }, constants.MINIATURE_RESHRINK_SEARCH_TOLERANCE_PX);
-
-            const newSize = this._scaledMiniSize(w, targetPx);
-            d.current = newSize;
-            // Commit the new scale to WindowState now, same as fresh miniaturization already
-            // does via PENDING_MINIATURE: any independent retile that follows before the queued
-            // visual update below runs (e.g. tileWorkspaceWindows rebuilding its own descriptors
-            // from scratch) must see this window at its new size, not its stale live one.
-            const preSize = WindowState.get(w, PRE_MINIATURE_SIZE);
-            WindowState.set(w, MINIATURE_SCALE, targetPx / Math.max(preSize.width, preSize.height));
-            (this._pendingReshrinks ??= []).push({ window: w, miniSize: newSize });
-            Logger.log(`[SMART RESIZE] ${w.get_id()}: reshrinking existing miniature to make room (${newSize.width}x${newSize.height})`);
-
-            if (fitsNow()) break;
-        }
-    }
-
-    // After the fit scale is known, miniaturize windows the scale pushed below half their size
-    // range, least-recently-used first, re-searching the scale after each so freed space is reclaimed.
-    _miniaturizeBelowThreshold(allWindows, allResizable, windowData, buildSimulated, workArea, workspace, focusedWindowOverride, resizingWindowId, lo) {
-        if (!this._extension?.miniatureManager) return lo;
-
-        const focusedId = this._resizeFocusedId(focusedWindowOverride);
-        const mru = this._windowingManager.getMRUOrder(workspace);
-        const rank = id => mru.get(id) ?? Number.MAX_SAFE_INTEGER;
-
-        for (let iter = 0; iter < allWindows.length; iter++) {
-            const candidates = buildSimulated(lo).filter(sim => {
-                const d = windowData.get(sim.id);
-                if (!this._isMiniaturizationCandidate(d?.window, d, focusedId, resizingWindowId)) return false;
-                // The threshold falls back to the work area, so a window still at its preferred size trips it.
-                if (sim.width >= d.current.width && sim.height >= d.current.height) return false;
-                const { thresholdW, thresholdH } = this._miniatureThreshold(d.window, workArea);
-                return sim.width < thresholdW || sim.height < thresholdH;
-            });
-            if (candidates.length === 0) break;
-
-            // Descending, so the window ignored longest is sacrificed first.
-            candidates.sort((a, b) => rank(b.id) - rank(a.id));
-            const candidateData = windowData.get(candidates[0].id);
-
-            if (this._nonMiniatureCount(allWindows, windowData) <= 1) {
-                Logger.log(`[MINIATURE] Guard 1: refusing to miniaturize last non-miniature window ${candidates[0].id}`);
-                break;
-            }
-
-            candidateData.miniatureTargetSlot = null;
-            const natural = candidateData.preferred || candidateData.current;
-            const { miniSize, scale } = this._markPendingMiniature(candidateData, workArea);
-            Logger.log(`[MINIATURE] Marking ${candidates[0].id}(${candidateData.window.get_wm_class()}) as PENDING miniature (will be created after layout)`);
-            Logger.log(`[MINIATURE] ${candidates[0].id} PENDING at frame=${candidateData.pendingPreSize.width}x${candidateData.pendingPreSize.height} restore=${natural.width}x${natural.height} → miniSize: ${miniSize.width}x${miniSize.height} scale: ${scale}`);
-
-            if (allResizable.length === 0) break;
-
-            // Lock lo at 1.0 so the final pass applies preferred sizes; otherwise lo would stay
-            // at the pre-mini scale and the freed space wouldn't be reclaimed by the siblings.
-            if (!this._tile(buildSimulated(1.0), workArea, true).overflow) {
-                return 1.0;
-            }
-            // Marking only frees space, so last round's scale still fits and the search can resume
-            // there. The exception is a mini size bigger than the window's own minimum.
-            const floor = this._tile(buildSimulated(lo), workArea, true).overflow ? 0.0 : lo;
-            lo = this._binarySearchFitScale(buildSimulated, workArea, floor);
-        }
-
-        return this._recruitExistingMiniaturesIfNeeded(allWindows, windowData, buildSimulated, workArea, lo);
-    }
-
-    // Fresh candidates are exhausted but something still hasn't recovered to its preferred
-    // size: existing miniatures may have more to give. Deferred to the settled retile only
-    // (never mid-drag), since reshrinking mid-drag would restart its ease every ~16ms tick
-    // instead of playing one smooth transition.
-    _recruitExistingMiniaturesIfNeeded(allWindows, windowData, buildSimulated, workArea, lo) {
-        if (lo >= 1.0 || this.isResizing) return lo;
-
-        const floor = this._tile(buildSimulated(lo), workArea, true).overflow ? 0.0 : lo;
-        this._reshrinkExistingMiniatures(allWindows, windowData,
-            () => !this._tile(buildSimulated(1.0), workArea, true).overflow);
-        return this._binarySearchFitScale(buildSimulated, workArea, floor);
     }
 
     // Without a max hint the window's own natural size caps the range; the work area would put the
@@ -4213,59 +3632,18 @@ export const TilingManager = GObject.registerClass({
         };
     }
 
-    _applyFitResults(finalSizes, windowData) {
-        const pendingWindows = [];
-        const grownWindows = [];
-
-        for (const sim of finalSizes) {
-            const d = windowData.get(sim.id);
-            if (!d.isResizable) continue;
-
-            const w = d.window;
-
-            if (WindowState.get(w, IS_MINIATURE)) {
-                this._queueMiniatureReshrink(w, sim);
-                continue;
-            }
-
-            if (d.pendingMiniature) {
-                pendingWindows.push(this._applyPendingMiniature(w, d, sim));
-                continue;
-            }
-
-            if (this._applyGrowBack(w, d, sim)) {
-                grownWindows.push(w);
-                continue;
-            }
-
-            this._applyPlainShrink(w, d, sim);
-        }
-
-        return { pendingWindows, grownWindows };
-    }
-
-    // Already mini: the real frame stays put, only the actor's scale moves, so route size
-    // changes through the reshrink queue instead of a frame resize.
-    _queueMiniatureReshrink(w, sim) {
-        const committed = getMiniatureSize(w);
-        const alreadyQueued = (this._pendingReshrinks ?? []).some(p => p.window.get_id() === w.get_id());
-        if (!alreadyQueued && (Math.abs(sim.width - committed.width) > 2 || Math.abs(sim.height - committed.height) > 2))
-            (this._pendingReshrinks ??= []).push({ window: w, miniSize: { width: sim.width, height: sim.height } });
-    }
-
-    // Becoming a mini this pass: d.current is its mini ceiling, not its real preferred size, so
-    // this has to run before the grow-back check, which would otherwise read "sim caught up to
-    // the mini ceiling" as "restore to full size".
     _applyPendingMiniature(w, d, sim) {
         if (!WindowState.has(w, 'preferredSize'))
             WindowState.set(w, 'preferredSize', { width: d.naturalSize.width, height: d.naturalSize.height });
         WindowState.set(w, 'originalSize', { width: d.naturalSize.width, height: d.naturalSize.height });
         WindowState.set(w, 'isConstrainedByMosaic', true);
-        this._setSmartResizeTarget(w, sim);
+        // The frame never goes to the thumbnail size, so a leftover target or armed verification reads
+        // as a refusal and pins a fake minimum.
+        WindowState.set(w, 'targetSmartResizeSize', null);
+        this._extension?.resizeHandler?.disarmClampVerification(w);
 
         const storedPreSize = d.pendingPreSize || d.current;
-        // Stamped here rather than in _markPendingMiniature because the fit search calls that
-        // one speculatively; an abort would leave the flag on and draw() would skip the window forever.
+        // Stamped only once the apply commits, since a flag left behind makes draw() skip the window forever.
         WindowState.set(w, PENDING_MINIATURE, true);
         Logger.log(`[MINIATURE] ${w.get_id()} stored in pendingWindows: preSize=${storedPreSize.width}x${storedPreSize.height}, SKIPPING move_resize_frame (will be miniaturized)`);
         return { window: w, miniSize: { width: sim.width, height: sim.height }, preSize: storedPreSize };
@@ -4317,6 +3695,8 @@ export const TilingManager = GObject.registerClass({
         this._extension._timeoutRegistry.add(constants.RESIZE_SETTLE_DELAY_MS, () => {
             const lastTry = --attemptsLeft <= 0;
             pending = pending.filter(gw => {
+                // get_frame_rect on a disposed MetaWindow segfaults libmutter.
+                if (!isWindowAlive(gw)) return false;
                 if (!lastTry && !this._reachedRestoredSize(gw)) {
                     Logger.log(`[SMART RESIZE] ${gw.get_id()}: grow not acked yet, holding the restored size`);
                     return true;
@@ -4325,7 +3705,7 @@ export const TilingManager = GObject.registerClass({
                 return false;
             });
             return pending.length > 0 ? GLib.SOURCE_CONTINUE : GLib.SOURCE_REMOVE;
-        }, 'tryFitWithResize_growSettle');
+        }, 'allocation_growSettle');
     }
 
     // Same 2px slop the shrink check uses, since the grow target came from a rounded layout.
@@ -4337,179 +3717,18 @@ export const TilingManager = GObject.registerClass({
         return frame.width >= target.width - 2 && frame.height >= target.height - 2;
     }
 
-    // Re-run binary search with corrected minimums after client-side clamping detection.
-    // Uses preferredSize (original pre-smart-resize) as ceiling for full interpolation range.
-    rebalanceSmartResize(workspace, monitor) {
-        if (this._isSmartResizingBlocked) {
-            Logger.log('[SMART RESIZE] Rebalance blocked');
-            return;
-        }
-        this._isSmartResizingBlocked = true;
-
-        try {
-            const workArea = this.getUsableWorkArea(workspace, monitor);
-            const resizingWindowId = this._animationsManager?.getResizingWindowId();
-            const allWindows = this._windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-                .filter(w => !WindowState.get(w, 'pendingInQueue') &&
-                             !this._edgeTilingManager?.isEdgeTiled(w) &&
-                             !this._windowingManager.isMaximizedOrFullscreen(w));
-
-            if (allWindows.length === 0) return;
-
-            const { windowData, allResizable } = this._buildRebalanceData(allWindows, resizingWindowId);
-            if (allResizable.length === 0) return;
-
-            Logger.log(`[SMART RESIZE] Rebalancing ${allWindows.length} windows, workArea: ${workArea.width}×${workArea.height}`);
-            for (const [id, d] of windowData) {
-                Logger.log(`[SMART RESIZE]   Rebal ${id}: ceiling=${d.current.width}×${d.current.height}, min=${d.min.width}×${d.min.height}`);
-            }
-
-            const buildSimulated = (t) => allWindows.map(w => {
-                const d = windowData.get(w.get_id());
-                if (!d.isResizable)
-                    return { id: w.get_id(), width: d.current.width, height: d.current.height };
-                const effMinW = Math.min(d.min.width, d.current.width);
-                const effMinH = Math.min(d.min.height, d.current.height);
-                return {
-                    id: w.get_id(),
-                    width: Math.round(effMinW + (d.current.width - effMinW) * t),
-                    height: Math.round(effMinH + (d.current.height - effMinH) * t),
-                };
-            });
-
-            if (!this._tile(buildSimulated(1.0), workArea, true).overflow) {
-                this._restoreToPreferred(allWindows, windowData, workspace, monitor);
-                return;
-            }
-
-            if (this._tile(buildSimulated(0.0), workArea, true).overflow) {
-                this._ejectNewestOnRebalance(allWindows, workspace, monitor, resizingWindowId);
-                return;
-            }
-
-            this._applyPartialRebalance(windowData, buildSimulated, workArea, workspace, monitor);
-        } finally {
-            this._isSmartResizingBlocked = false;
-        }
-    }
-
-    _buildRebalanceData(allWindows, resizingWindowId) {
-        const windowData = new Map();
-        const allResizable = [];
-
-        for (const w of allWindows) {
-            const preferred = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'originalSize');
-            const current = preferred || this.getEffectiveWindowSize(w);
-            const min = this.getWindowMinimumSize(w);
-            // A shrink request can't win against the pointer, so the grabbed window is fixed
-            const isResizable = w.get_id() !== resizingWindowId && w.allows_resize?.();
-
-            windowData.set(w.get_id(), { window: w, current, min, isResizable });
-            if (isResizable) allResizable.push(w);
-        }
-
-        return { windowData, allResizable };
-    }
-
-    // Everything fits at full size, so drop the constraints and ease each window back.
-    _restoreToPreferred(allWindows, windowData, workspace, monitor) {
-        Logger.log('[SMART RESIZE] Rebalance: natural fit, restoring preferred sizes');
-        for (const w of allWindows) {
-            const d = windowData.get(w.get_id());
-            if (!d.isResizable) continue;
-            const frame = w.get_frame_rect();
-            WindowState.set(w, 'isSmartResizing', true);
-            this._animateResize(w, frame, d.current.width, d.current.height, true);
-            WindowState.set(w, 'isSmartResizing', false);
-            WindowState.set(w, 'targetSmartResizeSize', null);
-            WindowState.set(w, 'isConstrainedByMosaic', false);
-        }
-        this.invalidateLayoutCache();
-        this.tileWorkspaceWindows(workspace, null, monitor, true);
-    }
-
-    // Doesn't fit even at minimum sizes, so move the newest window out to a fresh workspace.
-    _ejectNewestOnRebalance(allWindows, workspace, monitor, resizingWindowId) {
-        Logger.log('[SMART RESIZE] Rebalance: overflow inevitable at corrected minimums');
-
-        // Ghost mode already flags this during a live grab; the release path decides
-        if (allWindows.some(w => w.get_id() === resizingWindowId)) {
-            Logger.log('[SMART RESIZE] Rebalance: resize grab active, deferring overflow to release');
-            return;
-        }
-
-        for (const w of allWindows) {
-            WindowState.set(w, 'targetSmartResizeSize', null);
-            WindowState.set(w, 'isConstrainedByMosaic', false);
-        }
-
-        // Same rule as the surviving-overflow picker: a restore in flight is user intent,
-        // the rebalance never moves the window the user just brought back.
-        const ejectable = allWindows.filter(w => !WindowState.get(w, 'restoringFromMiniature'));
-        if (ejectable.length === 0) {
-            Logger.log('[SMART RESIZE] Rebalance: every window is mid-restore, standing by');
-            return;
-        }
-        const newest = ejectable.reduce((n, w) => {
-            const t1 = WindowState.get(w, 'addedTime') || 0;
-            const t2 = WindowState.get(n, 'addedTime') || 0;
-            return t1 > t2 ? w : n;
-        }, ejectable[0]);
-
-        Logger.log(`[SMART RESIZE] Overflowing newest window ${newest.get_id()}`);
-        this._windowingManager.moveOversizedWindow(newest).then(() => {
-            this.invalidateLayoutCache();
-            this.tileWorkspaceWindows(workspace, null, monitor, true);
-        }).catch(e => Logger.error(`Rebalance overflow failed: ${e}`));
-    }
-
-    // Fits somewhere between min and preferred, so binary-search the largest scale that fits
-    // and shrink each resizable window to it.
-    _applyPartialRebalance(windowData, buildSimulated, workArea, workspace, monitor) {
-        let lo = 0.0, hi = 1.0;
-        for (let i = 0; i < 15; i++) {
-            const mid = (lo + hi) / 2;
-            if (!this._tile(buildSimulated(mid), workArea, true).overflow)
-                lo = mid;
-            else
-                hi = mid;
-        }
-
-        Logger.log(`[SMART RESIZE] Rebalance scale factor: ${lo.toFixed(4)}`);
-
-        const finalSizes = buildSimulated(lo);
-        for (const sim of finalSizes) {
-            const d = windowData.get(sim.id);
-            if (!d.isResizable) continue;
-            if (sim.width >= d.current.width && sim.height >= d.current.height) continue;
-
-            const w = d.window;
-            const frame = w.get_frame_rect();
-            this._setSmartResizeTarget(w, sim);
-            WindowState.set(w, 'isConstrainedByMosaic', true);
-
-            this._animateResize(w, frame, sim.width, sim.height, true);
-            Logger.log(`[SMART RESIZE] Rebal ${sim.id}: → ${sim.width}×${sim.height}`);
-        }
-
-        this.invalidateLayoutCache();
-        // Save pending miniatures before recursive call (which resets the array)
-        const savedPending = this._pendingMiniatureWindows;
-        this.tileWorkspaceWindows(workspace, null, monitor, true);
-        this._pendingMiniatureWindows = savedPending;
-    }
-
     destroy() {
         this.destroyMasks();
         ComputedLayouts.clear();
         this._isSmartResizingBlocked = false;
-        this._restoringWindowId = null;
         this._lastTiledOrder = null;
         this._lastLayoutHash = null;
         this._cachedTileResult = null;
         this._pendingMiniatureWindows = null;
         this._workspaceSwaps = null;
         this._pinnedComposition = null;
+        this._allocationMemos = null;
+        this._lastEdgePreview = null;
         this._activePinnedShape = null;
         this._activePinnedVertical = null;
         this._edgeTilingManager = null;

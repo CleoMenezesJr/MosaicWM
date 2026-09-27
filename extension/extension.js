@@ -70,7 +70,6 @@ export default class WindowMosaicExtension extends Extension {
         this.resizeHandler = null;
 
         this.miniatureManager    = null;
-        this._miniatureCascadeIds  = null;
         this._lastFocusedWindowId  = null;
         this._focusWindowChangedId = 0;
         this._miniatureRestoredId  = 0;
@@ -286,7 +285,6 @@ export default class WindowMosaicExtension extends Extension {
         this.miniatureManager.setTimeoutRegistry(this._timeoutRegistry);
         this.miniatureManager.setAnimationsManager(this.animationsManager);
         this.edgeTilingManager.setMiniatureManager(this.miniatureManager);
-        this._miniatureCascadeIds = new Set();
         this._lastFocusedWindowId = null;
 
         this._miniatureRestoredId = this.miniatureManager.connect('miniature-restored',
@@ -727,16 +725,9 @@ export default class WindowMosaicExtension extends Extension {
         if (!this._focusEligibleForRestore(window)) return;
 
         const windowId = window.get_id();
-        Logger.log(`[FOCUS] Miniature focused ${windowId} (prev=${prevFocusedId}) cascade=${this._miniatureCascadeIds?.has(windowId)}`);
-
-        // A cascade auto-focus doesn't get to restore; only a deliberate re-focus does.
-        if (this._miniatureCascadeIds?.has(windowId) &&
-            !this._resolveCascadeFocus(window, windowId, prevFocusedId)) {
-            return;
-        }
+        Logger.log(`[FOCUS] Miniature focused ${windowId} (prev=${prevFocusedId})`);
 
         Logger.log(`[FOCUS] Triggering restore ${windowId}`);
-        this._miniatureCascadeIds.clear();
         this.tilingManager._isSmartResizingBlocked = true;
         WindowState.set(window, 'restoringFromMiniature', true);
 
@@ -762,24 +753,6 @@ export default class WindowMosaicExtension extends Extension {
         return true;
     }
 
-    // Returns true to let the restore proceed (deliberate re-focus), false when it was an
-    // auto-focus during a cascade, which instead hands focus to a non-miniature window.
-    _resolveCascadeFocus(window, windowId, prevFocusedId) {
-        if (prevFocusedId !== windowId) {
-            Logger.log(`[FOCUS] Allow restore ${windowId} (deliberate, prev=${prevFocusedId})`);
-            this._miniatureCascadeIds.delete(windowId);
-            return true;
-        }
-
-        const ws  = window.get_workspace();
-        const mon = window.get_monitor();
-        const nonMiniature = this.windowingManager.getMonitorWorkspaceWindows(ws, mon)
-            .find(w => !WindowState.get(w, IS_MINIATURE) && !this.windowingManager.isExcluded(w));
-        Logger.log(`[FOCUS] Block cascade restore ${windowId} → activating ${nonMiniature?.get_id() ?? 'none'}`);
-        if (nonMiniature) nonMiniature.activate(global.get_current_time());
-        return false;
-    }
-
     _onMiniatureRestored(window) {
         if (this._dndPendingWindowId === window.get_id()) {
             this._dndScheduleRestore?.cancel();
@@ -793,26 +766,28 @@ export default class WindowMosaicExtension extends Extension {
         if (!workspace) return;
         if (!this.isMosaicEnabledForWorkspace(workspace)) return;
 
-        // A drop's preview cleanup restores several miniatures in a row; retiling per restore
-        // re-miniaturizes them mid-drag and ping-pongs into a storm. The drag's own drop retile
-        // handles layout, so skip this heavy pass while that cleanup is running.
-        if (this.dragHandler?._suppressRestoreRetile) return;
+        if (this._restoreRetileOwnedElsewhere()) return;
 
         const monitor = window.get_monitor();
 
         const doTile = () => {
             if (!isWindowAlive(window)) return;
-            // Every restore path lands here, including the cascade's; no eject site may pick
-            // the window the user brought back while its own pass is running.
+            // Capped as a window for its own pass, so the allocation shrinks everyone else first
+            // and no eject site can pick the window the user just brought back.
             WindowState.set(window, 'restoringFromMiniature', true);
+            let fits;
             try {
-                this._applyMiniatureRestore(window, workspace, monitor);
-                // No grow-back pass after this: the plan already sized everyone, and a second
-                // decision would fight it.
-                this._tryCascadeMiniatureRestore(workspace, monitor);
+                fits = this.tilingManager.measureEvent('restore', () => {
+                    if (this.tilingManager.retileWithAllocation(workspace, monitor, null, { dryRun: true }).overflow)
+                        return false;
+                    this.tilingManager.retileWithAllocation(workspace, monitor);
+                    return true;
+                });
             } finally {
                 WindowState.remove(window, 'restoringFromMiniature');
             }
+            // Not even at its threshold with everyone else at the floor, so it goes back to being a thumbnail.
+            if (!fits) this._refuseMiniatureRestore(window, workspace, monitor);
         };
 
         // Miniaturization rides the actor scale while the frame stays full-size, so running it
@@ -826,51 +801,18 @@ export default class WindowMosaicExtension extends Extension {
         }
     }
 
-    // Planned here rather than when the restore fired: a deferred pass would otherwise apply
-    // sizes to windows that closed while the overview was up.
-    _applyMiniatureRestore(window, workspace, monitor) {
-        const workArea = this.tilingManager.getUsableWorkArea(workspace, monitor);
-        const existingWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-            .filter(w =>
-                isWindowAlive(w) &&
-                w.get_id() !== window.get_id() &&
-                !this.edgeTilingManager.isEdgeTiled(w) &&
-                !WindowState.get(w, 'pendingInQueue') &&
-                !this.windowingManager.isExcluded(w) &&
-                !this.windowingManager.isMaximizedOrFullscreen(w)
-            );
-
-        // Treat the restored window as the user-focused one, since Mutter's focus
-        // hasn't shifted yet (window.activate runs after the 250ms animation),
-        // so the previously-focused sibling would otherwise be excluded from
-        // miniaturization candidates and nothing would shrink.
-        const restorePlan = this.tilingManager.planRestoreFit(window, existingWindows, workArea, workspace, window);
-        if (!restorePlan.success) {
-            this.tilingManager.tileWorkspaceWindows(workspace, window, monitor, false);
-            return;
-        }
-
-        this.tilingManager._isSmartResizingBlocked = true;
-        this.tilingManager._restoringWindowId = window.get_id();
-        try {
-            const { pendingWindows } = this.tilingManager.applyRestorePlan(restorePlan);
-            this.tilingManager._pendingMiniatureWindows = pendingWindows;
-            this.tilingManager.tileWorkspaceWindows(workspace, null, monitor, false);
-        } finally {
-            this.tilingManager._isSmartResizingBlocked = false;
-            this.tilingManager._restoringWindowId = null;
-        }
+    _refuseMiniatureRestore(window, workspace, monitor) {
+        Logger.log(`Restore refused for ${window.get_id()}: no room above its threshold`);
+        this.tilingManager.retileWithAllocation(workspace, monitor);
+        this.animationsManager?.shakeRefusal(window.get_compositor_private());
     }
 
-    // One restore can leave enough room for the next MRU miniature too; restoreMiniature
-    // fires this same handler synchronously, so this just keeps the chain going until
-    // nothing else fits, the same way a single window leaving already restores one.
-    _tryCascadeMiniatureRestore(workspace, monitor) {
-        if (this.dragHandler?._suppressRestoreRetile) return;
-
-        const remaining = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
-            .filter(w => !this.edgeTilingManager.isEdgeTiled(w) && !this.windowingManager.isExcluded(w));
-        this.windowHandler?._tryAutoRestoreMiniature(remaining, workspace, monitor);
+    // A drop's preview cleanup restores several miniatures in a row; retiling per restore
+    // re-miniaturizes them mid-drag and ping-pongs into a storm. The drag's own drop retile
+    // handles layout, so skip this heavy pass while that cleanup is running. An allocation that
+    // restored the window is already sizing everyone in its own pass.
+    _restoreRetileOwnedElsewhere() {
+        return !!this.dragHandler?._suppressRestoreRetile || this.tilingManager.isApplyingAllocation;
     }
 
     _onDndEnter() {
@@ -1119,7 +1061,6 @@ export default class WindowMosaicExtension extends Extension {
             this.miniatureManager = null;
         }
 
-        this._miniatureCascadeIds = null;
         this._lastFocusedWindowId = null;
     }
 

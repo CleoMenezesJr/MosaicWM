@@ -385,16 +385,7 @@ export const DragHandler = GObject.registerClass({
                 if (sourceMonitor !== undefined && sourceMonitor !== monitor) {
                     WindowState.remove(window, 'leftMonitor');
 
-                    // A plain retile never un-miniaturizes; try restoring the source's
-                    // miniatures first, same as onWindowLeftMonitor does outside a drag.
-                    const sourceRemaining = this.windowingManager.getMonitorWorkspaceWindows(workspace, sourceMonitor)
-                        .filter(w => w.get_id() !== window.get_id() &&
-                                     !this.edgeTilingManager.isEdgeTiled(w) &&
-                                     !this.windowingManager.isExcluded(w));
-                    const restored = this._ext.windowHandler?._tryAutoRestoreMiniature(sourceRemaining, workspace, sourceMonitor);
-                    if (!restored) {
-                        this.tilingManager.tileWorkspaceWindows(workspace, null, sourceMonitor, false);
-                    }
+                    this.tilingManager.retileWithAllocation(workspace, sourceMonitor);
                 }
             }, this._timeoutRegistry);
         }

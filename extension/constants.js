@@ -82,7 +82,7 @@ export const GEOMETRY_CHECK_DELAY_MS = 10;
 export const SAFETY_TIMEOUT_BUFFER_MS = 100;
 export const EDGE_TILE_RESTORE_DELAY_MS = 300;  // Delay to prevent false overflow during edge tile restoration
 export const GEOMETRY_WAIT_MAX_ATTEMPTS = 100;   // Max attempts to wait for window geometry (100 * 10ms = 1s)
-export const REVERSE_RESIZE_PROTECTION_MS = 1000; // Protection window for reverse smart resize/unmaximize/overflow
+export const REVERSE_RESIZE_PROTECTION_MS = 1000; // Protection window after a resize, unmaximize or overflow settles
 export const RESIZE_SETTLE_DELAY_MS = 150;       // Delay to let Mutter apply resize before retiling
 export const RESIZE_SETTLE_MAX_ATTEMPTS = 4;     // Settle checks before the restored-size bridge is dropped anyway
 export const EDGE_TILE_EXIT_SUPPRESSION_MS = RETILE_DELAY_MS + RESIZE_SETTLE_DELAY_MS; // Matches removeTile's targetRestoredSize bridge
@@ -90,7 +90,6 @@ export const RESIZE_CLAMP_SETTLE_WINDOW_MS = 1500; // Window age below which a c
 export const RESIZE_CLAMP_VERIFY_DELAY_MS = 400; // Quiet time after a deferred clamp before the frame is committed as real
 export const RESIZE_CLAMP_MAX_WAIT_MS = 3000; // A frame that hasn't moved at all by now is a client ignoring the resize, not a slow one
 export const PIN_OVERFLOW_GRACE_MS = 300; // Overflow must survive this long before a pinned shape is dropped for good
-export const MINI_AUTO_RESTORE_CHECK_THROTTLE_MS = 120; // canRestoreMiniature is a _tile() dry-run per candidate; checking it every resize tick scales with miniature count, so this runs coarser than the 16ms retile throttle
 export const ISRESIZING_FLAG_RESET_MS = 2;
 // Mutter can skip the size-changed confirmation on a fast maximize/unmaximize
 // toggle, so force the move after this long instead of leaving the window stuck.
@@ -118,11 +117,16 @@ export const SLIDE_IN_FAILSAFE_MS = 1000;     // Re-check interval if a window's
 export const QUEUE_PROCESS_DELAY_MS = 100;   // Delay between processing window opening queue items (Mutter settling)
 
 export const MINIATURE_TARGET_SIZE_PX = 256;  // Longest side of a miniaturized window
-// _binarySearchFitScale and restoreSolver's solveScale both bisect a scale factor. A few px of
-// slack left on the table is imperceptible at this size, so this trades exact-pixel convergence
-// for fewer iterations.
+// With 2 the least recent window moves three times as fast along its axis as the most recent,
+// so it's the first to cross into a thumbnail.
+export const ALLOCATOR_MRU_RATE_SLOPE = 2;
+// Dead band between becoming a thumbnail and coming back; without it a window parked on the
+// threshold flips on every few px of rounding.
+export const MINIATURE_RESTORE_HYSTERESIS_PX = 24;
+export const ALLOCATOR_RESIZE_THROTTLE_MS = 100;  // A live resize keeps the last allocation this long while it still fits
+// The size allocator bisects its scale; a few px of slack left on the table is imperceptible,
+// so this trades exact-pixel convergence for fewer _tile() probes.
 export const FIT_SCALE_SEARCH_TOLERANCE_PX = 8;
-export const MINIATURE_RESHRINK_SEARCH_TOLERANCE_PX = 8;
 export const MINIATURE_ICON_SIZE_PX = 64;     // Same size the Overview uses, so the icon can hand off without resizing
 export const MINIATURE_ICON_FADE_START = 0.5;  // Point in the icon's flight where it starts fading in; a fraction since an interrupted restore shortens the flight
 export const MINIATURE_ICON_FADE_OUT_MS = 90;  // Window is growing back underneath, so the icon has to clear out fast
