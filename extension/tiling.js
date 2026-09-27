@@ -3640,7 +3640,7 @@ export const TilingManager = GObject.registerClass({
 
     // Without a max hint the window's own natural size caps the range; the work area would put the
     // threshold above natural size and turn a miniature into a full-size relabel that frees nothing.
-    // A published min at or above that cap (Emblem, Calculator) falls back to the miniature floor.
+    // A published min at or above that cap falls back to the miniature floor.
     _miniatureThreshold(w, _workArea) {
         const min = this.getWindowMinimumSize(w);
         const maxSize = this.getWindowMaximumSize(w);
