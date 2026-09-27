@@ -641,6 +641,9 @@ export const MiniatureManager = GObject.registerClass({
 
         windowActor.remove_all_transitions();
         windowActor.set_pivot_point(0, 0);
+        // Without the flag the enforce effect writes the final transform on the next paint, and
+        // that direct write drops this ease.
+        WindowState.set(window, ANIMATING_MINIATURE, true);
         windowActor.ease({
             scale_x: scale,
             scale_y: scale,
@@ -649,7 +652,11 @@ export const MiniatureManager = GObject.registerClass({
             duration: constants.MINIATURE_ANIM_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onStopped: (isFinished) => {
-                if (isFinished) applyMiniatureActorState(windowActor, scale, targetX, targetY);
+                if (!isFinished) return;
+                WindowState.remove(window, ANIMATING_MINIATURE);
+                const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
+                const sc = WindowState.get(window, MINIATURE_SCALE);
+                if (tgt && sc) applyMiniatureActorState(windowActor, sc, tgt.x, tgt.y);
             },
         });
 
@@ -935,6 +942,7 @@ export const MiniatureManager = GObject.registerClass({
     }
 
     _clearMiniatureState(window) {
+        WindowState.remove(window, ANIMATING_MINIATURE);
         WindowState.remove(window, MINIATURE_SCALE);
         WindowState.remove(window, PRE_MINIATURE_SIZE);
         WindowState.remove(window, MINIATURE_TARGET_POS);
@@ -954,6 +962,7 @@ export const MiniatureManager = GObject.registerClass({
         const windowActor = window.get_compositor_private();
 
         WindowState.remove(window, IS_MINIATURE);
+        WindowState.remove(window, ANIMATING_MINIATURE);
         WindowState.remove(window, MINIATURE_SCALE);
         WindowState.remove(window, PRE_MINIATURE_SIZE);
         WindowState.remove(window, MINIATURE_TARGET_POS);
