@@ -3417,9 +3417,8 @@ export const TilingManager = GObject.registerClass({
         };
     }
 
-    // Neither preferred nor threshold may sit under what the client enforces: a saved preferred
-    // can, and the threshold falls back to the miniature floor when the published min reaches
-    // the preferred size.
+    // Neither preferred nor threshold may sit under what the client enforces, and a saved
+    // preferred can.
     _windowSizeBounds(w, tileArea) {
         const min = this.getWindowMinimumSize(w);
         const saved = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'openingSize') || this.getEffectiveWindowSize(w);
@@ -3638,20 +3637,14 @@ export const TilingManager = GObject.registerClass({
         return { width: Math.round(refSize.width * scale), height: Math.round(refSize.height * scale) };
     }
 
-    // Without a max hint the window's own natural size caps the range; the work area would put the
-    // threshold above natural size and turn a miniature into a full-size relabel that frees nothing.
-    // A published min at or above that cap falls back to the miniature floor.
-    _miniatureThreshold(w, _workArea) {
+    _miniatureThreshold(w, workArea) {
         const min = this.getWindowMinimumSize(w);
         const maxSize = this.getWindowMaximumSize(w);
-        const naturalSize = WindowState.get(w, 'preferredSize') || this.getEffectiveWindowSize(w);
-        const effectiveMaxW = maxSize?.width || naturalSize.width;
-        const effectiveMaxH = maxSize?.height || naturalSize.height;
-        const effectiveMinW = min.width < effectiveMaxW ? min.width : constants.MINIATURE_TARGET_SIZE_PX;
-        const effectiveMinH = min.height < effectiveMaxH ? min.height : constants.MINIATURE_TARGET_SIZE_PX;
+        const effectiveMaxW = maxSize?.width || workArea.width;
+        const effectiveMaxH = maxSize?.height || workArea.height;
         return {
-            thresholdW: (effectiveMinW + effectiveMaxW) / 2,
-            thresholdH: (effectiveMinH + effectiveMaxH) / 2,
+            thresholdW: (min.width + effectiveMaxW) / 2,
+            thresholdH: (min.height + effectiveMaxH) / 2,
         };
     }
 
