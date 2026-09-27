@@ -105,6 +105,17 @@ export const ResizeHandler = GObject.registerClass({
         return (monotonicNow() - addedTime) < constants.RESIZE_CLAMP_SETTLE_WINDOW_MS;
     }
 
+    // A frame that hasn't moved at all is either a slow client (some take well over a second)
+    // or one already at its minimum. Waiting costs the second a few seconds of overlap;
+    // committing early pins a false minimum on the first.
+    _clientStillCatchingUp(window, rect) {
+        const from = WindowState.get(window, 'targetSmartResizeFrom');
+        const setAt = WindowState.get(window, 'targetSmartResizeSetAt');
+        if (!from || setAt === undefined) return false;
+        const unmoved = Math.abs(rect.width - from.width) <= 2 && Math.abs(rect.height - from.height) <= 2;
+        return unmoved && monotonicNow() - setAt < constants.RESIZE_CLAMP_MAX_WAIT_MS;
+    }
+
     // Only the tiler sends geometry; a silent client gets its frame committed
     // as truth once the over-target signals go quiet.
     armClampVerification(window, pendingSmartSize) {
@@ -120,6 +131,10 @@ export const ResizeHandler = GObject.registerClass({
                 return GLib.SOURCE_REMOVE;
 
             const rect = window.get_frame_rect();
+            if (this._clientStillCatchingUp(window, rect)) {
+                this.armClampVerification(window, pendingSmartSize);
+                return GLib.SOURCE_REMOVE;
+            }
             if (rect.width > pendingSmartSize.width + 2 || rect.height > pendingSmartSize.height + 2) {
                 Logger.log(`[SMART RESIZE] Window ${window.get_id()} never applied ${pendingSmartSize.width}×${pendingSmartSize.height}; committing frame ${rect.width}×${rect.height}`);
                 this._commitClampedSize(window, pendingSmartSize, rect);

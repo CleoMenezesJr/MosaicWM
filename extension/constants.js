@@ -88,6 +88,7 @@ export const RESIZE_SETTLE_MAX_ATTEMPTS = 4;     // Settle checks before the res
 export const EDGE_TILE_EXIT_SUPPRESSION_MS = RETILE_DELAY_MS + RESIZE_SETTLE_DELAY_MS; // Matches removeTile's targetRestoredSize bridge
 export const RESIZE_CLAMP_SETTLE_WINDOW_MS = 1500; // Window age below which a clamp is treated as the client still settling
 export const RESIZE_CLAMP_VERIFY_DELAY_MS = 400; // Quiet time after a deferred clamp before the frame is committed as real
+export const RESIZE_CLAMP_MAX_WAIT_MS = 3000; // A frame that hasn't moved at all by now is a client ignoring the resize, not a slow one
 export const PIN_OVERFLOW_GRACE_MS = 300; // Overflow must survive this long before a pinned shape is dropped for good
 export const MINI_AUTO_RESTORE_CHECK_THROTTLE_MS = 120; // canRestoreMiniature is a _tile() dry-run per candidate; checking it every resize tick scales with miniature count, so this runs coarser than the 16ms retile throttle
 export const ISRESIZING_FLAG_RESET_MS = 2;

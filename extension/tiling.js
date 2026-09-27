@@ -251,7 +251,9 @@ export const TilingManager = GObject.registerClass({
     // Stamp when a shrink target is applied so the clamp detector can tell "hasn't shrunk yet"
     // (transient) from "won't shrink" (a real minimum), keyed off the target, not the window's age.
     _setSmartResizeTarget(window, size) {
+        const frame = window.get_frame_rect();
         WindowState.set(window, 'targetSmartResizeSize', { width: size.width, height: size.height });
+        WindowState.set(window, 'targetSmartResizeFrom', { width: frame.width, height: frame.height });
         WindowState.set(window, 'targetSmartResizeSetAt', monotonicNow());
     }
 
