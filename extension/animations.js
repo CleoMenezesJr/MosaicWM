@@ -238,8 +238,7 @@ export const AnimationsManager = GObject.registerClass({
         // by the time set_translation reads it below, regardless of how long the
         // resize itself takes to land. The size mismatch in the meantime is already
         // covered by the scale animation below, which doesn't depend on this.
-        window.move_frame(userOp, targetRect.x, targetRect.y);
-        MosaicConstraints.commitRegion(window, targetRect, userOp);
+        MosaicConstraints.moveThenCommit(window, targetRect, userOp);
 
         windowActor.set_translation(initialTx, initialTy, 0);
         if (!skipScale) {

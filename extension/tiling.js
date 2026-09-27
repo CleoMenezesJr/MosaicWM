@@ -558,8 +558,7 @@ export const TilingManager = GObject.registerClass({
         const visualX = alive ? actor.x + actor.translation_x : 0;
         const visualY = alive ? actor.y + actor.translation_y : 0;
         Logger.log(`applyDragLayout: id=${pos.id}, target=(${pos.x},${pos.y}), current=(${currentRect.x},${currentRect.y})`);
-        window.move_frame(false, pos.x, pos.y);
-        MosaicConstraints.commitRegion(window, { x: pos.x, y: pos.y, width: pos.width, height: pos.height });
+        MosaicConstraints.moveThenCommit(window, { x: pos.x, y: pos.y, width: pos.width, height: pos.height });
         if (actor && !actor.is_destroyed()) {
             actor.set_translation(visualX - actor.x, visualY - actor.y, 0);
             actor.ease({
@@ -3906,10 +3905,8 @@ class WindowDescriptor {
         const visualX = alive ? windowActor.x + windowActor.translation_x : 0;
         const visualY = alive ? windowActor.y + windowActor.translation_y : 0;
         // A pure move lands on the actor synchronously (a resize doesn't), so after this the
-        // actor carries the position the window really got, which is not x,y when the target
-        // doesn't fit and mutter clamps it.
-        window.move_frame(false, x, y);
-        MosaicConstraints.commitRegion(window, { x, y, width: this.width, height: this.height });
+        // actor carries the position the window really got.
+        MosaicConstraints.moveThenCommit(window, { x, y, width: this.width, height: this.height });
         if (alive) {
             windowActor.set_translation(visualX - windowActor.x, visualY - windowActor.y, 0);
             windowActor.ease({

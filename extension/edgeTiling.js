@@ -1318,8 +1318,7 @@ export const EdgeTilingManager = GObject.registerClass({
     // the commit would apply whatever stale region the partition still held.
     _applyRegion(window, region, workspace, monitor) {
         MosaicModel.setRegion(window, region, workspace, monitor);
-        window.move_frame(false, region.x, region.y);
-        MosaicConstraints.commitRegion(window, region);
+        MosaicConstraints.moveThenCommit(window, region);
     }
 
     _applyPair(windowA, regionA, windowB, regionB, workspace, monitor) {

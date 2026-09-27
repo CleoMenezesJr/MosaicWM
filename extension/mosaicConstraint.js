@@ -51,6 +51,7 @@ export class MosaicConstraintManager {
         // Keyed by window ID, not the GObject, to survive GI reference churn (same
         // reason windowState.js exists).
         this._entries = new Map();
+        this._moving = new Map();
     }
 
     // A move_resize_frame the solver cannot amend, since the armed constraint outranks
@@ -68,6 +69,36 @@ export class MosaicConstraintManager {
         } finally {
             constraint.armed = null;
         }
+    }
+
+    // Unarmed, Mutter clamps the move against the size the window still has, so near an edge the
+    // frame lands short of the region before the resize ever reaches the client.
+    moveThenCommit(window, region, userOp = false) {
+        const id = window.get_id();
+        this._moving.set(id, region);
+        try {
+            if (!constraintSupported()) {
+                window.move_frame(userOp, region.x, region.y);
+            } else {
+                const { constraint } = this._ensure(window);
+                const frame = window.get_frame_rect();
+                constraint.armed = { x: region.x, y: region.y, width: frame.width, height: frame.height };
+                try {
+                    window.move_frame(userOp, region.x, region.y);
+                } finally {
+                    constraint.armed = null;
+                }
+            }
+        } finally {
+            this._moving.delete(id);
+        }
+        this.commitRegion(window, region, userOp);
+    }
+
+    // What the window is being moved to while the move's own position-changed is firing. The
+    // frame then still has the old size, so learning it would overwrite the size we're committing.
+    regionInFlight(window) {
+        return this._moving.get(window.get_id()) ?? null;
     }
 
     _ensure(window) {

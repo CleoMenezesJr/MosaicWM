@@ -245,6 +245,11 @@ export const WindowHandler = GObject.registerClass({
     // is derived from.
     _learnFrame(win) {
         if (WindowState.get(win, IS_MINIATURE)) return;
+        const inFlight = MosaicConstraints.regionInFlight(win);
+        if (inFlight) {
+            MosaicModel.learn(win, { ...inFlight });
+            return;
+        }
         const frame = win.get_frame_rect();
         if (frame) MosaicModel.learn(win, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
     }
