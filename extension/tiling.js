@@ -335,6 +335,10 @@ export const TilingManager = GObject.registerClass({
         this._grabbedWindowId = window ? window.get_id() : null;
     }
 
+    get grabbedWindowId() {
+        return this._grabbedWindowId;
+    }
+
     disableDragMode() {
         this.isDragging = false;
         this.dragRemainingSpace = null;

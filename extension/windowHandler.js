@@ -25,6 +25,7 @@ export const WindowHandler = GObject.registerClass({
         super._init();
         this._ext = extension;
         this._workspaceLocks = new WeakMap();
+        this._driftChecksQueued = new Set();
 
         this._evaluationQueue = [];
         this._isEvaluatingQueue = false;
@@ -251,7 +252,68 @@ export const WindowHandler = GObject.registerClass({
             return;
         }
         const frame = win.get_frame_rect();
-        if (frame) MosaicModel.learn(win, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
+        if (!frame) return;
+        if (this._isPositionDrift(win, frame)) {
+            this._queueDriftCorrection(win);
+            return;
+        }
+        MosaicModel.learn(win, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
+    }
+
+    // A client can offset its surface when it acks a resize, and Mutter applies that to a floating
+    // window without running constraints, so the set_rect constraint never gets a say.
+    _isPositionDrift(win, frame) {
+        const region = MosaicModel.regionFor(win);
+        if (!region) return false;
+        const tol = constants.ANIMATION_DIFF_THRESHOLD;
+        const sameSize = Math.abs(frame.width - region.width) <= tol && Math.abs(frame.height - region.height) <= tol;
+        const moved = Math.abs(frame.x - region.x) > tol || Math.abs(frame.y - region.y) > tol;
+        return sameSize && moved && !this._operationOwnsPosition(win) && !this._outsideMosaicSlot(win);
+    }
+
+    _operationOwnsPosition(win) {
+        const tiling = this.tilingManager;
+        if (Main.overview.visible || tiling.isDragging || tiling.isResizing || tiling.grabbedWindowId === win.get_id())
+            return true;
+        if (WindowState.get(win, WindowState.MINIATURE_ANIM_KIND) !== undefined)
+            return true;
+        return [WindowState.PENDING_MINIATURE, 'isEnteringSacred', 'unmaximizing', 'isRestoringSacred'].some(flag => WindowState.get(win, flag));
+    }
+
+    _outsideMosaicSlot(win) {
+        if (this.windowingManager.isMaximizedOrFullscreen(win) || this.windowingManager.isExcluded(win))
+            return true;
+        if ((this.edgeTilingManager.getWindowState(win)?.zone ?? TileZone.NONE) !== TileZone.NONE)
+            return true;
+        // A move to another monitor or workspace keeps the old region until that side retiles.
+        const group = MosaicModel.store.groupOfWindow(win.get_id());
+        return !group || group.monitor !== win.get_monitor() || group.workspaceIndex !== win.get_workspace()?.index();
+    }
+
+    // Deferred so it never re-enters the move that fired the signal. One retry per region, since a
+    // client that keeps offsetting would otherwise ping-pong; after that the frame wins as before.
+    _queueDriftCorrection(win) {
+        const id = win.get_id();
+        if (this._driftChecksQueued.has(id)) return;
+        this._driftChecksQueued.add(id);
+        this._timeoutRegistry.addIdle(() => {
+            this._driftChecksQueued.delete(id);
+            if (!isWindowAlive(win)) return GLib.SOURCE_REMOVE;
+            const frame = win.get_frame_rect();
+            if (!this._isPositionDrift(win, frame)) return GLib.SOURCE_REMOVE;
+
+            const region = MosaicModel.regionFor(win);
+            const key = `${region.x},${region.y},${region.width},${region.height}`;
+            if (WindowState.get(win, 'driftCorrectedRegion') === key) {
+                Logger.log(`[DRIFT] ${win.get_id()} still off its region after a retry; keeping frame (${frame.x},${frame.y})`);
+                MosaicModel.learn(win, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
+                return GLib.SOURCE_REMOVE;
+            }
+            WindowState.set(win, 'driftCorrectedRegion', key);
+            Logger.log(`[DRIFT] ${win.get_id()} landed at (${frame.x},${frame.y}) instead of (${region.x},${region.y}); recommitting`);
+            MosaicConstraints.commitRegion(win, region);
+            return GLib.SOURCE_REMOVE;
+        }, 'windowHandler_driftCorrection');
     }
 
     // The state flips before the client commits the size that goes with it, so the frame
