@@ -1634,7 +1634,8 @@ export const TilingManager = GObject.registerClass({
 
             level.y = (work_area.height - level.height) / 2 + work_area.y;
 
-            if (totalWidth + level.width + spacing > work_area.width && c > 0) {
+            // The first column adds no leading gap, but it still has to fit on its own.
+            if (level.width + (c > 0 ? totalWidth + spacing : 0) > work_area.width) {
                 overflow = true;
             }
 
@@ -1882,7 +1883,7 @@ export const TilingManager = GObject.registerClass({
             }
 
             level.x = Math.max(work_area.x, (work_area.width - level.width) / 2 + work_area.x);
-            if (totalHeight + level.height + spacing > work_area.height && r > 0) {
+            if (level.height + (r > 0 ? totalHeight + spacing : 0) > work_area.height) {
                 overflow = true;
             }
 
