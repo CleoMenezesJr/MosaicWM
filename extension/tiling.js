@@ -1136,6 +1136,11 @@ export const TilingManager = GObject.registerClass({
 
         return best ? { order: best.perm, place: best.place } : { order: windows, place: placers[0] };
     }
+    _simulationProbeKey(isSimulation, windows, work_area) {
+        if (!isSimulation) return null;
+        return `${work_area.width}x${work_area.height}|${windows.map(w => `${w.id}:${w.width}x${w.height}`).join(',')}`;
+    }
+
 
     // Order-sensitive hash: different input orders must never share a cache entry.
     _getLayoutHash(windows, work_area) {
@@ -1150,7 +1155,10 @@ export const TilingManager = GObject.registerClass({
         const early = this._resolveTileFastPath(windows, hash, isSimulation);
         if (early) return early;
 
-        const simulationHit = this._simulationProbeHit(isSimulation, hash, forcedOrientation);
+        // Exact sizes, not the snapped hash: a search walks probes a few px apart right at the
+        // edge of fitting, and a snapped key hands the next probe the previous one's answer.
+        const probeKey = this._simulationProbeKey(isSimulation, windows, work_area);
+        const simulationHit = this._simulationProbeHit(isSimulation, probeKey, forcedOrientation);
         if (simulationHit) return simulationHit;
 
         const spacing = constants.WINDOW_SPACING;
@@ -1169,7 +1177,7 @@ export const TilingManager = GObject.registerClass({
             this._cachedTileResult = result;
         }
 
-        this._rememberSimulationProbe(isSimulation, hash, forcedOrientation, result);
+        this._rememberSimulationProbe(isSimulation, probeKey, forcedOrientation, result);
         return result;
     }
 
