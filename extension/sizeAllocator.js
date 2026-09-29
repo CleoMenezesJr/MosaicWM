@@ -69,17 +69,41 @@ export function ratesOf(participants, slope) {
     const rates = new Map(participants.map(p => [p.id, 0]));
     const n = eligible.length;
     eligible.forEach((p, i) => rates.set(p.id, 1 + slope * (n > 1 ? i / (n - 1) : 0)));
+    // Age only has to pick which window crosses into a thumbnail first. Among thumbnails it just
+    // sent the oldest to the floor while the others kept their size.
+    const thumbs = eligible.filter(p => p.mode === 'thumbnail' && !p.capAtThreshold);
+    if (thumbs.length === 0) return rates;
+    const shared = thumbs.reduce((sum, p) => sum + rates.get(p.id), 0) / thumbs.length;
+    for (const p of thumbs) rates.set(p.id, shared);
     return rates;
 }
 
 function entriesAt(participants, rates, s, opts) {
-    return participants.map(p => {
+    const entries = participants.map(p => {
         if (p.fixed) return { id: p.id, mode: p.mode, size: { ...p.current }, pos: null };
         let pos = Math.min(1, s * rates.get(p.id));
         if (p.capAtThreshold) pos = Math.min(pos, axisOf(p).pLim);
         const mode = resolveMode(p, pos, opts);
         return { id: p.id, mode, size: sizeFor(p, mode, pos), pos };
     });
+    holdRestoresToRecency(participants, entries);
+    return entries;
+}
+
+// Thumbnails share one rate, so which clears its threshold first comes down to geometry; the
+// newest still has to come back first. A thumbnail is never bigger than the window at the same
+// pos, so holding one back can't break the fit.
+function holdRestoresToRecency(participants, entries) {
+    const byId = new Map(entries.map(e => [e.id, e]));
+    let blocked = false;
+    for (const p of participants.filter(q => q.mode === 'thumbnail' && !q.fixed && !q.capAtThreshold).sort(byRecency)) {
+        const e = byId.get(p.id);
+        if (blocked && e.mode === 'window') {
+            e.mode = 'thumbnail';
+            e.size = sizeFor(p, 'thumbnail', e.pos);
+        }
+        if (e.mode === 'thumbnail') blocked = true;
+    }
 }
 
 // Assumes fit only gets easier as s grows. A previous s brackets the answer in two probes when
@@ -119,10 +143,24 @@ export function allocate({
     slope = constants.ALLOCATOR_MRU_RATE_SLOPE,
     tolerancePx = constants.FIT_SCALE_SEARCH_TOLERANCE_PX,
 }) {
-    const run = pool => allocateOnce(pool, fits, previousS, { restoreMarginPx, allowRestore }, slope, tolerancePx);
+    const once = pool => allocateOnce(pool, fits, previousS, { restoreMarginPx, allowRestore }, slope, tolerancePx);
+    const run = pool => settleCrossings(pool, once);
     const free = run(participants);
     if (!free.fits) return free;
     return holdHeadAtPreferred(participants, run, free) ?? holdOneAsWindow(participants, run, free);
+}
+
+// A window crossing into a thumbnail still walked at its window rate, so the next pass, seeing it
+// as a thumbnail, resized every thumbnail again. Resizing it as one here is what that pass finds.
+function settleCrossings(pool, once) {
+    const first = once(pool);
+    if (!first.fits) return first;
+    const crossed = new Set(pool.filter(p => !p.fixed && p.mode === 'window' &&
+        first.entries.get(p.id).mode === 'thumbnail').map(p => p.id));
+    if (crossed.size === 0) return first;
+    const second = once(pool.map(p => (crossed.has(p.id) ? { ...p, mode: 'thumbnail' } : p)));
+    const settled = second.fits && [...crossed].every(id => second.entries.get(id).mode === 'thumbnail');
+    return settled ? second : first;
 }
 
 // Under a shared s the newest always pays a little, even while an older thumbnail sits well above
