@@ -70,6 +70,13 @@ function clampToWorkArea(x, y, width, height, bounds) {
     };
 }
 
+// Only _tile, computeDragLayouts and _mosaicWindowsAndArea apply this, so hand them the raw area
+// or the wall gap doubles.
+function packingArea(area) {
+    const gap = constants.WINDOW_SPACING;
+    return { x: area.x + gap, y: area.y + gap, width: area.width - 2 * gap, height: area.height - 2 * gap };
+}
+
 // Only what the allocation reads and the apply never writes back: frames and targets move as the
 // apply settles, and MRU moves on focus alone, so neither may force a fresh search. A thumbnail's
 // frame is the exception, since it never moves unless a late resize lands.
@@ -454,7 +461,8 @@ export const TilingManager = GObject.registerClass({
             (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
     }
 
-    computeDragLayouts(windowDescriptors, workArea, draggedId) {
+    computeDragLayouts(windowDescriptors, rawArea, draggedId) {
+        const workArea = packingArea(rawArea);
         const spacing = constants.WINDOW_SPACING;
         const startTime = GLib.get_monotonic_time();
 
@@ -662,7 +670,7 @@ export const TilingManager = GObject.registerClass({
                 workArea = this._edgeTilingManager.calculateRemainingSpace(workspace, monitor);
             }
         }
-        return { meta_windows, workArea };
+        return { meta_windows, workArea: packingArea(workArea) };
     }
 
     bestRecomposition(workspace, monitor, focusedWindow, direction) {
@@ -1140,6 +1148,7 @@ export const TilingManager = GObject.registerClass({
 
     _tile(windows, work_area, isSimulation = false, forcedOrientation = null) {
         this._tileCallCount++;
+        work_area = packingArea(work_area);
         const hash = this._getLayoutHash(windows, work_area);
         const early = this._resolveTileFastPath(windows, hash, isSimulation);
         if (early) return early;
