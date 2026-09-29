@@ -2482,7 +2482,7 @@ export const TilingManager = GObject.registerClass({
 
     // Decide what to do with an overflowing reference window. Returns { tile_info,
     // referenceOverflowSkipped }, or { stop: true } when a returning sacred window can't be fit.
-    _handleReferenceOverflow(reference_meta_window, windows, tileArea, workspace, monitor, tile_info) {
+    _handleReferenceOverflow(reference_meta_window, windows, tileArea, workspace, tile_info) {
         // Only overflow a window whose arrival is still being placed; this prevents expelling
         // existing windows during resize retiling.
         const isNewlyAdded = this._isArrivalPending(reference_meta_window);
@@ -2777,7 +2777,7 @@ export const TilingManager = GObject.registerClass({
         if (dryRun) return this._dryRunResult(overflow, workspace);
 
         const refPhase = this._maybeEjectReference(
-            overflow, keep_oversized_windows, reference_meta_window, edgeTiledWindows, windows, tileArea, workspace, monitor, tile_info);
+            overflow, keep_oversized_windows, reference_meta_window, edgeTiledWindows, windows, tileArea, workspace, tile_info);
         if (refPhase.stop) return { overflow: true, layout: null };
         tile_info = refPhase.tile_info;
 
@@ -2883,13 +2883,13 @@ export const TilingManager = GObject.registerClass({
 
     // Eject the reference window when it caused the overflow, unless edge-tiling or a drag
     // owns its placement. Returns {stop} to abort, else the possibly-updated tile_info.
-    _maybeEjectReference(overflow, keep_oversized_windows, reference_meta_window, edgeTiledWindows, windows, tileArea, workspace, monitor, tile_info) {
+    _maybeEjectReference(overflow, keep_oversized_windows, reference_meta_window, edgeTiledWindows, windows, tileArea, workspace, tile_info) {
         const canOverflow = this._canExpelReference(reference_meta_window, edgeTiledWindows);
 
         if (!(overflow && !keep_oversized_windows && reference_meta_window && canOverflow && !this.isDragging))
             return { stop: false, tile_info, referenceOverflowSkipped: false };
 
-        const refResult = this._handleReferenceOverflow(reference_meta_window, windows, tileArea, workspace, monitor, tile_info);
+        const refResult = this._handleReferenceOverflow(reference_meta_window, windows, tileArea, workspace, tile_info);
         if (refResult.stop) return { stop: true };
         return { stop: false, tile_info: refResult.tile_info, referenceOverflowSkipped: refResult.referenceOverflowSkipped };
     }
