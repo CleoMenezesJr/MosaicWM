@@ -2153,10 +2153,9 @@ export const TilingManager = GObject.registerClass({
             meta_windows = meta_windows.filter(w => w.get_id() !== windowId);
         }
 
-        if (this.isDragging && this.dragRemainingSpace && window) {
-            const draggedId = window.get_id();
-            meta_windows = meta_windows.filter(w => w.get_id() !== draggedId);
-        }
+        // Keyed on the mask, not the reference: a queued evaluation can tile mid-drag for another window.
+        if (this.isDragging && this.dragRemainingSpace)
+            meta_windows = meta_windows.filter(w => !this.masks.has(w.get_id()));
 
         if (this._excludedWindow) {
             const excludedId = this._excludedWindow.get_id();
