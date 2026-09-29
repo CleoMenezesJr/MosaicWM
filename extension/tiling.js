@@ -3460,7 +3460,7 @@ export const TilingManager = GObject.registerClass({
 
     // postKey is the key the next pass will build once this result is applied (modes flipped),
     // so the settle retile that follows every apply costs nothing.
-    _memoizedAllocation(participants, tileArea, resizingWindowId, workspace = null, remember = true) {
+    _memoizedAllocation(participants, tileArea, resizingWindowId, workspace = null, remember = true, holdArrangement = false) {
         const key = allocationKey(participants, tileArea);
         const slots = this._allocationSlots(workspace);
         const slot = `${tileArea.x},${tileArea.y}`;
@@ -3468,18 +3468,57 @@ export const TilingManager = GObject.registerClass({
         // Restoring under a resize grab re-miniaturizes a tick later, so restores wait for release; an
         // edge preview must show what the drop keeps, restores included.
         const live = resizingWindowId !== null;
-        if (this._canReuseAllocation(memo, key, live, participants, tileArea)) return memo.result;
+        const anyFits = sizes => !this._tile(sizes, tileArea, true).overflow;
+        const heldFits = holdArrangement ? this._heldArrangementFits(participants, tileArea) : null;
+        if (this._canReuseAllocation(memo, key, live, participants, heldFits ?? anyFits)) return memo.result;
 
-        const result = sizeAllocator.allocate({
+        const allocate = fits => sizeAllocator.allocate({
             participants,
-            fits: sizes => !this._tile(sizes, tileArea, true).overflow,
+            fits,
             previousS: memo?.result.fits ? memo.result.s : null,
             allowRestore: !live,
         });
+        const result = this._pickAllocation(allocate, anyFits, heldFits, participants);
         const flipped = participants.map(p => ({ ...p, mode: result.entries.get(p.id)?.mode ?? p.mode }));
         if (remember)
             slots.set(slot, { key, postKey: allocationKey(flipped, tileArea), result, at: monotonicNow() });
         return result;
+    }
+
+    // A settling pass lays out the arrangement on screen first, so sizes that only fit some other
+    // one turn a 1px overshoot into every window trading places mid-resize.
+    _heldArrangementFits(participants, tileArea) {
+        const order = this._lastTiledOrder;
+        const tiled = new Set(order);
+        if (order?.length !== participants.length || !participants.every(p => tiled.has(p.id)) ||
+            !this._sameWindowSetAsLastPass(participants))
+            return null;
+        const place = this._shapePreservingPlacers(this._lastTiledVertical, participants.length)[0];
+        if (!place) return null;
+
+        const area = packingArea(tileArea);
+        return sizes => {
+            const byId = new Map(sizes.map(sz => [sz.id, sz]));
+            return !place.call(this, order.map(id => ({ ...byId.get(id) })), area, constants.WINDOW_SPACING).overflow;
+        };
+    }
+
+    // Holding the arrangement is worth a thumbnail shrinking instead of a reorder, never a window
+    // turning into one, and never space freed up going unused.
+    _pickAllocation(allocate, anyFits, heldFits, participants) {
+        const free = allocate(anyFits);
+        if (!heldFits) return free;
+        const held = allocate(heldFits);
+        const tolerance = constants.FIT_SCALE_SEARCH_TOLERANCE_PX;
+        const beatsHeld = participants.some(p => {
+            const f = free.entries.get(p.id);
+            const h = held.entries.get(p.id);
+            if (!f || !h) return false;
+            if (f.mode === 'window' && h.mode === 'thumbnail') return true;
+            return f.mode === p.mode &&
+                Math.max(f.size.width - p.current.width, f.size.height - p.current.height) > tolerance;
+        });
+        return held.fits && !beatsHeld ? held : free;
     }
 
     _allocationSlots(workspace) {
@@ -3492,24 +3531,24 @@ export const TilingManager = GObject.registerClass({
         return slots;
     }
 
-    _canReuseAllocation(memo, key, live, participants, tileArea) {
+    _canReuseAllocation(memo, key, live, participants, fits) {
         if (!memo) return false;
         if (memo.key === key || memo.postKey === key) return true;
         return live && memo.result.fits &&
             monotonicNow() - memo.at < constants.ALLOCATOR_RESIZE_THROTTLE_MS &&
-            this._allocationStillFits(memo.result, participants, tileArea);
+            this._allocationStillFits(memo.result, participants, fits);
     }
 
     // A tick inside the throttle only reuses the old answer while it still packs with the grabbed
     // window at its new size; the moment it doesn't, the tick pays for a real search.
-    _allocationStillFits(result, participants, tileArea) {
+    _allocationStillFits(result, participants, fits) {
         const sizes = [];
         for (const p of participants) {
             const size = p.fixed ? p.current : result.entries.get(p.id)?.size;
             if (!size) return false;
             sizes.push({ id: p.id, width: size.width, height: size.height });
         }
-        return !this._tile(sizes, tileArea, true).overflow;
+        return fits(sizes);
     }
 
     _applyAllocation(result, participants, metaWindows) {
@@ -3596,6 +3635,13 @@ export const TilingManager = GObject.registerClass({
         this._extension?.resizeHandler?.armClampVerification(w, { width: size.width, height: size.height });
     }
 
+    // Same signals that make the layout itself drop the held shape: a restore gets to pick another,
+    // and a pin or a drag already decides the arrangement on its own.
+    _holdsArrangement(pool, workspace) {
+        return !this.isDragging && !this._pinnedComposition.has(workspace) &&
+            !pool.some(w => WindowState.get(w, 'restoreAnchorCenter'));
+    }
+
     // A dry run's reference may not be on this workspace yet (sacred return), so it's placed like
     // canFitWindow does. An edge preview knows where the dragged window lands, so the rest can give
     // way now; any other drag leaves sizes alone until the drop.
@@ -3610,7 +3656,8 @@ export const TilingManager = GObject.registerClass({
         const participants = this._allocationParticipants(pool, descriptors, tileArea, workspace, reference, resizingWindowId);
         if (participants.length === 0) return null;
 
-        const result = this._memoizedAllocation(participants, tileArea, resizingWindowId, workspace, !hasCandidate);
+        const result = this._memoizedAllocation(participants, tileArea, resizingWindowId, workspace, !hasCandidate,
+            !hasCandidate && this._holdsArrangement(pool, workspace));
         const byId = new Map(participants.map(p => [p.id, p]));
         Logger.log(`[ALLOCATOR] s=${result.s.toFixed(4)} fits=${result.fits} ${[...result.entries.values()]
             .map(e => {
