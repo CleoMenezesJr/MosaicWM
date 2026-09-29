@@ -196,6 +196,7 @@ export const WindowHandler = GObject.registerClass({
 
         ids.push(window.connect('size-changed', (win) => {
             this._learnFrame(win);
+            this.handleExclusionStateChange(win);
         }));
 
         ids.push(window.connect('position-changed', (win) => {
@@ -205,6 +206,9 @@ export const WindowHandler = GObject.registerClass({
         ids.push(window.connect('notify::above', (win) => this.handleExclusionStateChange(win)));
         ids.push(window.connect('notify::on-all-workspaces', (win) => this.handleExclusionStateChange(win)));
         ids.push(window.connect('notify::minimized', (win) => this.handleExclusionStateChange(win)));
+        ids.push(window.connect('notify::skip-taskbar', (win) => this.handleExclusionStateChange(win)));
+        ids.push(window.connect('notify::window-type', (win) => this.handleExclusionStateChange(win)));
+        ids.push(window.connect('notify::wm-class', (win) => this.handleExclusionStateChange(win)));
 
         this._windowSignals.set(window, ids);
 
@@ -228,8 +232,15 @@ export const WindowHandler = GObject.registerClass({
         ComputedLayouts.delete(window);
         MosaicConstraints.detach(window);
 
-        WindowState.remove(window, 'previousExclusionState');
+        // previousExclusionState stays: window-removed lands after this on destroy
+        // and still needs to know whether the window was tiled.
         WindowState.remove(window, 'previousWorkspace');
+    }
+
+    // transient_for has no notify and a dying window can report state it never had
+    // while tiled, so removal goes by the last observed membership, not a live read.
+    _wasExcluded(window) {
+        return WindowState.get(window, 'previousExclusionState') ?? this.windowingManager.isExcluded(window);
     }
 
     _isFrameMonitorSized(win) {
@@ -397,6 +408,11 @@ export const WindowHandler = GObject.registerClass({
             return;
         }
 
+        // Still arriving: the readiness gate or the queue places it, a second include would race them.
+        if (!isNowExcluded && WindowState.get(window, 'arrivalPending')) {
+            return;
+        }
+
         if (isNowExcluded) {
             Logger.log(`Window ${windowId} became excluded; retiling without it`);
 
@@ -542,7 +558,7 @@ export const WindowHandler = GObject.registerClass({
 
         WindowState.remove(window, 'maximizedUndoInfo');
 
-        if (this.windowingManager.isExcluded(window)) {
+        if (this._wasExcluded(window)) {
             Logger.log('Excluded window closed - no workspace navigation');
             return;
         }
@@ -1206,7 +1222,7 @@ export const WindowHandler = GObject.registerClass({
 
     onWindowRemoved(workspace, window) {
         this.windowingManager.invalidateWindowsCache();
-        if (!this._ext.windowingManager.isRelated(window)) {
+        if (!this._ext.windowingManager.isRelated(window) && this._wasExcluded(window)) {
             return;
         }
 
