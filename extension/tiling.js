@@ -3708,8 +3708,9 @@ export const TilingManager = GObject.registerClass({
     _miniatureThreshold(w, workArea) {
         const min = this.getWindowMinimumSize(w);
         const maxSize = this.getWindowMaximumSize(w);
-        const effectiveMaxW = maxSize?.width || workArea.width;
-        const effectiveMaxH = maxSize?.height || workArea.height;
+        // Some clients publish a max past the monitor, which pins the threshold to preferred.
+        const effectiveMaxW = Math.min(maxSize?.width || workArea.width, workArea.width);
+        const effectiveMaxH = Math.min(maxSize?.height || workArea.height, workArea.height);
         return {
             thresholdW: (min.width + effectiveMaxW) / 2,
             thresholdH: (min.height + effectiveMaxH) / 2,
