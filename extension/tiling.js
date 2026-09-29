@@ -1410,7 +1410,9 @@ export const TilingManager = GObject.registerClass({
     _tryFrozenShape(windows, work_area, spacing, useVerticalShelves, settling, isSimulation) {
         // _placersFor never searches below 3 windows, so there is no shape to freeze; a
         // simulation only cares whether something fits, not which order produced it.
-        if (!settling || isSimulation || windows.length <= 2) return null;
+        // A restore needs the other shapes too: the one that keeps the window near its slot is
+        // often the mirror of the one on screen.
+        if (!settling || isSimulation || windows.length <= 2 || this._restoreAnchor) return null;
 
         const placers = this._shapePreservingPlacers(useVerticalShelves, windows.length);
         if (!placers.length) return null;
