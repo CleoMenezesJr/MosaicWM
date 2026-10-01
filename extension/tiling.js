@@ -18,7 +18,6 @@ import {
     IS_MINIATURE,
     MINIATURE_SCALE,
     MINIATURE_TARGET_POS,
-    MINIATURE_OVERLAY,
     ANIMATING_MINIATURE,
     PENDING_MINIATURE,
     PRE_MINIATURE_SIZE,
@@ -550,7 +549,6 @@ export const TilingManager = GObject.registerClass({
             const sc = WindowState.get(window, MINIATURE_SCALE) ?? 1;
             animateMiniatureToTarget(actor, window, sc, pos.x, pos.y,
                 constants.ANIMATION_DURATION_MS);
-            WindowState.get(window, MINIATURE_OVERLAY)?.animateToPosition(constants.ANIMATION_DURATION_MS);
         }
         // MosaicLayoutStrategy reads ComputedLayouts for the overview region, so keep it in sync.
         ComputedLayouts.set(window, { x: pos.x, y: pos.y, width: pos.width, height: pos.height });
@@ -2383,7 +2381,6 @@ export const TilingManager = GObject.registerClass({
         const sc = WindowState.get(window, MINIATURE_SCALE) ?? 1;
         if (actor && !actor.is_destroyed()) {
             animateMiniatureToTarget(actor, window, sc, tx, ty, constants.ANIMATION_DURATION_MS);
-            WindowState.get(window, MINIATURE_OVERLAY)?.animateToPosition(constants.ANIMATION_DURATION_MS);
         }
         this._recordRegion(window, region, ctx);
         Logger.log(`[MINIATURE] animateTile ${orient} ${window.get_id()}: target=(${tx},${ty}) scale=${sc.toFixed(4)} region=${region.width}x${region.height}`);
@@ -3902,7 +3899,6 @@ class WindowDescriptor {
 
         const sc = WindowState.get(window, MINIATURE_SCALE) ?? 1;
         animateMiniatureToTarget(windowActor, window, sc, x, y, constants.ANIMATION_DURATION_MS);
-        WindowState.get(window, MINIATURE_OVERLAY)?.animateToPosition(constants.ANIMATION_DURATION_MS);
     }
 
     _drawWindowDrag(window, x, y) {
@@ -4003,7 +3999,6 @@ class WindowDescriptor {
             applyMiniatureActorState(windowActor, sc, x, y);
         }
         WindowState.set(window, MINIATURE_TARGET_POS, { x, y });
-        WindowState.get(window, MINIATURE_OVERLAY)?.updatePosition();
         Logger.log(`[MINIATURE] draw ${window.get_id()}: target=(${x},${y}) scale=${sc.toFixed(4)} size=${this.width}x${this.height}`);
     }
 }

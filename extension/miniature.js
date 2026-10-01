@@ -96,7 +96,8 @@ export function animateMiniatureToTarget(actor, window, scale, targetX, targetY,
 }
 
 // Mutter may reset actor transforms (workspace switch, sync_window_geometry) without
-// signals; this effect enforces miniature transforms every frame at paint time.
+// signals; this effect enforces miniature transforms every frame at paint time, and
+// pins the click overlay to the actor's live frame rect so icon and frame never drift.
 const MiniatureEnforceEffect = GObject.registerClass({
     GTypeName: 'MosaicMiniatureEnforceEffect',
 }, class MiniatureEnforceEffect extends Clutter.Effect {
@@ -112,26 +113,51 @@ const MiniatureEnforceEffect = GObject.registerClass({
             return;
         }
 
-        if (WindowState.get(this._window, ANIMATING_MINIATURE)) {
-            super.vfunc_paint(...args);
-            return;
-        }
-
         if (WindowState.get(this._window, MINIATURE_SCREENSHOT_PAUSE)) {
             super.vfunc_paint(...args);
             return;
         }
 
-        const sc = WindowState.get(this._window, MINIATURE_SCALE);
-        const tgt = WindowState.get(this._window, MINIATURE_TARGET_POS);
+        if (!WindowState.get(this._window, ANIMATING_MINIATURE)) {
+            const sc = WindowState.get(this._window, MINIATURE_SCALE);
+            const tgt = WindowState.get(this._window, MINIATURE_TARGET_POS);
 
-        if (sc && tgt) {
-            actor.set_pivot_point(0, 0);
-            actor.set_scale(sc, sc);
-            const { tx, ty } = frameTranslation(actor, sc, tgt.x, tgt.y);
-            actor.set_translation(tx, ty, 0);
+            if (sc && tgt) {
+                actor.set_pivot_point(0, 0);
+                actor.set_scale(sc, sc);
+                const { tx, ty } = frameTranslation(actor, sc, tgt.x, tgt.y);
+                actor.set_translation(tx, ty, 0);
+            }
         }
+
+        this._alignOverlayToFrame(actor);
         super.vfunc_paint(...args);
+    }
+
+    // Actor moves run on eased, instant and skipped timings, so no overlay write at a
+    // caller stays glued; the live transform at paint is the one position that can't drift.
+    _alignOverlayToFrame(actor) {
+        // Reparented actors (overview, workspace switch) carry parent-relative
+        // coordinates; tracking only makes sense in window_group space.
+        if (actor.get_parent() !== global.window_group) return;
+
+        const overlay = WindowState.get(this._window, MINIATURE_OVERLAY);
+        const preSize = WindowState.get(this._window, PRE_MINIATURE_SIZE);
+        if (!overlay || !preSize) return;
+
+        const [ax, ay] = actor.get_position();
+        const [actorW, actorH] = actor.get_size();
+        const [px, py] = actor.get_pivot_point();
+        const sx = actor.scale_x;
+        const sy = actor.scale_y;
+        const extL = (WindowState.get(this._window, MINIATURE_EXT_LEFT) ?? 0) * sx;
+        const extT = (WindowState.get(this._window, MINIATURE_EXT_TOP) ?? 0) * sy;
+
+        overlay.alignToFrame(
+            ax + px * actorW * (1 - sx) + actor.translation_x + extL,
+            ay + py * actorH * (1 - sy) + actor.translation_y + extT,
+            preSize.width * sx,
+            preSize.height * sy);
     }
 });
 
@@ -254,32 +280,15 @@ const MiniatureClickOverlay = GObject.registerClass({
         this._hoverRestId = 0;
     }
 
-    updatePosition() {
+    // set_size lands on the next layout pass, so a size ease leaves BinLayout's
+    // centered icon a frame behind; the translation closes that gap per paint.
+    alignToFrame(x, y, width, height) {
         if (this._destroyed) return;
-        const tgt = WindowState.get(this._window, MINIATURE_TARGET_POS);
-        const size = getMiniatureSize(this._window);
-
-        if (tgt && size) {
-            this.set_position(tgt.x, tgt.y);
-            this.set_size(size.width, size.height);
-        }
-    }
-
-    animateToPosition(duration) {
-        if (this._destroyed) return;
-        const tgt = WindowState.get(this._window, MINIATURE_TARGET_POS);
-        const size = getMiniatureSize(this._window);
-
-        if (tgt && size) {
-            this.remove_all_transitions();
-            this.ease({
-                x: tgt.x,
-                y: tgt.y,
-                duration,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            });
-            this.set_size(size.width, size.height);
-        }
+        this.set_position(x, y);
+        this.set_size(width, height);
+        if (!this._icon) return;
+        const [allocW, allocH] = this.allocation.get_size();
+        this._icon.set_translation((width - allocW) / 2, (height - allocH) / 2, 0);
     }
 
     showIcon(duration) {
@@ -297,26 +306,18 @@ const MiniatureClickOverlay = GObject.registerClass({
         });
     }
 
-    flyIconIn(dx, dy, duration) {
+    // The enforce effect carries the icon with the frame; only the delayed fade is ours.
+    flyIconIn(duration) {
         if (this._destroyed || !this._icon) return;
         this._cancelIconDelay();
         this._icon.remove_all_transitions();
 
         if (duration <= 0) {
-            this._icon.set_translation(0, 0, 0);
             this.showIcon(0);
             return;
         }
 
         this._icon.opacity = 0;
-        this._icon.set_translation(dx, dy, 0);
-        this._icon.ease({
-            translation_x: 0,
-            translation_y: 0,
-            duration,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-        });
-
         const fadeDelay = Math.round(duration * constants.MINIATURE_ICON_FADE_START);
         this._iconDelayId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, fadeDelay, () => {
             this._iconDelayId = 0;
@@ -335,7 +336,6 @@ const MiniatureClickOverlay = GObject.registerClass({
         if (this._destroyed || !this._icon) return;
         this._cancelIconDelay();
         this._icon.remove_all_transitions();
-        this._icon.set_translation(0, 0, 0);
         this._icon.opacity = 0;
     }
 
@@ -428,7 +428,7 @@ export const MiniatureManager = GObject.registerClass({
     // Shrinking straight out of an interrupted restore: pick up the actor's live scale and
     // translation so the flight starts from what's on screen, not from a full-size frame.
     _animateMiniatureFromRestore(window, windowActor, ctx) {
-        const { scale, targetX, targetY, extLeft, extTop, actorBefore_x, actorBefore_y, currentFrame, endCenterX, endCenterY } = ctx;
+        const { scale, targetX, targetY, extLeft, extTop, actorBefore_x, actorBefore_y } = ctx;
         const [actorW, actorH] = windowActor.get_size();
 
         const [cpx, cpy] = windowActor.get_pivot_point();
@@ -442,13 +442,6 @@ export const MiniatureManager = GObject.registerClass({
         const endTx = targetX - actorBefore_x - extLeft * scale;
         const endTy = targetY - actorBefore_y - extTop * scale;
         const animDuration = Math.max(1, Math.round(constants.MINIATURE_ANIM_MS * getSlowDownFactor() * (cs - scale) / Math.max(0.001, 1.0 - scale)));
-
-        // Frame is already shrunk to cs here, so its center rides that scale.
-        const iconFly = {
-            dx: visualX + currentFrame.width * cs / 2 - endCenterX,
-            dy: visualY + currentFrame.height * cs / 2 - endCenterY,
-            duration: animDuration,
-        };
 
         // Set kind before remove_all_transitions, since restore's onStopped fires
         // synchronously and needs to see 'create' to skip its conditional removal.
@@ -470,11 +463,11 @@ export const MiniatureManager = GObject.registerClass({
             onStopped: () => this._finishMiniatureAnim(window, windowActor),
         });
 
-        return iconFly;
+        return animDuration;
     }
 
     _animateMiniatureFresh(window, windowActor, ctx) {
-        const { scale, targetX, targetY, extLeft, extTop, actorBefore_x, actorBefore_y, currentFrame, endCenterX, endCenterY } = ctx;
+        const { scale, targetX, targetY, extLeft, extTop, actorBefore_x, actorBefore_y } = ctx;
         const [actorW, actorH] = windowActor.get_size();
 
         WindowState.set(window, MINIATURE_ANIM_KIND, 'create');
@@ -486,12 +479,7 @@ export const MiniatureManager = GObject.registerClass({
         const py = dh > 0 ? Math.max(0, Math.min(1, (targetY - actorBefore_y - extTop * scale) / dh)) : 0;
         const tx = targetX - actorBefore_x - px * dw - extLeft * scale;
         const ty = targetY - actorBefore_y - py * dh - extTop * scale;
-
-        const iconFly = {
-            duration: Math.ceil(constants.MINIATURE_ANIM_MS * getSlowDownFactor()),
-            dx: currentFrame.x + currentFrame.width / 2 - endCenterX,
-            dy: currentFrame.y + currentFrame.height / 2 - endCenterY,
-        };
+        const animDuration = Math.ceil(constants.MINIATURE_ANIM_MS * getSlowDownFactor());
 
         windowActor.remove_all_transitions();
         windowActor.set_pivot_point(px, py);
@@ -502,12 +490,12 @@ export const MiniatureManager = GObject.registerClass({
             scale_y: scale,
             translation_x: tx,
             translation_y: ty,
-            duration: iconFly.duration,
+            duration: animDuration,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onStopped: () => this._finishMiniatureAnim(window, windowActor),
         });
 
-        return iconFly;
+        return animDuration;
     }
 
     createMiniature(window, region, forcedPreSize = null, { animate = true } = {}) {
@@ -521,21 +509,16 @@ export const MiniatureManager = GObject.registerClass({
 
         this._storeMiniatureState(window, windowActor, { scale, extLeft, extTop, targetX, targetY });
 
-        // BinLayout gives icon center for free once flight translation reaches zero. Uses the
-        // frame size scale was computed against, or the icon lands off from the miniature's
-        // real final center whenever the two disagree.
-        const endCenterX = targetX + currentFrame.width * scale / 2;
-        const endCenterY = targetY + currentFrame.height * scale / 2;
-        let iconFly = { dx: 0, dy: 0, duration: 0 };
+        let fadeDuration = 0;
 
         if (animate) {
-            const ctx = { scale, targetX, targetY, extLeft, extTop, actorBefore_x, actorBefore_y, currentFrame, endCenterX, endCenterY };
+            const ctx = { scale, targetX, targetY, extLeft, extTop, actorBefore_x, actorBefore_y };
             WindowState.set(window, ANIMATING_MINIATURE, true);
 
             if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore') {
-                iconFly = this._animateMiniatureFromRestore(window, windowActor, ctx);
+                fadeDuration = this._animateMiniatureFromRestore(window, windowActor, ctx);
             } else {
-                iconFly = this._animateMiniatureFresh(window, windowActor, ctx);
+                fadeDuration = this._animateMiniatureFresh(window, windowActor, ctx);
             }
         } else {
             // Instant: apply transforms synchronously so the overview's frozen
@@ -550,7 +533,7 @@ export const MiniatureManager = GObject.registerClass({
         this._miniatureWindows.set(window.get_id(), window);
         this.emit('miniature-created', window);
 
-        this._attachMiniatureOverlay(window, windowActor, iconFly, animate);
+        this._attachMiniatureOverlay(window, windowActor, fadeDuration, animate);
 
         Logger.log(`[MINIATURE] Created miniature for ${window.get_id()}, scale=${scale.toFixed(4)}`);
         return true;
@@ -614,13 +597,12 @@ export const MiniatureManager = GObject.registerClass({
         WindowState.set(window, 'miniatureJustMiniaturizedTimeoutId', timeoutId);
     }
 
-    _attachMiniatureOverlay(window, windowActor, iconFly, animate) {
+    _attachMiniatureOverlay(window, windowActor, fadeDuration, animate) {
         const overlay = new MiniatureClickOverlay(window, this);
         global.window_group.insert_child_above(overlay, windowActor);
         WindowState.set(window, MINIATURE_OVERLAY, overlay);
 
-        // Ease is already running on the same frame clock; icon still lands with it.
-        overlay.flyIconIn(iconFly.dx, iconFly.dy, animate ? iconFly.duration : 0);
+        overlay.flyIconIn(animate ? fadeDuration : 0);
         if (this._overviewActive) overlay.setIconSuppressed('overview', true);
     }
 
@@ -664,7 +646,7 @@ export const MiniatureManager = GObject.registerClass({
         WindowState.set(window, MINIATURE_TARGET_POS, { x: targetX, y: targetY });
 
         const size = getMiniatureSize(window);
-        WindowState.get(window, MINIATURE_OVERLAY)?.set({ x: targetX, y: targetY, width: size.width, height: size.height });
+        WindowState.get(window, MINIATURE_OVERLAY)?.set_size(size.width, size.height);
 
         Logger.log(`[MINIATURE] reshrinkMiniature ${window.get_id()}: scale=${scale.toFixed(4)} size=${size.width}x${size.height}`);
         return true;
@@ -682,6 +664,10 @@ export const MiniatureManager = GObject.registerClass({
         WindowState.set(window, PRE_MINIATURE_SIZE, { width: frame.width, height: frame.height });
         WindowState.set(window, MINIATURE_SCALE, scale);
         Logger.log(`[MINIATURE] refitToFrame ${window.get_id()}: frame ${preSize.width}x${preSize.height} -> ${frame.width}x${frame.height}, scale=${scale.toFixed(4)}`);
+
+        // Frozen paths (overview, screenshot pause) skip paint tracking; keep their box current.
+        const freshSize = getMiniatureSize(window);
+        WindowState.get(window, MINIATURE_OVERLAY)?.set_size(freshSize.width, freshSize.height);
 
         // A running ease lands on MINIATURE_SCALE when it finishes, so it picks this up itself.
         const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
