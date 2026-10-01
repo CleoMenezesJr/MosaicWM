@@ -3,6 +3,7 @@
 // Async utilities for timeout management
 
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 import St from 'gi://St';
 import * as Logger from './logger.js';
 import * as constants from './constants.js';
@@ -22,6 +23,40 @@ export function getAnimationsEnabled() {
 
 export function getSlowDownFactor() {
     return St.Settings.get().slow_down_factor ?? 1.0;
+}
+
+let _laters = undefined;
+
+function compositorLaters() {
+    if (_laters === undefined) {
+        try {
+            _laters = global.display.get_compositor().get_laters();
+        } catch (e) {
+            _laters = null;
+            Logger.log(`Meta.Laters unavailable (${e.message}); work coalesces on idle instead`);
+        }
+    }
+    return _laters;
+}
+
+// Runs within the sweep that scheduled it, before the next paint, the hook
+// Mutter's own drag throttles with. Each call schedules its own run; the
+// caller owns dedupe by latching. Returns a cancel every exit path must call;
+// a later outliving its owner would tile a workspace being torn down.
+export function beforeRedraw(callback) {
+    const laters = compositorLaters();
+    if (laters) {
+        const id = laters.add(Meta.LaterType.RESIZE, () => {
+            callback();
+            return GLib.SOURCE_REMOVE;
+        });
+        return () => laters.remove(id);
+    }
+    const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+        callback();
+        return GLib.SOURCE_REMOVE;
+    });
+    return () => GLib.source_remove(idleId);
 }
 
 function getWorkspaceSwitchDuration() {

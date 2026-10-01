@@ -85,6 +85,7 @@ export const GEOMETRY_WAIT_MAX_ATTEMPTS = 100;   // Max attempts to wait for win
 export const REVERSE_RESIZE_PROTECTION_MS = 1000; // Protection window after a resize, unmaximize or overflow settles
 export const RESIZE_SETTLE_DELAY_MS = 150;       // Delay to let Mutter apply resize before retiling
 export const RESIZE_SETTLE_MAX_ATTEMPTS = 4;     // Settle checks before the restored-size bridge is dropped anyway
+export const RESIZE_SETTLE_TILE_THROTTLE_MS = 30; // Spacing between settle-path retiles; the settle path fires per ack
 export const EDGE_TILE_EXIT_SUPPRESSION_MS = RETILE_DELAY_MS + RESIZE_SETTLE_DELAY_MS; // Matches removeTile's targetRestoredSize bridge
 export const RESIZE_CLAMP_SETTLE_WINDOW_MS = 1500; // Window age below which a clamp is treated as the client still settling
 export const RESIZE_CLAMP_VERIFY_DELAY_MS = 400; // Quiet time after a deferred clamp before the frame is committed as real
