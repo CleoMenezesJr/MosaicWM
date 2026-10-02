@@ -107,31 +107,35 @@ function holdRestoresToRecency(participants, entries) {
 }
 
 // Assumes fit only gets easier as s grows. A previous s brackets the answer in two probes when
-// little changed.
+// little changed. Answers snap to a fixed grid of eps, or where the warm start began would move
+// the same mosaic a few px from pass to pass.
 export function searchSmallestFit(probe, eps, previousS) {
+    const top = Math.ceil(1 / eps);
+    const at = k => Math.min(1, k * eps);
     const b = { lo: null, hi: null };
-    const test = s => {
-        if (probe(s)) b.hi = b.hi === null ? s : Math.min(b.hi, s);
-        else b.lo = b.lo === null ? s : Math.max(b.lo, s);
+    const test = k => {
+        if (probe(at(k))) b.hi = b.hi === null ? k : Math.min(b.hi, k);
+        else b.lo = b.lo === null ? k : Math.max(b.lo, k);
     };
 
-    warmStart(test, b, previousS, eps);
+    warmStart(test, b, previousS, eps, top);
     if (b.lo === null) {
         test(0);
         if (b.hi === 0) return 0;
     }
     if (b.hi === null) {
-        test(1);
+        test(top);
         if (b.hi === null) return null;
     }
-    while (b.hi - b.lo > eps) test((b.lo + b.hi) / 2);
-    return b.hi;
+    while (b.hi - b.lo > 1) test(Math.floor((b.lo + b.hi) / 2));
+    return at(b.hi);
 }
 
-function warmStart(test, b, previousS, eps) {
+function warmStart(test, b, previousS, eps, top) {
     if (previousS === null || previousS <= 0 || previousS >= 1) return;
-    test(previousS);
-    test(b.hi !== null ? Math.max(0, previousS - eps / 2) : Math.min(1, previousS + eps / 2));
+    const k = Math.max(1, Math.min(top - 1, Math.round(previousS / eps)));
+    test(k);
+    test(b.hi !== null ? k - 1 : k + 1);
 }
 
 export function allocate({
