@@ -348,7 +348,7 @@ export const ResizeHandler = GObject.registerClass({
     tryExitSacred(window) {
         const maxInfo = WindowState.get(window, 'maximizedUndoInfo');
 
-        // Born-maximized with no undo info was never isolated - nothing to undo.
+        // Born-maximized with no undo info was never isolated. nothing to undo.
         if (WindowState.get(window, 'openedMaximized') && !maxInfo) {
             return;
         }

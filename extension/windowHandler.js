@@ -828,7 +828,7 @@ export const WindowHandler = GObject.registerClass({
                     originalWorkspace: originalWorkspaceIndex,
                     currentWorkspace: result.index(),
                     monitor,
-                    preMaxSize: null
+                    preMaxSize: WindowState.get(window, 'openingSize')
                 });
             }
             return { handled: true, result };
