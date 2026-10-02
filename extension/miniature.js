@@ -621,8 +621,18 @@ export const MiniatureManager = GObject.registerClass({
         const targetY = region.y;
         const { tx, ty } = frameTranslation(windowActor, scale, targetX, targetY);
 
+        // Removing transitions fires the create ease's onStopped synchronously, which snaps the
+        // actor to its final state; capture the live transform first so the ease resumes from it.
+        const [actorW, actorH] = windowActor.get_size();
+        const [px, py] = windowActor.get_pivot_point();
+        const liveScale = windowActor.scale_x;
+        const liveTx = windowActor.translation_x + px * actorW * (1 - liveScale);
+        const liveTy = windowActor.translation_y + py * actorH * (1 - liveScale);
+
         windowActor.remove_all_transitions();
         windowActor.set_pivot_point(0, 0);
+        windowActor.set_scale(liveScale, liveScale);
+        windowActor.set_translation(liveTx, liveTy, 0);
         // Without the flag the enforce effect writes the final transform on the next paint, and
         // that direct write drops this ease.
         WindowState.set(window, ANIMATING_MINIATURE, true);
