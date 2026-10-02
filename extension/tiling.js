@@ -141,7 +141,7 @@ export const TilingManager = GObject.registerClass({
         // Whether the last committed pass ranked its order; an unranked one (fit check, drag)
         // is whatever arrival order happened to pack, not a settled state worth trusting.
         this._lastTileRanked = false;
-        this._pinnedSizesUnchanged = false;
+        this._pinnedRolesUnchanged = false;
         this._skipStabilityForNextTile = false;
 
         // Swap/reorder operations live per workspace, keyed by Meta.Workspace via WeakMap
@@ -1277,8 +1277,8 @@ export const TilingManager = GObject.registerClass({
         if (literal.overflow) return literal;
 
         // Reranking cells right after a drop moves the window the drag just placed, so the order
-        // only opens up once a size changes; a miniaturize is what the ranking is there for.
-        if (this._pinnedSizesUnchanged || !this._ranksOrders(false, isSimulation)) {
+        // only opens up once a window miniaturizes or restores, which is what the ranking is there for.
+        if (this._pinnedRolesUnchanged || !this._ranksOrders(false, isSimulation)) {
             Logger.log(`_tile: ${windows.length} windows honoring pinned shape [${shape.join(',')}] (stable order)`);
             return literal;
         }
@@ -2625,7 +2625,7 @@ export const TilingManager = GObject.registerClass({
         this._activePinnedShape = null;
         this._activePinnedVertical = null;
         this._activePinnedWorkspace = workspace;
-        this._pinnedSizesUnchanged = false;
+        this._pinnedRolesUnchanged = false;
         const pin = this._pinnedComposition.get(workspace);
         if (!pin) return;
         if (pin.count !== windows.length) {
@@ -2635,11 +2635,15 @@ export const TilingManager = GObject.registerClass({
 
         this._activePinnedShape = pin.shape;
         this._activePinnedVertical = pin.vertical;
-        // A drop retiles three times and the suppression above only covers the first, so the
-        // sizes at pin time say how long the dropped order still stands.
-        const sizes = windows.map(w => `${w.id}:${w.width}x${w.height}`).sort().join();
-        pin.sizes ??= sizes;
-        this._pinnedSizesUnchanged = pin.sizes === sizes;
+        // A drop retiles three times and the suppression above only covers the first, so who was a
+        // thumbnail at pin time says how long the dropped order still stands. Not pixel sizes, since
+        // the allocator nudges those by a few px between passes.
+        const roles = windows.map(w => {
+            const thumb = WindowState.get(w.metaWindow, IS_MINIATURE) || WindowState.get(w.metaWindow, PENDING_MINIATURE);
+            return `${w.id}:${thumb ? 't' : 'w'}`;
+        }).sort().join();
+        pin.roles ??= roles;
+        this._pinnedRolesUnchanged = pin.roles === roles;
     }
 
     // A single window never overflows; a maximized/fullscreen sibling always forces it.
