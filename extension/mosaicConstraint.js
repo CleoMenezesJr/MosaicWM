@@ -7,6 +7,7 @@ import Meta from 'gi://Meta';
 import Mtk from 'gi://Mtk';
 
 import * as Logger from './logger.js';
+import * as constants from './constants.js';
 import { isWindowAlive } from './liveness.js';
 
 // The interface predates the rect being writable; without set_rect (Mutter 51) the vfunc
@@ -52,11 +53,13 @@ export class MosaicConstraintManager {
         // reason windowState.js exists).
         this._entries = new Map();
         this._moving = new Map();
+        this._requested = new Map();
     }
 
     // A move_resize_frame the solver cannot amend, since the armed constraint outranks
     // the work-area clamp.
     commitRegion(window, region, userOp = false) {
+        this._recordRequest(window, region);
         if (!constraintSupported()) {
             window.move_resize_frame(userOp, region.x, region.y, region.width, region.height);
             return;
@@ -101,6 +104,22 @@ export class MosaicConstraintManager {
         return this._moving.get(window.get_id()) ?? null;
     }
 
+    // Every size we ask for goes through commitRegion, so a frame matching none of the recent
+    // ones is a size the client picked itself, whatever state the ease bookkeeping is in.
+    isOwnRequest(window, rect) {
+        const tol = constants.EASE_TARGET_TOLERANCE_PX;
+        return (this._requested.get(window.get_id()) ?? []).some(size =>
+            Math.abs(rect.width - size.width) <= tol && Math.abs(rect.height - size.height) <= tol);
+    }
+
+    _recordRequest(window, region) {
+        const id = window.get_id();
+        const sizes = this._requested.get(id) ?? [];
+        sizes.push({ width: region.width, height: region.height });
+        if (sizes.length > constants.REQUESTED_SIZE_HISTORY) sizes.shift();
+        this._requested.set(id, sizes);
+    }
+
     _ensure(window) {
         const id = window.get_id();
         let entry = this._entries.get(id);
@@ -116,6 +135,7 @@ export class MosaicConstraintManager {
     detach(window) {
         const id = window?.get_id?.();
         if (id === undefined) return;
+        this._requested.delete(id);
         const entry = this._entries.get(id);
         if (!entry) return;
         // A dead window segfaults libmutter, so only live ones get the removal call.
@@ -131,6 +151,7 @@ export class MosaicConstraintManager {
                 entry.window.remove_external_constraint(entry.constraint);
         }
         this._entries.clear();
+        this._requested.clear();
     }
 }
 

@@ -12,6 +12,7 @@ import { TileZone } from './constants.js';
 import { isResizeGrabOp } from './grabOps.js';
 import { isWorkspaceAlive, isWindowAlive } from './liveness.js';
 import { MosaicModel } from './mosaicModel.js';
+import { MosaicConstraints } from './mosaicConstraint.js';
 
 import GObject from 'gi://GObject';
 
@@ -533,15 +534,18 @@ export const ResizeHandler = GObject.registerClass({
     }
 
     // An ease echoes back the size the layout picked, which says nothing about what the window
-    // wants. Anything else arriving mid-ease is the client's own size. No target means no echo.
+    // wants. No target means no echo. Ownership is checked against our own commits instead,
+    // since plenty of paths raise isMosaicResizing with no target to compare against.
     _classifyEase(window, rect) {
-        const easeTarget = WindowState.get(window, 'isMosaicResizing')
+        const isMosaicResizing = WindowState.get(window, 'isMosaicResizing');
+        const easeTarget = isMosaicResizing
             ? this.animationsManager.getAnimatingTarget(window.get_id())
             : null;
         const isEaseEcho = !!easeTarget &&
             Math.abs(rect.width - easeTarget.width) <= constants.EASE_TARGET_TOLERANCE_PX &&
             Math.abs(rect.height - easeTarget.height) <= constants.EASE_TARGET_TOLERANCE_PX;
-        return { isEaseEcho, clientOwnedSize: !!easeTarget && !isEaseEcho };
+        const clientOwnedSize = !!isMosaicResizing && !MosaicConstraints.isOwnRequest(window, rect);
+        return { isEaseEcho, clientOwnedSize };
     }
 
     _updatePreferredSizeFromResize(window, rect, { isConstrained, userForcedResize, isMonitorSized, clientOwnedSize }) {

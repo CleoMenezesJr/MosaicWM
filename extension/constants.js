@@ -107,6 +107,8 @@ export const ANIMATION_DIFF_THRESHOLD = 10;
 // Slack for recognizing a committed size as the ease's own echo; beyond it, the
 // size is one the client picked for itself.
 export const EASE_TARGET_TOLERANCE_PX = 2;
+// A sibling gets a commit per tick during a manual resize, so the ack that lands can be a few behind.
+export const REQUESTED_SIZE_HISTORY = 4;
 
 // Fallback when get_min_size() has no hint
 export const SMART_RESIZE_MIN_WINDOW_WIDTH = 100;
