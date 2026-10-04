@@ -5,6 +5,7 @@
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
+import Shell from 'gi://Shell';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -33,9 +34,16 @@ export const WindowHandler = GObject.registerClass({
         this._overflowInProgress = false;
         this._windowSignals = new WeakMap(); // WeakMap so signal IDs are released when the window is GC'd
         this._readinessWaiters = new Set();
+
+        this._shiftLaunches = new Map(); // startup sequence id -> launched .desktop path
+        this._windowTracker = Shell.WindowTracker.get_default();
+        this._startupChangedId = this._windowTracker.connect('startup-sequence-changed',
+            (tracker, sequence) => this._onStartupSequenceChanged(sequence));
     }
 
     destroy() {
+        this._windowTracker.disconnect(this._startupChangedId);
+        this._shiftLaunches.clear();
         for (const entry of this._evaluationQueue)
             WindowState.remove(entry.window, 'pendingInQueue');
         this._evaluationQueue = [];
@@ -883,14 +891,50 @@ export const WindowHandler = GObject.registerClass({
         return result;
     }
 
+    // Shift is read when the Shell launches the app, not when the window appears, so an
+    // in-app shortcut like Ctrl+Shift+N doesn't count. Wayland windows carry no startup id
+    // at creation, so the launch is matched by app instead.
+    _onStartupSequenceChanged(sequence) {
+        const id = sequence.get_id();
+        if (!this._windowTracker.get_startup_sequences().some(s => s.get_id() === id)) {
+            this._shiftLaunches.delete(id);
+            return;
+        }
+
+        const appFile = sequence.get_application_id();
+        if (!appFile || sequence.get_completed() || this._shiftLaunches.has(id)) return;
+
+        const [, , mods] = global.get_pointer();
+        const launchMods = mods & (Clutter.ModifierType.SHIFT_MASK | Clutter.ModifierType.CONTROL_MASK |
+            Clutter.ModifierType.MOD1_MASK | Clutter.ModifierType.MOD4_MASK | Clutter.ModifierType.SUPER_MASK);
+        if (launchMods === Clutter.ModifierType.SHIFT_MASK) {
+            this._shiftLaunches.set(id, appFile);
+            Logger.log(`Shift launch of ${appFile}, next window goes always-on-top`);
+        }
+    }
+
+    // Completion isn't checked here since some clients complete their sequence before
+    // their first window exists; Mutter drops it 15s after launch either way.
+    _takeShiftLaunch(window) {
+        if (this._shiftLaunches.size === 0) return false;
+
+        const appFile = this._windowTracker.get_window_app(window)?.get_app_info()?.get_filename();
+        for (const [id, file] of this._shiftLaunches) {
+            if (file === appFile) {
+                this._shiftLaunches.delete(id);
+                return true;
+            }
+        }
+        return false;
+    }
+
     onWindowCreated(window) {
         this.windowingManager.invalidateWindowsCache();
 
-        // Shift held at launch: make always-on-top before any tiling runs
-        const [, , creationMods] = global.get_pointer();
-        if (creationMods & Clutter.ModifierType.SHIFT_MASK) {
+        // Before any tiling runs, so the window never enters the mosaic
+        if (this._takeShiftLaunch(window)) {
             window.make_above();
-            Logger.log(`Window ${window.get_id()} opened with Shift, set always-on-top`);
+            Logger.log(`Window ${window.get_id()} launched with Shift, set always-on-top`);
         }
 
         if (this.windowingManager.isMaximizedOrFullscreen(window)) {
