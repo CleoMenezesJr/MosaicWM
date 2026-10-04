@@ -10,19 +10,6 @@ import * as Logger from './logger.js';
 import * as constants from './constants.js';
 import { isWindowAlive } from './liveness.js';
 
-// The interface predates the rect being writable; without set_rect (Mutter 51) the vfunc
-// can only read, so the whole path stays off. Feature-detected since a backport would
-// make a version check lie.
-let _supported = null;
-export function constraintSupported() {
-    if (_supported === null) {
-        _supported = typeof Meta.ExternalConstraintInfo?.prototype?.set_rect === 'function' &&
-            typeof Meta.Window?.prototype?.add_external_constraint === 'function';
-        Logger.log(`External constraint support: ${_supported}`);
-    }
-    return _supported;
-}
-
 const MosaicRegionConstraint = GObject.registerClass({
     GTypeName: 'MosaicRegionConstraint',
     Implements: [Meta.ExternalConstraint],
@@ -60,11 +47,6 @@ export class MosaicConstraintManager {
     // the work-area clamp.
     commitRegion(window, region, userOp = false) {
         this._recordRequest(window, region);
-        if (!constraintSupported()) {
-            window.move_resize_frame(userOp, region.x, region.y, region.width, region.height);
-            return;
-        }
-
         const { constraint } = this._ensure(window);
         constraint.armed = region;
         try {
@@ -78,21 +60,14 @@ export class MosaicConstraintManager {
     // frame lands short of the region before the resize ever reaches the client.
     moveThenCommit(window, region, userOp = false) {
         const id = window.get_id();
+        const { constraint } = this._ensure(window);
+        const frame = window.get_frame_rect();
+        constraint.armed = { x: region.x, y: region.y, width: frame.width, height: frame.height };
         this._moving.set(id, region);
         try {
-            if (!constraintSupported()) {
-                window.move_frame(userOp, region.x, region.y);
-            } else {
-                const { constraint } = this._ensure(window);
-                const frame = window.get_frame_rect();
-                constraint.armed = { x: region.x, y: region.y, width: frame.width, height: frame.height };
-                try {
-                    window.move_frame(userOp, region.x, region.y);
-                } finally {
-                    constraint.armed = null;
-                }
-            }
+            window.move_frame(userOp, region.x, region.y);
         } finally {
+            constraint.armed = null;
             this._moving.delete(id);
         }
         this.commitRegion(window, region, userOp);

@@ -11,11 +11,11 @@ function hintToFrame(window, width, height) {
 }
 
 export function frameMinSize(window) {
-    const [known, width, height] = window.get_min_size?.() ?? [false, 0, 0];
+    const [known, width, height] = window.get_min_size();
     return known ? hintToFrame(window, width, height) : null;
 }
 
 export function frameMaxSize(window) {
-    const [known, width, height] = window.get_max_size?.() ?? [false, 0, 0];
+    const [known, width, height] = window.get_max_size();
     return known && width > 0 && height > 0 ? hintToFrame(window, width, height) : null;
 }
