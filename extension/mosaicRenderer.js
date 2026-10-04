@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Renders the mosaic model onto its surfaces: real windows, or the overview's clones
 
+import { lerp } from 'resource:///org/gnome/shell/misc/util.js';
+
 import * as Logger from './logger.js';
 import { MosaicModel } from './mosaicModel.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
@@ -14,6 +16,7 @@ export class MosaicRenderer {
         // The shell builds a fresh WorkspaceLayout per overview session, so these only
         // hold while it is open; clearOverviewLayouts drops them on hide.
         this._overviewLayouts = new Map();
+        this._slotBlends = [];
     }
 
     // Same key shape as MosaicModel: workspace index plus monitor, not the GObject
@@ -33,7 +36,47 @@ export class MosaicRenderer {
     }
 
     clearOverviewLayouts() {
+        this._stopSlotBlends();
         this._overviewLayouts.clear();
+    }
+
+    // Leaving the overview freezes its slots before 'hiding', and the shell never lets a window
+    // drop below its slot on the way out, so a window miniaturized in 'hiding' rides out at full
+    // size and snaps small on 'hidden'. Sliding each slot to the published one as the state
+    // runs 1 -> 0 starts from the frozen geometry and lands where the desktop is.
+    blendFrozenOverviewSlots() {
+        for (const layouts of this._overviewLayouts.values()) {
+            for (const layout of layouts) {
+                if (!layout._needsLayout || !layout._windowSlots || !layout._windowSlotsBox) continue;
+
+                const from = layout._windowSlots.map(slot => [...slot]);
+                layout._layout = layout._createBestLayout(layout._workarea);
+                const to = new Map(layout._getWindowSlots(layout._windowSlotsBox).map(slot => [slot[4], slot]));
+
+                const adjustment = layout._stateAdjustment;
+                const blend = () => {
+                    const t = adjustment.value;
+                    layout._windowSlots = from.map(([x, y, w, h, child]) => {
+                        const target = to.get(child);
+                        if (!target) return [x, y, w, h, child];
+                        return [
+                            lerp(target[0], x, t), lerp(target[1], y, t),
+                            lerp(target[2], w, t), lerp(target[3], h, t), child,
+                        ];
+                    });
+                };
+                adjustment.connectObject('notify::value', blend, layout);
+                this._slotBlends.push([adjustment, layout]);
+                blend();
+                Logger.log(`[RENDER] Blending ${from.length} frozen overview slot(s) toward the published layout`);
+            }
+        }
+    }
+
+    _stopSlotBlends() {
+        for (const [adjustment, layout] of this._slotBlends)
+            adjustment.disconnectObject(layout);
+        this._slotBlends = [];
     }
 
     // _needsLayout is the flag vfunc_allocate actually gates on before rebuilding slots;
@@ -70,6 +113,7 @@ export class MosaicRenderer {
     }
 
     destroy() {
+        this._stopSlotBlends();
         this._overviewLayouts.clear();
     }
 }

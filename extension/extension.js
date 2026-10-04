@@ -182,6 +182,12 @@ export default class WindowMosaicExtension extends Extension {
         }
     }
 
+    _runPendingOverviewHiddenCallbacks() {
+        const deferred = this._pendingOverviewHiddenCallbacks;
+        this._pendingOverviewHiddenCallbacks = [];
+        for (const cb of deferred) cb();
+    }
+
     _workspaceSwitchedHandler = () => {
         const newWorkspace = this._workspaceManager.get_active_workspace();
         const newIndex = newWorkspace.index();
@@ -530,19 +536,18 @@ export default class WindowMosaicExtension extends Extension {
         // Mutter already accepts move_resize_frame here, so real windows are in place
         // before the closing animation finishes and nothing flashes untiled.
         this._onOverviewHidingId = Main.overview.connect('hiding', () => {
-            // A restored window's group region is still its old miniature size here, so flushing
-            // would shrink it before the pass deferred to 'hidden' grows it back.
-            if (this._pendingOverviewHiddenCallbacks.length > 0) return;
+            // Before the flush, since a restored window's group region is still its miniature size
+            // until its pass runs.
+            this._runPendingOverviewHiddenCallbacks();
+            this.mosaicRenderer?.blendFrozenOverviewSlots();
             Logger.log('[FLUSH] triggered by hiding');
             this._flushMosaicToWindows();
         });
         this._onOverviewHiddenId = Main.overview.connect('hidden', () => {
             this.animationsManager.setOverviewActive(false);
             this.miniatureManager?.setOverviewActive(false);
-            // Before the flush, so the deferred pass eases on the bare desktop instead of under the exit transition.
-            const deferred = this._pendingOverviewHiddenCallbacks;
-            this._pendingOverviewHiddenCallbacks = [];
-            for (const cb of deferred) cb();
+            // Overview stays visible through the exit, so a restore that lands during it is still queued.
+            this._runPendingOverviewHiddenCallbacks();
             // A slot can get recomputed between 'hiding' and 'hidden'; this catches that window's final value.
             Logger.log('[FLUSH] triggered by hidden');
             this._flushMosaicToWindows();
@@ -786,9 +791,8 @@ export default class WindowMosaicExtension extends Extension {
             if (!fits) this._refuseMiniatureRestore(window, workspace, monitor);
         };
 
-        // Miniaturization rides the actor scale while the frame stays full-size, so running it
-        // now would let the overview's exit transition animate the sibling to its full frame
-        // and then snap it small.
+        // Mutter drops move_resize_frame while the overview is open and only takes them
+        // again from 'hiding', so the pass waits for that.
         if (Main.overview.visible) {
             Logger.log('Deferring miniature restore tiling until the overview hides');
             this._pendingOverviewHiddenCallbacks.push(doTile);
