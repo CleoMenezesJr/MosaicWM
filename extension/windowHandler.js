@@ -615,6 +615,7 @@ export const WindowHandler = GObject.registerClass({
                     WindowState.remove(entry.window, 'pendingInQueue');
                 this._evaluationQueue = [];
                 this._isEvaluatingQueue = false;
+                this._ext.resizeHandler?.flushQueueDeferredRetiles();
             });
         }
     }
@@ -662,6 +663,7 @@ export const WindowHandler = GObject.registerClass({
         }
 
         this._isEvaluatingQueue = false;
+        this._ext.resizeHandler?.flushQueueDeferredRetiles();
     }
 
     // Recover from a workspace removed mid-flight (async smart resize can leave index -1),

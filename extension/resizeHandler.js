@@ -34,6 +34,7 @@ export const ResizeHandler = GObject.registerClass({
         this._manualResizeWindowId = null;
         this._pendingResizeTick = null;
         this._resizeTickCancel = null;
+        this._queueDeferredRetiles = [];
     }
 
     get windowingManager() { return this._ext.windowingManager; }
@@ -764,6 +765,14 @@ export const ResizeHandler = GObject.registerClass({
             return true;
         }
 
+        // The queue's pass already drew with the size it read on arrival and won't look again,
+        // so a client growing in the meantime has to be laid out once the queue is done.
+        if (this._ext.windowHandler?.isEvaluatingQueue) {
+            this._deferUntilQueueDrains(workspace, monitor);
+            this._sizeChanged = false;
+            return true;
+        }
+
         if (this._resolveSettledOverflow(window, workspace, monitor, canFit)) {
             return true;
         }
@@ -797,16 +806,13 @@ export const ResizeHandler = GObject.registerClass({
     }
 
     // Reasons a settled-resize retile is a no-op: still in the reverse-resize grace window,
-    // a smart resize owns the geometry, the arrival queue or a drag is already tiling, or an
+    // a smart resize owns the geometry, a drag is already tiling, or an
     // edge-tile exit is restoring full size into a tight mosaic (must miniaturize, not eject).
     _settledResizeShouldSkip(window, now) {
         if (this._resizeGracePeriod && (now - this._resizeGracePeriod) < constants.REVERSE_RESIZE_PROTECTION_MS) {
             return true;
         }
         if (this.tilingManager._isSmartResizingBlocked) {
-            return true;
-        }
-        if (this._ext.windowHandler && this._ext.windowHandler.isEvaluatingQueue) {
             return true;
         }
         if (this.tilingManager.isDragging) {
@@ -816,6 +822,26 @@ export const ResizeHandler = GObject.registerClass({
             return true;
         }
         return false;
+    }
+
+    _deferUntilQueueDrains(workspace, monitor) {
+        if (this._queueDeferredRetiles.some(d => d.workspace === workspace && d.monitor === monitor)) return;
+        this._queueDeferredRetiles.push({ workspace, monitor });
+    }
+
+    flushQueueDeferredRetiles() {
+        const deferred = this._queueDeferredRetiles;
+        this._queueDeferredRetiles = [];
+        for (const { workspace, monitor } of deferred) {
+            if (!isWorkspaceAlive(workspace)) continue;
+            this._sizeChanged = true;
+            try {
+                this.tilingManager.measureEvent('resize-settle', () =>
+                    this.tilingManager.retileWithAllocation(workspace, monitor, null, { keepOversized: true }));
+            } finally {
+                this._sizeChanged = false;
+            }
+        }
     }
 
     // The drag flag and the edge-tiling stamp both mean the same thing here, just raised by
@@ -855,6 +881,7 @@ export const ResizeHandler = GObject.registerClass({
             this._resizeDebounceTimeout = null;
         }
         this._cancelResizeTick();
+        this._queueDeferredRetiles = [];
         this._manualResizeWindowId = null;
         this._resizeInOverflow = false;
         this._resizeOverflowWindow = null;
