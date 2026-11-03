@@ -3409,7 +3409,7 @@ export const TilingManager = GObject.registerClass({
         const id = w.get_id();
         const isThumb = !!(WindowState.get(w, IS_MINIATURE) || WindowState.get(w, PENDING_MINIATURE));
         const ref = (isThumb && WindowState.get(w, PRE_MINIATURE_SIZE)) || w.get_frame_rect();
-        const { preferred, min, threshold } = this._windowSizeBounds(w, tileArea);
+        const { natural, preferred, min, threshold } = this._windowSizeBounds(w, tileArea);
         return {
             id,
             mode: isThumb ? 'thumbnail' : 'window',
@@ -3417,6 +3417,7 @@ export const TilingManager = GObject.registerClass({
             capAtThreshold: !isThumb && this._isCappedParticipant(w, reference),
             mruRank: mru.get(id) ?? Number.MAX_SAFE_INTEGER,
             current: { width: d.width, height: d.height },
+            natural,
             preferred,
             min,
             threshold,
@@ -3426,17 +3427,22 @@ export const TilingManager = GObject.registerClass({
     }
 
     // Neither preferred nor threshold may sit under what the client enforces, and a saved
-    // preferred can.
+    // preferred can. Nor past the packing area, where an arrival held at it can't fit even alone.
     _windowSizeBounds(w, tileArea) {
         const min = this.getWindowMinimumSize(w);
         const saved = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'openingSize') || this.getEffectiveWindowSize(w);
-        const preferred = { width: Math.max(saved.width, min.width), height: Math.max(saved.height, min.height) };
+        const natural = { width: Math.max(saved.width, min.width), height: Math.max(saved.height, min.height) };
+        const area = packingArea(tileArea);
+        const preferred = {
+            width: Math.max(Math.min(natural.width, area.width), min.width),
+            height: Math.max(Math.min(natural.height, area.height), min.height),
+        };
         const { thresholdW, thresholdH } = this._miniatureThreshold(w, tileArea);
         const threshold = {
             width: Math.round(Math.min(Math.max(thresholdW, min.width), preferred.width)),
             height: Math.round(Math.min(Math.max(thresholdH, min.height), preferred.height)),
         };
-        return { preferred, min: { width: min.width, height: min.height }, threshold };
+        return { natural, preferred, min: { width: min.width, height: min.height }, threshold };
     }
 
     _isFixedParticipant(w, reference, resizingWindowId) {
@@ -3587,7 +3593,8 @@ export const TilingManager = GObject.registerClass({
         const near = (a, b) => a && Math.abs(a.width - b.width) <= 2 && Math.abs(a.height - b.height) <= 2;
         const d = { window: w, current: p.preferred };
         if (this._applyGrowBack(w, d, size)) return true;
-        if (size.width >= p.preferred.width - 2 && size.height >= p.preferred.height - 2) return false;
+        // Against natural, since a preferred clamped to the area still leaves the frame past it.
+        if (size.width >= p.natural.width - 2 && size.height >= p.natural.height - 2) return false;
         if (near(WindowState.get(w, 'targetSmartResizeSize'), size) || near(w.get_frame_rect(), size)) return false;
         this._applyPlainShrink(w, d, size);
         return false;
@@ -3624,7 +3631,7 @@ export const TilingManager = GObject.registerClass({
             this._pendingMiniatureWindows = (this._pendingMiniatureWindows ?? []).filter(pm => pm.window !== w);
         }
         WindowState.set(w, 'targetRestoredSize', { width: size.width, height: size.height });
-        const shrunk = size.width < p.preferred.width - 2 || size.height < p.preferred.height - 2;
+        const shrunk = size.width < p.natural.width - 2 || size.height < p.natural.height - 2;
         WindowState.set(w, 'isConstrainedByMosaic', shrunk);
         if (!shrunk) {
             WindowState.set(w, 'targetSmartResizeSize', null);
