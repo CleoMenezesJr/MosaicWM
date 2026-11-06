@@ -120,6 +120,7 @@ export const SLIDE_IN_FAILSAFE_MS = 1000;     // Re-check interval if a window's
 export const QUEUE_PROCESS_DELAY_MS = 100;   // Delay between processing window opening queue items (Mutter settling)
 
 export const MINIATURE_TARGET_SIZE_PX = 256;  // Longest side of a miniaturized window
+export const MINIATURE_MAX_SCALE = 0.9;  // Scale above which a thumbnail is barely smaller than its window
 // With 2 the least recent window moves three times as fast along its axis as the most recent,
 // so it's the first to cross into a thumbnail.
 export const ALLOCATOR_MRU_RATE_SLOPE = 2;

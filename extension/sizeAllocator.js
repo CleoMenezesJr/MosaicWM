@@ -31,7 +31,18 @@ export function axisOf(p) {
         return span > 0 ? (p.preferred[axis] - p.threshold[axis]) / span : 1;
     };
     const t = Math.max(0, Math.min(1, crossAt('width'), crossAt('height')));
-    return { total, pLim: t * legA / total };
+    return { total, pLim: Math.max(t, visibleShrinkAt(p)) * legA / total };
+}
+
+// A thumbnail at nearly its frame's size frees almost nothing and reads as the window itself.
+function visibleShrinkAt(p) {
+    const at = axis => {
+        const span = p.preferred[axis] - p.min[axis];
+        if (span <= 0) return Infinity;
+        return (p.preferred[axis] - constants.MINIATURE_MAX_SCALE * p.aspectRef[axis]) / span;
+    };
+    const t = Math.min(at('width'), at('height'));
+    return Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : 0;
 }
 
 // The mode never changes the size the walk asked for; a thumbnail only has to keep its frame's
