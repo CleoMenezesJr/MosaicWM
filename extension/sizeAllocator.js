@@ -35,11 +35,12 @@ export function axisOf(p) {
 }
 
 // A thumbnail at nearly its frame's size frees almost nothing and reads as the window itself.
+// Measured off preferred, since the frame is what this cap shrinks; it'd ratchet down every pass.
 function visibleShrinkAt(p) {
     const at = axis => {
         const span = p.preferred[axis] - p.min[axis];
         if (span <= 0) return Infinity;
-        return (p.preferred[axis] - constants.MINIATURE_MAX_SCALE * p.aspectRef[axis]) / span;
+        return (p.preferred[axis] - constants.MINIATURE_MAX_SCALE * p.preferred[axis]) / span;
     };
     const t = Math.min(at('width'), at('height'));
     return Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : 0;
@@ -52,12 +53,20 @@ export function sizeFor(p, mode, pos) {
     const pA = total > 0 ? legA / total : 1;
     if (pos <= pA || pA >= 1) {
         const fit = lerp(p.preferred, p.min, pA > 0 ? Math.min(1, pos / pA) : 0);
-        return mode === 'window' ? fit : fitInto(p.aspectRef, fit);
+        return mode === 'window' ? fit : visiblyShrunk(p, fitInto(p.aspectRef, fit));
     }
     const start = longest(fitInto(p.aspectRef, p.min));
     const g = (pos - pA) / (1 - pA);
     const k = (start + (longest(p.floor) - start) * g) / longest(p.aspectRef);
-    return { width: Math.round(p.aspectRef.width * k), height: Math.round(p.aspectRef.height * k) };
+    return visiblyShrunk(p, { width: Math.round(p.aspectRef.width * k), height: Math.round(p.aspectRef.height * k) });
+}
+
+// The crossing cap is off preferred, so a frame already held under it would cross at ~1.0 scale.
+function visiblyShrunk(p, size) {
+    return fitInto(size, {
+        width: Math.floor(constants.MINIATURE_MAX_SCALE * p.aspectRef.width),
+        height: Math.floor(constants.MINIATURE_MAX_SCALE * p.aspectRef.height),
+    });
 }
 
 // A thumbnail only comes back once it's clear of the threshold by the margin; coming back right
