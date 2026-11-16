@@ -429,6 +429,12 @@ export const WindowingManager = GObject.registerClass({
         return frame.width >= geom.width && frame.height >= geom.height;
     }
 
+    // Excluded windows (minimized, always on top, a client's hidden helper) take none of the
+    // mosaic, so a sacred window never has to leave the workspace for them.
+    getMosaicOccupants(workspace, monitor) {
+        return this.getMonitorWorkspaceWindows(workspace, monitor).filter(w => !this.isExcluded(w));
+    }
+
     hasSacredWindow(workspace, monitor, excludeWindowId = null) {
         if (!workspace || monitor === null || monitor === undefined)
             return false;

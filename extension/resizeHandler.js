@@ -299,7 +299,7 @@ export const ResizeHandler = GObject.registerClass({
             return;
         }
         if (!this.windowingManager.isMaximizedOrFullscreen(window) ||
-            this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor).length <= 1) {
+            this.windowingManager.getMosaicOccupants(workspace, monitor).length <= 1) {
             return;
         }
 
@@ -317,7 +317,7 @@ export const ResizeHandler = GObject.registerClass({
 
             const currentWorkspace = window.get_workspace();
             const currentMonitor = window.get_monitor();
-            if (!currentWorkspace || this.windowingManager.getMonitorWorkspaceWindows(currentWorkspace, currentMonitor).length <= 1) {
+            if (!currentWorkspace || this.windowingManager.getMosaicOccupants(currentWorkspace, currentMonitor).length <= 1) {
                 Logger.log(`[SACRED-ENTER] Window ${window.get_id()} workspace no longer occupied - skipping isolation`);
                 return GLib.SOURCE_REMOVE;
             }

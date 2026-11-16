@@ -823,7 +823,7 @@ export const WindowHandler = GObject.registerClass({
     async _ensureFitsSacred(window, workspace, monitor) {
         const isIncomingSacred = this.windowingManager.isMaximizedOrFullscreen(window);
         const hasExistingSacred = this.windowingManager.hasSacredWindow(workspace, monitor, window.get_id());
-        const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor)
+        const workspaceWindows = this.windowingManager.getMosaicOccupants(workspace, monitor)
             .filter(w => !WindowState.get(w, 'pendingInQueue'));
         const otherWindows = workspaceWindows.filter(w => w.get_id() !== window.get_id());
 
@@ -1105,7 +1105,7 @@ export const WindowHandler = GObject.registerClass({
         }
 
         this.windowingManager.invalidateWindowsCache();
-        const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
+        const workspaceWindows = this.windowingManager.getMosaicOccupants(workspace, monitor);
         const otherWindows = workspaceWindows.filter(w => w.get_id() !== window.get_id());
 
         if (otherWindows.length > 0) {
