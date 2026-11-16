@@ -412,10 +412,11 @@ export const WindowingManager = GObject.registerClass({
     // Some game engines (Unity's borderless "Fullscreen Window" mode) resize to the monitor's
     // resolution without setting the WM's real maximize/fullscreen state, so nothing marks
     // them sacred and mosaic shrinks then miniaturizes them like any oversized window. Catch
-    // the shape instead: no preferred/opening size captured yet, and the frame already covers
+    // the shape instead: no preferred size captured yet, and the frame already covers
     // the whole physical monitor, which normal placement (even maximized) never reaches.
+    // openingSize doesn't count, since the sacred path writes it for these very windows.
     _looksNativelyFullscreen(window) {
-        if (WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize'))
+        if (WindowState.get(window, 'preferredSize'))
             return false;
 
         const monitor = window.get_monitor();
