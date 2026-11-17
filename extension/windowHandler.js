@@ -789,7 +789,8 @@ export const WindowHandler = GObject.registerClass({
         // Save preferred size after sacred checks, to avoid capturing monitor-sized dimensions
         this.tilingManager.savePreferredSize(window);
 
-        if (arrivedFromDnD) {
+        // A maximized arrival was never shrunk, so its preferred size is the pre-maximize one.
+        if (arrivedFromDnD && !this.windowingManager.isMaximizedOrFullscreen(window)) {
             this._handleDnDArrival(window, workspace, monitor);
         }
 
