@@ -8,8 +8,8 @@ const settled = (frame, target) =>
     Math.abs(frame.width - target.width) <= constants.EASE_TARGET_TOLERANCE_PX &&
     Math.abs(frame.height - target.height) <= constants.EASE_TARGET_TOLERANCE_PX;
 
-// A Wayland client commits the new size whenever it gets to it, sometimes well over a second
-// later, so easing the scale to 1 shows the old buffer at its old size the moment the ease
+// A Wayland client commits the new size when it can, sometimes well over a second
+// later, so easing the scale to 1 reveals the old buffer at its old size once the ease
 // ends. Scaling to slot/frame instead keeps the slot filled, and each reallocation re-aims.
 export function followResize(window, actor, target, { duration, mode, registry }) {
     let allocId = 0;
@@ -42,8 +42,8 @@ export function followResize(window, actor, target, { duration, mode, registry }
         timeoutId = null;
     };
 
-    // The actor resizes with the buffer in one frame, so the scale is rebased to keep what's on
-    // screen still before easing on toward the slot.
+    // The actor resizes alongside the buffer in one frame, so the scale is rebased to hold what's
+    // on screen steady before easing on toward the slot.
     allocId = actor.connect('notify::allocation', () => {
         if (actor.is_destroyed()) return;
         const frame = window.get_frame_rect();
@@ -63,8 +63,9 @@ export function followResize(window, actor, target, { duration, mode, registry }
     }, 'resizeFollower_release') ?? null;
 
     aim(duration);
-    // Leaving the scale where the follower had it would draw the window at a stale slot for good,
-    // since nothing rebases it once the follower lets go.
+    // Keeping the scale where the follower left it would draw the window at a stale slot
+    // permanently,
+    // since nothing rebases it once the follower releases.
     const cancel = ({ resetScale = false } = {}) => {
         detach();
         if (!resetScale || actor.is_destroyed()) return;

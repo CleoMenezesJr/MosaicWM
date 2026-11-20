@@ -6,9 +6,9 @@ import * as Workspace from 'resource:///org/gnome/shell/ui/workspace.js';
 import { ComputedLayouts } from './mosaicModel.js';
 import { WINDOW_SPACING } from './constants.js';
 
-// Scales down the layout instead of reorganizing windows (preserves spatial memory)
-// Overview clones expose the window directly or behind .source depending on where the
-// shell built them, so never reach for .metaWindow on its own.
+// Shrinks the layout rather than rearranging windows (keeps spatial memory)
+// Overview clones reveal the window directly or via .source based on where the
+// shell created them, so never use .metaWindow by itself.
 function metaWindowOf(clone) {
     return clone.metaWindow || clone.source?.metaWindow;
 }
@@ -30,7 +30,7 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
             return [];
         }
 
-        // Attached dialogs and transients ride along with their parent, so no slot of their own.
+        // Attached dialogs and transients travel with their parent, so no slot of their own.
         const filteredClones = clones.filter(clone => {
             const metaWindow = metaWindowOf(clone);
             if (!metaWindow) return true;
@@ -76,11 +76,11 @@ export class MosaicLayoutStrategy extends Workspace.LayoutStrategy {
             const mw = metaWindowOf(clone);
             if (!mw) continue;
 
-            // The mosaic's computed layout beats the live frame; mid-animation the frame is
-            // a transient size and the overview would mirror the blur.
+            // The mosaic's computed layout outweighs the live frame; mid-animation the frame
+            // is a temporary size and the overview would copy the blur.
             const rect = ComputedLayouts.get(mw) || mw.get_frame_rect();
-            // A window still mapping has no computed region and a 0x0 frame, which the gap
-            // subtraction below would turn into a negative size. The next pass republishes it.
+            // A window still mapping has no computed region and a 0x0 frame; the gap
+            // subtraction below would yield a negative size. The next pass republishes it.
             if (!rect || rect.width <= 0 || rect.height <= 0) continue;
 
             const x = (rect.x - workArea.x) * scale + area.x + offsetX + gap;

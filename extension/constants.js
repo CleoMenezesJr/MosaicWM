@@ -4,18 +4,18 @@
 
 export const WINDOW_SPACING = 8;
 
-// Cap on distinct drag candidates kept after de-duplication so the live nearest search
-// stays cheap. A safety net that keeps the current layout, so it never drops a reachable one.
+// Limit on unique drag candidates retained after de-duplication, keeping the live nearest search
+// cheap. A safeguard retaining the current layout, so no reachable one is lost.
 export const MAX_DRAG_LAYOUTS = 48;
-// Wall-clock ceiling for composition generation at drag start; a last-resort guard
-// against pathological window counts.
+// Wall-clock limit for composition generation on drag start; a final guard against pathological
+// window counts.
 export const DRAG_LAYOUT_TIME_BUDGET_MS = 8;
-// Counted, not timed: a clock ceiling makes the same windows land in different layouts
-// depending on how busy the shell was. Sized so four windows always scan in full, both
-// orientations included (24 orders x 6 shapes).
+// Counted, not timed: a clock limit can land the same windows in different layouts according to
+// shell load. Sized so four windows always scan fully, both orientations included (24 orders x 6
+// shapes).
 export const LAYOUT_SEARCH_CANDIDATE_BUDGET = 192;
-// A Super+Arrow only counts as an action if it moves the focused window's center at
-// least this far in the pressed direction; below it the key is a no-op.
+// A Super+Arrow qualifies as an action only when it moves the focused window's center at least this
+// far in the pressed direction; below it the key is a no-op.
 export const KEYBOARD_RECOMPOSE_MIN_DISPLACEMENT_PX = 20;
 
 export const WINDOW_VALIDITY_CHECK_INTERVAL_MS = 10;
@@ -31,8 +31,8 @@ export const TileZone = Object.freeze({
     FULLSCREEN: 7
 });
 
-// Zones that have no side or half (NONE, FULLSCREEN) are absent on purpose; a
-// lookup miss reads as undefined and never matches a real side.
+// Zones lacking a side or half (NONE, FULLSCREEN) are omitted deliberately; a lookup miss yields
+// undefined and never matches a real side.
 export const ZONE_SIDE = Object.freeze({
     [TileZone.LEFT_FULL]: 'left',
     [TileZone.TOP_LEFT]: 'left',
@@ -49,13 +49,13 @@ export const ZONE_HALF = Object.freeze({
     [TileZone.BOTTOM_RIGHT]: 'bottom'
 });
 
-// Inverse of ZONE_SIDE/ZONE_HALF: what each side can offer.
+// Reverse of ZONE_SIDE/ZONE_HALF: what each side can provide.
 export const SIDE_ZONES = Object.freeze({
     left: { full: TileZone.LEFT_FULL, top: TileZone.TOP_LEFT, bottom: TileZone.BOTTOM_LEFT },
     right: { full: TileZone.RIGHT_FULL, top: TileZone.TOP_RIGHT, bottom: TileZone.BOTTOM_RIGHT }
 });
 
-// The quarter sharing a side with this one, i.e. the one stacked against it.
+// The quarter sharing a side with this one, i.e. the one adjoining it.
 export const ZONE_VERTICAL_PAIR = Object.freeze({
     [TileZone.TOP_LEFT]: TileZone.BOTTOM_LEFT,
     [TileZone.BOTTOM_LEFT]: TileZone.TOP_LEFT,
@@ -92,25 +92,25 @@ export const RESIZE_CLAMP_VERIFY_DELAY_MS = 400; // Quiet time after a deferred 
 export const RESIZE_CLAMP_MAX_WAIT_MS = 3000; // A frame that hasn't moved at all by now is a client ignoring the resize, not a slow one
 export const PIN_OVERFLOW_GRACE_MS = 300; // Overflow must survive this long before a pinned shape is dropped for good
 export const ISRESIZING_FLAG_RESET_MS = 2;
-// Mutter can skip the size-changed confirmation on a fast maximize/unmaximize
-// toggle, so force the move after this long instead of leaving the window stuck.
+// Mutter may skip the size-changed confirmation on a fast maximize/unmaximize toggle, so force the
+// move after this long rather than leave the window stuck.
 export const SACRED_RESTORE_SAFETY_TIMEOUT_MS = 1500;
-// New windows fire both window-created and window-added, which would otherwise
-// evaluate them twice. Skip a re-enqueue if we just evaluated this window.
+// New windows emit both window-created and window-added, otherwise evaluating them twice. Skip a
+// re-enqueue if this window was just evaluated.
 export const DUPLICATE_EVALUATION_WINDOW_MS = 300;
-// Wait this long after a maximize before isolating the window, so a quick
-// maximize/unmaximize toggle never even starts the move.
+// Delay this long after a maximize before isolating the window, so a quick maximize/unmaximize
+// toggle never begins the move.
 export const SACRED_ENTER_DEBOUNCE_MS = 200;
 
 export const ANIMATION_DIFF_THRESHOLD = 10;
 
-// Slack for recognizing a committed size as the ease's own echo; beyond it, the
-// size is one the client picked for itself.
+// Leeway for seeing a committed size as the ease's own echo; past it, the client picked the size
+// itself.
 export const EASE_TARGET_TOLERANCE_PX = 2;
-// A sibling gets a commit per tick during a manual resize, so the ack that lands can be a few behind.
+// A sibling gets one commit per tick during a manual resize, so the landing ack can trail by a few.
 export const REQUESTED_SIZE_HISTORY = 4;
 
-// Fallback when get_min_size() has no hint
+// Fallback for when get_min_size() has no hint
 export const SMART_RESIZE_MIN_WINDOW_WIDTH = 100;
 export const SMART_RESIZE_MIN_WINDOW_HEIGHT = 100;
 
@@ -124,8 +124,8 @@ export const MINIATURE_MAX_SCALE = 0.9;  // Scale above which a thumbnail is bar
 // With 2 the least recent window moves three times as fast along its axis as the most recent,
 // so it's the first to cross into a thumbnail.
 export const ALLOCATOR_MRU_RATE_SLOPE = 2;
-// Dead band between becoming a thumbnail and coming back; without it a window parked on the
-// threshold flips on every few px of rounding.
+// Buffer zone between becoming a thumbnail and returning; without it a window parked at the
+// threshold toggles every few px of rounding.
 export const MINIATURE_RESTORE_HYSTERESIS_PX = 24;
 export const ALLOCATOR_RESIZE_THROTTLE_MS = 100;  // A live resize keeps the last allocation this long while it still fits
 // The size allocator bisects its scale; a few px of slack left on the table is imperceptible,

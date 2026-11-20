@@ -76,8 +76,8 @@ export const DrawingManager = GObject.registerClass({
         this._tilePreview.show();
     }
 
-    // The lone mosaic window becomes the opposite half, so it gets its own preview instead of
-    // being drawn as a miniature. Callers pass the already-computed opposite zone rect.
+    // The single mosaic window fills the opposite half, so it receives its own preview rather than
+    // being drawn as a miniature. Callers pass the precomputed opposite zone rect.
     showCompanionTilePreview(rect) {
         if (!rect) return;
 

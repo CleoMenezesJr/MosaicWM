@@ -52,7 +52,7 @@ const MosaicMenuToggle = GObject.registerClass(
             this._rebuildWorkspaceList();
         }
 
-        // get_workspace_by_index goes null mid-teardown, so callers never see the hole.
+        // get_workspace_by_index goes null during teardown, so callers never see the gap.
         _eachWorkspace(fn) {
             const nWorkspaces = this._workspaceManager.get_n_workspaces();
             for (let i = 0; i < nWorkspaces; i++) {
@@ -67,8 +67,8 @@ const MosaicMenuToggle = GObject.registerClass(
 
             this.gicon = _getIcon(this._extension, enabled ? 'mosaic-on-symbolic' : 'mosaic-off-symbolic');
 
-            // Carries over to workspaces that don't exist yet. Per-workspace exceptions
-            // are dropped since a global click overrides whatever was picked one by one.
+            // Applies in advance to workspaces not yet created. Per-workspace exceptions are
+            // dropped because a global click outranks any individual choice.
             this._extension._mosaicDisabledByDefault = !enabled;
             this._eachWorkspace(workspace => this._extension._disabledWorkspaceStates.delete(workspace));
 
@@ -125,7 +125,7 @@ const MosaicMenuToggle = GObject.registerClass(
 
             this._updateGlobalToggleState();
 
-            // Dropping the last enabled workspace has to take the top bar icon with it.
+            // Removing the last enabled workspace must also remove the top bar icon.
             this._extension._updateIndicatorIcon();
         }
 
@@ -150,8 +150,8 @@ const MosaicMenuToggle = GObject.registerClass(
 
             const workspace = this._workspaceManager.get_workspace_by_index(workspaceIndex);
             if (workspace) {
-                // Explicit either way: deleting would drop the workspace back to the
-                // global default, which is the opposite of what the user just picked.
+                // Explicit regardless: deleting would return the workspace to the global default,
+                // the exact opposite of the user's newest choice.
                 this._extension._disabledWorkspaceStates.set(workspace, !enabled);
             }
 
@@ -217,8 +217,8 @@ export const MosaicIndicator = GObject.registerClass(
         }
 
         _updateIcon() {
-            // The off variant means "not on this workspace", so it only makes sense while
-            // mosaic still lives somewhere; off everywhere, the icon leaves the bar.
+            // The off variant means "not on this workspace", so it is sensible only while mosaic
+            // still exists somewhere; off everywhere, the icon leaves the bar.
             this._indicator.visible = this._extension.isMosaicEnabledAnywhere();
             if (!this._indicator.visible)
                 return;

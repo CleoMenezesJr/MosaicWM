@@ -33,7 +33,7 @@ export const WindowingManager = GObject.registerClass({
         this._overflowStartCallback = null;
         this._overflowEndCallback = null;
 
-        // Cache for getMonitorWorkspaceWindows; invalidated at start of each tiling operation
+        // Cache for getMonitorWorkspaceWindows; cleared when each tiling operation begins
         // WeakMap<Workspace, Map<String, Window[]>>
         this._windowsCache = new WeakMap();
     }
@@ -100,8 +100,8 @@ export const WindowingManager = GObject.registerClass({
         return _windows;
     }
 
-    // Always pass a workspace: the null path drops Mutter's real MRU list and
-    // falls back to sorting by the coarser user_time.
+    // Pass a workspace: null path discards Mutter's real MRU list and falls back to coarser
+    // user_time ordering
     getMRUOrder(workspace) {
         const order = new Map();
         global.display.get_tab_list(Meta.TabList.NORMAL, workspace)
@@ -132,7 +132,7 @@ export const WindowingManager = GObject.registerClass({
             return false;
         }
 
-        // We take whichever half the snapped window left free.
+        // The snapped window's open half is used.
         const direction = occupiedSide === 'left' ? 'right' : 'left';
 
         const existingFrame = edgeTiledWindow.get_frame_rect();
@@ -173,7 +173,7 @@ export const WindowingManager = GObject.registerClass({
             return true;
         } catch (error) {
             Logger.log(`Failed to tile window: ${error.message}`);
-            // Undo the move that brought it here; leaving it stranded is worse than not tiling.
+            // Undo the move that positioned it here; stranding is worse than no tiling.
             if (previousWorkspace) {
                 window.change_workspace(previousWorkspace);
             }
@@ -212,7 +212,7 @@ export const WindowingManager = GObject.registerClass({
 
             WindowState.set(window, 'movedByOverflow', true);
 
-            // Use current workspace as origin to prevent overflow target loops.
+            // Set current workspace as origin to prevent overflow target loops.
             const currentIndex = window.get_workspace().index();
 
             Logger.log(`moveOversizedWindow: origin=${currentIndex}`);
@@ -222,7 +222,7 @@ export const WindowingManager = GObject.registerClass({
             const totalWorkspaces = workspaceManager.get_n_workspaces();
             let target_workspace = null;
 
-            // GNOME's dynamic workspaces might not have a workspace at nextIndex yet
+            // GNOME's dynamic workspaces may have no workspace at nextIndex yet
             const nextWorkspace = nextIndex < totalWorkspaces ? workspaceManager.get_workspace_by_index(nextIndex) : null;
 
             if (isSacred) {
@@ -252,8 +252,8 @@ export const WindowingManager = GObject.registerClass({
                     return GLib.SOURCE_REMOVE;
                 }
 
-                // Decide focus after any ongoing workspace switch completes,
-                // avoiding fights with user-initiated navigation.
+                // Select focus after any pending workspace switch completes, avoiding conflicts
+                // with user-initiated navigation.
                 afterWorkspaceSwitch(() => {
                     const stillOnOrigin = global.workspace_manager.get_active_workspace() === previous_workspace;
                     if (stillOnOrigin && switchFocusRequested) {
@@ -269,7 +269,7 @@ export const WindowingManager = GObject.registerClass({
                         this._tilingManager.tileWorkspaceWindows(previous_workspace, null, monitor);
                     }
 
-                    // Tile target workspace IMMEDIATELY to prevent "leap to 0,0"
+                    // Tile target workspace IMMEDIATELY to avert "leap to 0,0"
                     this._tilingManager.tileWorkspaceWindows(target_workspace, null, monitor);
 
                     afterWorkspaceSwitch(() => {
@@ -329,9 +329,9 @@ export const WindowingManager = GObject.registerClass({
         });
     }
 
-    // The exclusion reasons that already hold before the window has any geometry.
-    // Callers running that early (entrance setup) must ask this instead of
-    // isExcluded, since an unmapped window reports 0x0 and reads as a 1×1 helper.
+    // Exclusion reasons pre-existing before the window has any geometry; early callers (entrance
+    // setup) must use this over isExcluded, as an unmapped window reports 0x0 and appears as a 1×1
+    // helper.
     isExcludedByPolicy(meta_window) {
         if (!this.isRelated(meta_window) || meta_window.minimized) {
             return true;
@@ -354,9 +354,9 @@ export const WindowingManager = GObject.registerClass({
             return true;
         }
 
-        // 1×1 XWayland utility windows (clipboard helpers) must not enter the layout.
-        // get_frame_rect on a disposed MetaWindow segfaults libmutter, so only
-        // read it while the window is alive (dead windows keep prior semantics).
+        // 1×1 XWayland utility windows (clipboard helpers) must remain outside the layout;
+        // get_frame_rect on a disposed MetaWindow segfaults libmutter, so read it only while the
+        // window is living (dead windows keep prior semantics).
         if (isWindowAlive(meta_window)) {
             const frame = meta_window.get_frame_rect();
             if (frame.width <= 1 && frame.height <= 1) {
@@ -391,10 +391,9 @@ export const WindowingManager = GObject.registerClass({
         return true;
     }
 
-    // With workspaces-only-on-primary, Mutter reports every window on a secondary monitor
-    // as on-all-workspaces. That's the monitor policy talking, not the user pinning a
-    // window, so it stays a normal mosaic member. The overview layout asks this too; both
-    // have to agree on what sticky means or they end up laying out different mosaics.
+    // With workspaces-only-on-primary, Mutter marks secondary monitor windows as on-all-workspaces.
+    // That's the monitor policy, not user pinning a window, so it remains a normal mosaic member.
+    // The overview layout concurs; both must agree on sticky or they layout different mosaics.
     isTrulySticky(meta_window) {
         if (!meta_window.is_on_all_workspaces()) {
             return false;
@@ -410,11 +409,11 @@ export const WindowingManager = GObject.registerClass({
     }
 
     // Some game engines (Unity's borderless "Fullscreen Window" mode) resize to the monitor's
-    // resolution without setting the WM's real maximize/fullscreen state, so nothing marks
-    // them sacred and mosaic shrinks then miniaturizes them like any oversized window. Catch
-    // the shape instead: no preferred size captured yet, and the frame already covers
-    // the whole physical monitor, which normal placement (even maximized) never reaches.
-    // openingSize doesn't count, since the sacred path writes it for these very windows.
+    // resolution without setting the WM's real maximize/fullscreen state, so nothing flags them
+    // sacred and mosaic shrinks then miniaturizes them like any oversized window. Detect the shape
+    // instead: no preferred size captured yet, and the frame already spans the whole physical
+    // monitor, which normal placement (even maximized) never reaches. openingSize doesn't count,
+    // since the sacred path sets it for these very windows.
     _looksNativelyFullscreen(window) {
         if (WindowState.get(window, 'preferredSize'))
             return false;
@@ -429,8 +428,8 @@ export const WindowingManager = GObject.registerClass({
         return frame.width >= geom.width && frame.height >= geom.height;
     }
 
-    // Excluded windows (minimized, always on top, a client's hidden helper) take none of the
-    // mosaic, so a sacred window never has to leave the workspace for them.
+    // Excluded windows (minimized, always on top, a client's hidden helper) claim no mosaic space,
+    // so a sacred window need not leave the workspace for them.
     getMosaicOccupants(workspace, monitor) {
         return this.getMonitorWorkspaceWindows(workspace, monitor).filter(w => !this.isExcluded(w));
     }
@@ -449,7 +448,7 @@ export const WindowingManager = GObject.registerClass({
     renavigate(workspace, condition, lastVisitedIndex = null, monitorIndex = -1) {
         if (!condition) return;
 
-        // Queue in idle with low priority to let GNOME settle its dynamic workspace states
+        // Use idle with low priority so GNOME can settle its dynamic workspace states
         this._timeoutRegistry.addIdle(() => {
             const currentIndex = this._indexOfWorkspace(workspace);
             if (currentIndex < 0) return GLib.SOURCE_REMOVE;
@@ -474,8 +473,8 @@ export const WindowingManager = GObject.registerClass({
         }, 'windowing_renavigate', GLib.PRIORITY_LOW);
     }
 
-    // This workspace might already be gone by the time the caller's idle runs, and
-    // workspace.index() crashes on a removed one, so match by identity instead.
+    // This workspace may already be gone when the caller's idle runs, and workspace.index() throws
+    // on a removed one, so compare by identity instead.
     _indexOfWorkspace(workspace) {
         const workspaceManager = global.workspace_manager;
         for (let i = 0; i < workspaceManager.get_n_workspaces(); i++) {
@@ -496,7 +495,7 @@ export const WindowingManager = GObject.registerClass({
                 target = workspace.get_neighbor(Meta.MotionDirection.RIGHT);
             }
 
-            // Final safety: never fallback to the placeholder workspace
+            // Last guard: never fall back to the placeholder workspace
             if (target && target.index() === lastWorkspaceIndex) {
                 target = null;
             } else if (target) {
@@ -507,8 +506,8 @@ export const WindowingManager = GObject.registerClass({
         return this._guardLeftmostTarget(target, currentIndex);
     }
 
-    // The leftmost workspace has nothing to return to; going right strands
-    // the user in the overflow zone when the target is empty.
+    // The leftmost workspace has nowhere to return to; going right strands the user in the overflow
+    // zone when the target is empty.
     _guardLeftmostTarget(target, currentIndex) {
         if (currentIndex === 0 && target && !this._workspaceHasWindows(target)) {
             Logger.log(`[RENAVIGATE] WS-0 is leftmost and WS-${target.index()} is empty; staying put`);
@@ -521,8 +520,8 @@ export const WindowingManager = GObject.registerClass({
         return workspace.list_windows().some(w => !this.isExcluded(w));
     }
 
-    // The last workspace is the placeholder, so from there the only way out is left.
-    // Anywhere else, head back where we came from; null hands the choice to the fallback.
+    // The last workspace is the placeholder, so from there only left leads out. Elsewhere, go back
+    // the way we came; null lets the fallback choose.
     _preferredNeighbor(workspace, currentIndex, lastWorkspaceIndex, lastVisitedIndex) {
         if (currentIndex === lastWorkspaceIndex) {
             const leftNeighbor = workspace.get_neighbor(Meta.MotionDirection.LEFT);
@@ -540,7 +539,7 @@ export const WindowingManager = GObject.registerClass({
 
         const target = workspace.get_neighbor(direction);
 
-        // Guard: Don't jump to the final empty workspace if we were going right
+        // Guard: don't jump to the final empty workspace when heading right
         if (target && target.index() === lastWorkspaceIndex) return null;
         if (target) {
             Logger.log(`[RENAVIGATE] Moving ${direction === Meta.MotionDirection.LEFT ? 'left' : 'right'} toward last visited WS-${lastVisitedIndex}`);
