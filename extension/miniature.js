@@ -29,12 +29,14 @@ import {
 // with the CSD shadow rendered beyond it; the overview draws the frame into that same region.
 // Assumes pivot (0,0). get_position() gives the untransformed allocation, so this holds at any
 // current scale; once scaled, the frame sits ext*scale within the buffer's origin.
+// Rounded since Mutter never snaps a translation, and a frame edge on a half pixel blends the
+// border into the header as a grey line.
 function frameTranslation(actor, scale, targetX, targetY) {
     const window = actor.meta_window;
     const [ax, ay] = actor.get_position();
     return {
-        tx: targetX - ax - (WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0) * scale,
-        ty: targetY - ay - (WindowState.get(window, MINIATURE_EXT_TOP) ?? 0) * scale,
+        tx: Math.round(targetX) - ax - (WindowState.get(window, MINIATURE_EXT_LEFT) ?? 0) * scale,
+        ty: Math.round(targetY) - ay - (WindowState.get(window, MINIATURE_EXT_TOP) ?? 0) * scale,
     };
 }
 

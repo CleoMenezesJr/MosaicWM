@@ -672,8 +672,8 @@ export default class WindowMosaicExtension extends Extension {
         if (tgt && sc) {
             record.clone.set_pivot_point(0, 0);
             record.clone.set_scale(sc, sc);
-            record.clone.x = tgt.x - monitor.x - extL * sc;
-            record.clone.y = tgt.y - monitor.y - extT * sc;
+            record.clone.x = Math.round(tgt.x) - monitor.x - extL * sc;
+            record.clone.y = Math.round(tgt.y) - monitor.y - extT * sc;
         }
 
         // _createClone only ever sees the window actor, and the icon overlay is its
