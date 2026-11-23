@@ -1342,26 +1342,29 @@ export const TilingManager = GObject.registerClass({
         Logger.log('_tile: pinned shape overflows, dropping it');
     }
 
-    // Whether `windows` is the exact set the last real pass tiled. Written on every real pass,
-    // so a same-set match means the orientation that pass settled on is still trustworthy. An
-    // unranked last pass (fit check, drag) never earns settling either, or its leftover order
-    // gets trusted.
-    _sameWindowSetAsLastPass(windows) {
+    // Whether `windows` is the exact set the last real pass tiled. Removing a window from the
+    // mosaic (close, minimize, or edge-tiling it out) leaves a proper subset that should pick
+    // its own orientation and packing fresh rather than inheriting the larger mosaic's axis
+    // (e.g. 3->2 staying stacked in a single column).
+    _matchesLastWindowSet(windows) {
         const tiled = this._lastGroupAssignment?.ids;
-        if (!tiled || !this._lastTileRanked) return false;
-        return windows.every(w => tiled.has(w.id));
+        return !!tiled && windows.length === tiled.size && windows.every(w => tiled.has(w.id));
+    }
+
+    // Written on every real pass; an unranked last pass (fit check, drag) never earns settling,
+    // or its leftover order gets trusted.
+    _sameWindowSetAsLastPass(windows) {
+        return this._lastTileRanked && this._matchesLastWindowSet(windows);
     }
 
     // Miniaturizing shrinks the tallest window, which is exactly what the heuristic reads, so
     // letting it speak on every pass flips rows into columns and back mid-cycle. Trusts the last
-    // real orientation whenever the window set matches, not gated on ranking like
+    // real orientation whenever the window set matches exactly, not gated on ranking like
     // _sameWindowSetAsLastPass: a pin's "stable order" placement never ranks by design, so that
     // gate would starve every caller here of an orientation just verified to fit, not only the
     // pin's own.
     _orientationFor(windows, workArea) {
-        const tiled = this._lastGroupAssignment?.ids;
-        const sameSet = !!tiled && windows.every(w => tiled.has(w.id));
-        if (this._lastTiledVertical !== null && sameSet)
+        if (this._lastTiledVertical !== null && this._matchesLastWindowSet(windows))
             return this._lastTiledVertical;
         return this._useVerticalForDrag(windows, workArea);
     }
