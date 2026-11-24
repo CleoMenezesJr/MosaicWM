@@ -91,9 +91,9 @@ export default class WindowMosaicExtension extends Extension {
         this._mosaicDisabledByDefault = false;
     }
 
-    // Workspaces are created on demand, so the global toggle can't just stamp the
-    // ones that exist when it's flipped: whatever is born later has to inherit its
-    // decision. The map only holds per-workspace exceptions on top of that default.
+    // Workspaces are instantiated lazily, therefore the central toggle cannot simply annotate
+    // the entries that already exist when it flips: anything born afterward must adopt
+    // the outcome. The map retains individual workspace exceptions above that baseline.
     isMosaicEnabledForWorkspace(workspace) {
         if (!workspace) return true;
         const exception = this._disabledWorkspaceStates.get(workspace);
@@ -222,8 +222,9 @@ export default class WindowMosaicExtension extends Extension {
         this._workspaceEventIds.push([workspace, eventIds]);
     };
 
-    // Drop bookkeeping for destroyed workspaces, since their signals die with
-    // the object, and disconnecting them on disable() would target a dead GObject.
+    // Remove bookkeeping for erased workspaces, as their signals terminate along with the object,
+    // and
+    // disassociating them during disable() would target a dead GObject.
     _workspaceRemovedSignal = () => {
         this._workspaceEventIds = this._workspaceEventIds.filter(([workspace]) => isWorkspaceAlive(workspace, this._workspaceManager));
     };
