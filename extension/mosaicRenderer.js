@@ -13,14 +13,14 @@ import { IS_MINIATURE } from './windowState.js';
 
 export class MosaicRenderer {
     constructor() {
-        // The shell builds a fresh WorkspaceLayout per overview session, so these only
-        // hold while it is open; clearOverviewLayouts drops them on hide.
+        // The shell creates a new WorkspaceLayout for each overview session, so these last only
+        // while it is open; clearOverviewLayouts drops them on hide.
         this._overviewLayouts = new Map();
         this._slotBlends = [];
     }
 
-    // Same key shape as MosaicModel: workspace index plus monitor, not the GObject
-    // itself, since GJS can hand back a different wrapper for the same workspace.
+    // Key shape matches MosaicModel: workspace index plus monitor, not the GObject itself, because
+    // GJS may return another wrapper for the same workspace.
     _key(workspace, monitor) {
         return `${workspace.index()}:${monitor}`;
     }
@@ -40,10 +40,10 @@ export class MosaicRenderer {
         this._overviewLayouts.clear();
     }
 
-    // Leaving the overview freezes its slots before 'hiding', and the shell never lets a window
-    // drop below its slot on the way out, so a window miniaturized in 'hiding' rides out at full
-    // size and snaps small on 'hidden'. Sliding each slot to the published one as the state
-    // runs 1 -> 0 starts from the frozen geometry and lands where the desktop is.
+    // Exiting the overview freezes its slots ahead of 'hiding', and the shell never lets a window
+    // fall below its slot while leaving, so a window miniaturized in 'hiding' rides out full-size
+    // and snaps small on 'hidden'. Sliding each slot to the published one as the state runs 1 -> 0
+    // starts from the frozen geometry and lands on the desktop.
     blendFrozenOverviewSlots() {
         for (const layouts of this._overviewLayouts.values()) {
             for (const layout of layouts) {
@@ -79,9 +79,9 @@ export class MosaicRenderer {
         this._slotBlends = [];
     }
 
-    // _needsLayout is the flag vfunc_allocate actually gates on before rebuilding slots;
-    // it is what the shell's own addWindow/removeWindow set. layout_changed only schedules
-    // the allocation, so without the flag the pass reuses the slots it already had.
+    // _needsLayout is the flag vfunc_allocate actually checks before slots are rebuilt; the shell's
+    // own addWindow/removeWindow set it. layout_changed merely schedules allocation, so without the
+    // flag the pass keeps using the slots already present.
     publishToOverview(workspace, monitor) {
         const layouts = this._overviewLayouts.get(this._key(workspace, monitor));
         if (!layouts || layouts.size === 0) return;
@@ -93,8 +93,8 @@ export class MosaicRenderer {
         }
     }
 
-    // Applies what the layout already decided instead of recomputing it, so the desktop
-    // lands on exactly the geometry the overview was showing.
+    // Applies the layout's existing decision rather than recomputing it, so the desktop lands on
+    // exactly the geometry the overview showed.
     flushToWindows(workspace, monitor) {
         const group = MosaicModel.store.groupFor(workspace.index(), monitor);
         if (!group || group.size === 0) return;
@@ -102,8 +102,8 @@ export class MosaicRenderer {
         let applied = 0;
         for (const member of group.members()) {
             if (!isWindowAlive(member.window)) continue;
-            // createMiniature drives the miniature through the actor's scale, so moving the
-            // frame here would compound on top of it.
+            // createMiniature drives the miniature through the actor's scale, so moving the frame
+            // here would compound atop it.
             if (WindowState.get(member.window, IS_MINIATURE)) continue;
             const r = member.region;
             MosaicConstraints.commitRegion(member.window, r);

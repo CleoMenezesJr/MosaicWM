@@ -22,7 +22,7 @@ const lerp = (a, b, t) => ({
     height: Math.round(a.height + (b.height - a.height) * t),
 });
 
-// The first axis to reach its threshold decides; a thumbnail can't be half a window.
+// Whichever axis reaches its threshold first decides; a thumbnail can't be half a window.
 export function axisOf(p) {
     const { legA, total } = legsOf(p);
     if (total === 0 || legA === 0) return { total, pLim: 0 };
@@ -34,8 +34,8 @@ export function axisOf(p) {
     return { total, pLim: Math.max(t, visibleShrinkAt(p)) * legA / total };
 }
 
-// A thumbnail at nearly its frame's size frees almost nothing and reads as the window itself.
-// Measured off preferred, since the frame is what this cap shrinks; it'd ratchet down every pass.
+// A thumbnail close to its frame's size frees almost nothing and looks like the window itself.
+// Taken off preferred, since the frame is what this cap shrinks; it'd ratchet down each pass.
 function visibleShrinkAt(p) {
     const at = axis => {
         const span = p.preferred[axis] - p.min[axis];
@@ -46,8 +46,8 @@ function visibleShrinkAt(p) {
     return Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : 0;
 }
 
-// The mode never changes the size the walk asked for; a thumbnail only has to keep its frame's
-// proportions, since the actor can only scale uniformly.
+// The mode never alters the size the walk requested; a thumbnail only needs its frame's
+// proportions, since the actor scales uniformly.
 export function sizeFor(p, mode, pos) {
     const { legA, total } = legsOf(p);
     const pA = total > 0 ? legA / total : 1;
@@ -61,7 +61,7 @@ export function sizeFor(p, mode, pos) {
     return visiblyShrunk(p, { width: Math.round(p.aspectRef.width * k), height: Math.round(p.aspectRef.height * k) });
 }
 
-// The crossing cap is off preferred, so a frame already held under it would cross at ~1.0 scale.
+// The crossing cap is based on preferred, so a frame already below it would cross at ~1.0 scale.
 function visiblyShrunk(p, size) {
     return fitInto(size, {
         width: Math.floor(constants.MINIATURE_MAX_SCALE * p.aspectRef.width),
@@ -69,8 +69,8 @@ function visiblyShrunk(p, size) {
     });
 }
 
-// A thumbnail only comes back once it's clear of the threshold by the margin; coming back right
-// at it would let rounding flip the window every pass.
+// A thumbnail returns only once it clears the threshold by the margin; returning right at it would
+// let rounding flip the window each pass.
 export function resolveMode(p, pos, { restoreMarginPx, allowRestore }) {
     if (p.capAtThreshold) return 'window';
     const { total, pLim } = axisOf(p);
@@ -82,15 +82,15 @@ export function resolveMode(p, pos, { restoreMarginPx, allowRestore }) {
 
 const byRecency = (a, b) => (a.mruRank - b.mruRank) || (a.id - b.id);
 
-// Age is normalized over the eligible windows, so the slope means the same thing whatever the
+// Age is normalized across the eligible windows, so the slope keeps the same meaning no matter the
 // window count.
 export function ratesOf(participants, slope) {
     const eligible = participants.filter(p => !p.fixed).sort(byRecency);
     const rates = new Map(participants.map(p => [p.id, 0]));
     const n = eligible.length;
     eligible.forEach((p, i) => rates.set(p.id, 1 + slope * (n > 1 ? i / (n - 1) : 0)));
-    // Age only has to pick which window crosses into a thumbnail first. Among thumbnails it just
-    // sent the oldest to the floor while the others kept their size.
+    // Age only has to choose which window crosses into a thumbnail first. Among thumbnails it
+    // simply sent the oldest to the floor while the others kept their size.
     const thumbs = eligible.filter(p => p.mode === 'thumbnail' && !p.capAtThreshold);
     if (thumbs.length === 0) return rates;
     const shared = thumbs.reduce((sum, p) => sum + rates.get(p.id), 0) / thumbs.length;
@@ -110,9 +110,9 @@ function entriesAt(participants, rates, s, opts) {
     return entries;
 }
 
-// Thumbnails share one rate, so which clears its threshold first comes down to geometry; the
-// newest still has to come back first. A thumbnail is never bigger than the window at the same
-// pos, so holding one back can't break the fit.
+// Thumbnails share a single rate, so which clears its threshold first rests on geometry; the newest
+// still must come back first. A thumbnail is never larger than the window at the same pos, so
+// holding one back can't break the fit.
 function holdRestoresToRecency(participants, entries) {
     const byId = new Map(entries.map(e => [e.id, e]));
     let blocked = false;
@@ -126,9 +126,9 @@ function holdRestoresToRecency(participants, entries) {
     }
 }
 
-// Assumes fit only gets easier as s grows. A previous s brackets the answer in two probes when
-// little changed. Answers snap to a fixed grid of eps, or where the warm start began would move
-// the same mosaic a few px from pass to pass.
+// Assumes fit only gets easier as s grows. A prior s brackets the answer in two probes when little
+// changed. Answers snap to a fixed grid of eps, or the warm start point would move the same mosaic
+// a few px from pass to pass.
 export function searchSmallestFit(probe, eps, previousS) {
     const top = Math.ceil(1 / eps);
     const at = k => Math.min(1, k * eps);
@@ -174,8 +174,9 @@ export function allocate({
     return holdHeadAtPreferred(participants, run, free) ?? holdOneAsWindow(participants, run, free);
 }
 
-// A window crossing into a thumbnail still walked at its window rate, so the next pass, seeing it
-// as a thumbnail, resized every thumbnail again. Resizing it as one here is what that pass finds.
+// A window entering thumbnail territory still advanced at its window rate, so the following pass,
+// seeing it that way, resized every thumbnail once more. Scaling it here as one is what that pass
+// finds.
 function settleCrossings(pool, once) {
     const first = once(pool);
     if (!first.fits) return first;
@@ -187,8 +188,8 @@ function settleCrossings(pool, once) {
     return settled ? second : first;
 }
 
-// Under a shared s the newest always pays a little, even while an older thumbnail sits well above
-// its floor. It's only held when no window of the free fit has to become a thumbnail for it.
+// With a shared s the newest always yields a little, even when an older thumbnail remains far above
+// its floor. It's held only when no window of the free fit must become a thumbnail for it.
 function holdHeadAtPreferred(participants, run, free) {
     const head = [...participants].sort(byRecency)[0];
     if (!head || head.fixed || free.entries.get(head.id).mode !== 'window') return null;
@@ -199,9 +200,9 @@ function holdHeadAtPreferred(participants, run, free) {
     return costsAWindow ? null : r;
 }
 
-// A mosaic of nothing but thumbnails has nothing to show. Most recent first; one that can't fit
-// as a window even with everyone else at the floor hands the spot to the next, and when none can,
-// the all-thumbnail fit still beats overflowing.
+// A mosaic containing only thumbnails has nothing to display. Newest first; one that cannot fit as
+// a window even with everyone else at the floor passes the spot to the next, and when none can, the
+// all-thumbnail fit still beats overflowing.
 function holdOneAsWindow(participants, run, free) {
     if ([...free.entries.values()].some(e => e.mode === 'window')) return free;
     if (participants.some(p => p.capAtThreshold || (p.fixed && p.mode === 'window'))) return free;

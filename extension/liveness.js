@@ -9,8 +9,8 @@ export function isWindowAlive(window) {
     return !!actor && !actor.is_destroyed();
 }
 
-// workspace.index() crashes once the workspace is gone, so match by identity
-// through the manager's list instead of asking for the index directly.
+// workspace.index() fails once the workspace disappears, so match by identity through the manager's
+// list instead of asking for the index directly.
 export function isWorkspaceAlive(workspace, workspaceManager = global.workspace_manager) {
     if (!workspace) return false;
     for (let i = 0; i < workspaceManager.get_n_workspaces(); i++) {

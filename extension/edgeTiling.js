@@ -67,7 +67,7 @@ export const EdgeTilingManager = GObject.registerClass({
                 try {
                     window.disconnect(signalId);
                 } catch (_e) {
-                    // Ignore if window destroyed
+                    // Skip when the window is destroyed
                 }
                 WindowState.remove(window, 'edgeResizeSignalId');
             }
@@ -89,7 +89,7 @@ export const EdgeTilingManager = GObject.registerClass({
         this._timeoutRegistry = null;
     }
 
-    // Windows that can hold a zone here; hidden and non-normal ones never tile.
+    // Windows that may take a zone here; hidden and non-normal ones never tile.
     _tileableWindows(workspace, monitor, exclude = null) {
         return workspace.list_windows().filter(w =>
             w.get_monitor() === monitor &&
@@ -99,11 +99,11 @@ export const EdgeTilingManager = GObject.registerClass({
         );
     }
 
-    // cachedEdgeTiledIds is ignored in WeakMap implementation
+    // WeakMap implementation ignores cachedEdgeTiledIds
     _hasEdgeTiledWindowsOnSide(workspace, side, _cachedEdgeTiledIds = null) {
         if (!workspace) return false;
 
-        // Iterating WeakMap is not possible in GJS, so query workspace windows instead
+        // WeakMap cannot be iterated in GJS; query workspace windows instead
         return workspace.list_windows().some(win => {
             const state = WindowState.get(win, 'edgeTilingState');
             return state && ZONE_SIDE[state.zone] === side;
@@ -127,8 +127,8 @@ export const EdgeTilingManager = GObject.registerClass({
         return TileZone.NONE;
     }
 
-    // A side only offers quarters once something is tiled there; on an empty side the
-    // whole edge reads as the full half, wherever vertically the cursor sits.
+    // A side offers quarters only once something tiles there; an empty side's
+    // whole edge reads as the full half, no matter the cursor's vertical spot.
     _sideZone(side, cursorY, workArea, workspace, cachedEdgeTiledIds) {
         const zones = SIDE_ZONES[side];
         if (!this._hasEdgeTiledWindowsOnSide(workspace, side, cachedEdgeTiledIds)) return zones.full;
@@ -140,9 +140,9 @@ export const EdgeTilingManager = GObject.registerClass({
         return zones.full;
     }
 
-    // Same question _sideZone answers for the pointer, minus the cursor: with no Y to read,
-    // the side's own occupancy picks the zone. Excluding the window matters because one
-    // maximized off a tile still carries that tile's zone in its state.
+    // Same question _sideZone answers for the pointer, absent the cursor: with no Y to read,
+    // the side's occupancy chooses the zone. Excluding the window matters since one
+    // maximized off a tile still bears that tile's zone in its state.
     keyboardZoneForSide(side, workspace, monitor, excludeWindow) {
         const occupied = this._tileableWindows(workspace, monitor, excludeWindow)
             .map(w => this.getWindowState(w)?.zone)
@@ -151,7 +151,7 @@ export const EdgeTilingManager = GObject.registerClass({
         if (occupied.length === 0) return SIDE_ZONES[side].full;
         if (occupied.length > 1) return null;
 
-        // A lone quarter leaves its pair free; a full tile gets split, and the newcomer
+        // A single quarter leaves its pair open; a full tile splits, and the newcomer
         // taking the bottom is what pushes the sitting one into the top.
         return ZONE_VERTICAL_PAIR[occupied[0]] ?? SIDE_ZONES[side].bottom;
     }
@@ -193,7 +193,7 @@ export const EdgeTilingManager = GObject.registerClass({
         return null;
     }
 
-    // Width the partner across the split already occupies, so we claim only the rest.
+    // Width already occupied by the partner across the split, so we claim only the remainder.
     _oppositeFullWidth(zone, windowToTile) {
         if (!windowToTile) return null;
 
@@ -206,7 +206,7 @@ export const EdgeTilingManager = GObject.registerClass({
         });
         if (!existingWindow) return null;
 
-        // Mid-animation the frame is a transient size; the ease target is the width it will
+        // During animation the frame size is transient; the ease target is the width it will
         // settle at, so a freshly auto-tiled partner splits 50/50 instead of chasing the blur.
         const animTarget = this._animationsManager?.getAnimatingTarget(existingWindow.get_id());
         const width = animTarget?.width ?? existingWindow.get_frame_rect().width;
@@ -239,19 +239,19 @@ export const EdgeTilingManager = GObject.registerClass({
         const width = this._getExistingSideWidth(workspace, monitor, side) || halfWidth;
         const x = side === 'left' ? workArea.x : workArea.x + workArea.width - width;
 
-        // The quarter stacked against us already picked its height; we take what's left.
+        // The quarter stacked against us has already chosen its height; we take the remainder.
         const stackedHeight = this._getExistingQuarterHeight(workspace, monitor, ZONE_VERTICAL_PAIR[zone]);
         const height = stackedHeight
             ? workArea.height - stackedHeight
             : this._plannedQuarterHeight(windowToTile, zone, workArea, workspace, monitor);
 
-        // Measured off the far edge rather than from the split point, so an uneven split still
+        // Measured from the far edge, not the split point, so an uneven split still
         // ends flush with the bottom of the work area.
         const y = ZONE_HALF[zone] === 'top' ? workArea.y : workArea.y + workArea.height - height;
         return { x, y, width, height };
     }
 
-    // A refused split still has to draw something, and the shake is what says it won't happen.
+    // A rejected split still has to paint something, and the shake signals it won't happen.
     _plannedQuarterHeight(windowToTile, zone, workArea, workspace, monitor) {
         const plan = this.planQuarterSplit(windowToTile, zone, workArea, workspace, monitor);
         return plan ? plan.ownHeight : Math.floor(workArea.height / 2);
@@ -335,8 +335,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
         if (edgeTiledWindows.length === 0) return workArea;
 
-        // Tiles on the left push the free space rightwards, tiles on the right cap it.
-        // Left keeps priority when both sides are occupied.
+        // Left tiles push the free space toward the right, right tiles cap it.
+        // When both sides are occupied, left keeps priority.
         const leftTiles = edgeTiledWindows.filter(w => ZONE_SIDE[w.zone] === 'left');
         if (leftTiles.length > 0) {
             const maxRight = leftTiles.reduce((acc, w) => {
@@ -370,8 +370,8 @@ export const EdgeTilingManager = GObject.registerClass({
         return workArea;
     }
 
-    // Snapping a quarter onto a side that already holds a full tile splits that side, so the
-    // sitting tile gets pushed into the quarter stacked against the incoming one.
+    // Dropping a quarter on a side that already holds a full tile splits that side, so the seated
+    // tile gets pushed into the quarter stacked against the arriving one.
     _planFullToQuarterConversion(window, zone, workspace, monitor) {
         const side = ZONE_SIDE[zone];
         if (!side || !ZONE_HALF[zone]) return null;
@@ -391,8 +391,8 @@ export const EdgeTilingManager = GObject.registerClass({
         return { window: fullWindow, newZone: ZONE_VERTICAL_PAIR[zone] };
     }
 
-    // The split is even at drop time; whatever a client refuses gets settled afterwards, which
-    // is the only moment the real answer exists.
+    // At drop time the split is even; whatever a client refuses is settled afterwards, the only
+    // moment the real answer exists.
     planQuarterSplit(window, zone, workArea, workspace, monitor) {
         const even = Math.floor(workArea.height / 2);
         const alone = { partner: null, ownHeight: even, partnerHeight: even };
@@ -480,8 +480,8 @@ export const EdgeTilingManager = GObject.registerClass({
             }
         }
 
-        // autoTileMaster/autoTileDependents are cleaned up in removeTile;
-        // this path only needs to drop the tiling state itself.
+        // autoTileMaster/autoTileDependents are tidied in removeTile; this path only needs to drop
+        // the tiling state itself.
         WindowState.remove(window, 'edgeTilingState');
     }
 
@@ -504,7 +504,7 @@ export const EdgeTilingManager = GObject.registerClass({
         return state && state.zone !== TileZone.NONE;
     }
 
-    // Entry of the keyboard contract, split between the two arrow axes below. Maximized is
+    // Entry of the keyboard contract, divided between the two arrow axes below. Maximized is
     // answered before the zone is even read, since a window maximized off a tile keeps its zone.
     resolveArrowIntent(window, direction) {
         const zone = this.getWindowState(window)?.zone ?? TileZone.NONE;
@@ -527,7 +527,7 @@ export const EdgeTilingManager = GObject.registerClass({
         return this._keyboardTileIntent(window, direction);
     }
 
-    // With no pair to trade with, up maximizes instead of climbing to the top half.
+    // With no pair to trade with, up maximizes rather than climbing to the top half.
     _verticalArrowIntent(window, zone, direction) {
         const half = ZONE_HALF[zone];
         if (this._hasVerticalPair(window, zone) &&
@@ -544,16 +544,16 @@ export const EdgeTilingManager = GObject.registerClass({
         return zone ? { kind: 'tile', zone } : { kind: 'none' };
     }
 
-    // Zones repeat per monitor, so without narrowing, a window holding the pair zone on
-    // another screen would answer here and turn the arrow into a swap across monitors.
+    // Zones repeat per monitor, so without narrowing, a window holding the pair zone on another
+    // screen would answer here and turn the arrow into a swap across monitors.
     _hasVerticalPair(window, zone) {
         const pair = ZONE_VERTICAL_PAIR[zone];
         if (!pair) return false;
         return !!this._findWindowInZone(pair, window.get_workspace(), window.get_monitor());
     }
 
-    // Can this window be resized to fill a zone? A max-size cap below the zone means it can't,
-    // so such a window stays in the mosaic (miniaturized) instead of being paired as a half-tile.
+    // Can this window fill a zone by resizing? A max-size cap below the zone forbids it, so it
+    // stays in the mosaic (miniaturized) rather than a half-tile.
     isEdgeTileable(window, zoneRect) {
         if (!this._canResize(window)) return false;
         const max = zoneRect ? frameMaxSize(window) : null;
@@ -562,8 +562,8 @@ export const EdgeTilingManager = GObject.registerClass({
         return true;
     }
 
-    // Edge tiling and miniaturization are exclusive. Leave the actor's transform alone though, since
-    // animateWindow eases from it, and the stale anim keys would make it skip the scale ease.
+    // Edge tiling and miniaturization are exclusive. Keep the actor's transform as-is, since
+    // animateWindow eases from it; stale anim keys would make it skip the scale ease.
     _dropMiniature(window) {
         if (!this._miniatureManager || !WindowState.get(window, IS_MINIATURE)) return;
         this._miniatureManager.destroyMiniature(window);
@@ -649,8 +649,8 @@ export const EdgeTilingManager = GObject.registerClass({
         }
     }
 
-    // A window exiled as sacred sits on its own workspace while its tiling stays behind on the
-    // one it came from, and that's where the windows it was tiled against are still waiting.
+    // A window sent away as sacred sits on its own workspace while its tiling remains on the
+    // origin, where the windows it was tiled with still wait.
     _tilingWorkspace(window) {
         const originIndex = WindowState.get(window, 'maximizedUndoInfo')?.originalWorkspace;
         if (originIndex === undefined) return window.get_workspace();
@@ -660,7 +660,7 @@ export const EdgeTilingManager = GObject.registerClass({
         return wsManager.get_workspace_by_index(originIndex) ?? window.get_workspace();
     }
 
-    // monitor is optional; the drag callers already work from a single monitor's work area.
+    // monitor is optional; the drag callers already use one monitor's work area.
     _findWindowInZone(zone, workspace, monitor = null) {
         const windows = workspace.list_windows();
         for (const win of windows) {
@@ -689,8 +689,8 @@ export const EdgeTilingManager = GObject.registerClass({
             return false;
         }
 
-        // allows_resize() folds in the current maximized state, so it vetoes a window
-        // applyTile is about to unmaximize. resizeable is the same hint minus that state.
+        // allows_resize() includes the current maximized state, so it vetoes a window applyTile is
+        // about to unmaximize. resizeable is that hint without the state.
         const resizable = aboutToUnmaximize && window.is_maximized()
             ? window.resizeable
             : !window.allows_resize || window.allows_resize();
@@ -703,8 +703,8 @@ export const EdgeTilingManager = GObject.registerClass({
         return this._fitsDeclaredMinimum(window, targetWidth, targetHeight);
     }
 
-    // The window arriving can't be probed the way a sitting tile can, so what it declares is all
-    // we get. Skipping this hands a window a space it refuses the moment it lands.
+    // The arriving window can't be probed like a sitting tile; we only get what it declares.
+    // Skipping this gives a window a space it refuses on landing.
     _fitsDeclaredMinimum(window, targetWidth, targetHeight) {
         if (targetWidth === undefined || targetHeight === undefined) return true;
 
@@ -747,8 +747,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
         if (!this._canResize(window, rect.width, rect.height, true)) return false;
 
-        // A zone the window can't take must leave its saved geometry and its auto-tile
-        // pairing untouched, so both refusals are settled above.
+        // A zone the window can't accept must leave saved geometry and auto-tile pairing untouched,
+        // so both refusals are resolved above.
         this.saveWindowState(window);
         this._breakAutoTilePairing(window);
 
@@ -767,8 +767,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
         this._timeoutRegistry.addIdle(() => {
             this._dropMiniature(window);
-            // The zone dictates this window's frame now, so a leftover smart-resize target would
-            // only make the clamp detector learn a false minimum against it.
+            // The zone now sets this window's frame, so a leftover smart-resize target would only
+            // make the clamp detector learn a false minimum against it.
             WindowState.remove(window, 'targetSmartResizeSize');
 
             this._placeTiledWindow(window, rect);
@@ -796,8 +796,8 @@ export const EdgeTilingManager = GObject.registerClass({
     }
 
     _placeTiledWindow(window, rect) {
-        // Same reason as the quarter split: the animated path never reaches move_resize_frame,
-        // and this is where a window first becomes an edge tile.
+        // Same as the quarter split: the animated path never reaches move_resize_frame; this is
+        // where a window first turns into an edge tile.
         MosaicModel.setRegion(window, rect, window.get_workspace(), window.get_monitor());
 
         if (this._animationsManager) {
@@ -805,7 +805,7 @@ export const EdgeTilingManager = GObject.registerClass({
             return;
         }
 
-        // Nobody eases the leftover miniature transform away here, so clear it by hand.
+        // Nothing animates the leftover miniature transform away here, so remove it manually.
         const actor = window.get_compositor_private();
         if (actor) {
             actor.remove_all_transitions();
@@ -815,8 +815,8 @@ export const EdgeTilingManager = GObject.registerClass({
         MosaicConstraints.commitRegion(window, rect);
     }
 
-    // The sitting full tile keeps its width so the split lands where the user had already
-    // dragged the divider, instead of snapping both quarters back to 50/50.
+    // The current full tile keeps its width so the split lands where the user had dragged the
+    // divider, not by snapping both quarters back to 50/50.
     _splitSideIntoQuarters(window, zone, rect, workArea, workspace, monitor, conversion, savedFullTileWidth) {
         const convertedRect = this.getZoneRect(conversion.newZone, workArea, conversion.window);
 
@@ -833,16 +833,17 @@ export const EdgeTilingManager = GObject.registerClass({
         const ownHeight = plan ? plan.ownHeight : Math.floor(workArea.height / 2);
         const partnerHeight = workArea.height - ownHeight;
 
-        // The converted tile takes whatever the incoming one didn't, so the pair covers the
-        // column exactly even when a proven minimum pushed the split off centre.
+        // The converted tile gets whatever the incoming one left, so together they exactly fill the
+        // column even if a validated minimum moved the split off centre.
         const convertedY = ZONE_HALF[zone] === 'top' ? workArea.y + ownHeight : workArea.y;
         const ownY = ZONE_HALF[zone] === 'top' ? workArea.y : workArea.y + partnerHeight;
 
         const convertedRegion = { x: convertedRect.x, y: convertedY, width: convertedRect.width, height: partnerHeight };
         const windowRegion = { x: rect.x, y: ownY, width: rect.width, height: ownHeight };
 
-        // Recorded outside the branch on purpose: the animated path never calls
-        // move_resize_frame, so recording inside the else would blind the model to the normal case.
+        // Deliberately recorded outside the branch: the animated path never calls
+        // move_resize_frame, so recording inside the else would leave the model unaware of the
+        // normal case.
         MosaicModel.setRegion(conversion.window, convertedRegion, workspace, monitor);
         MosaicModel.setRegion(window, windowRegion, workspace, monitor);
 
@@ -868,9 +869,9 @@ export const EdgeTilingManager = GObject.registerClass({
         this._settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, ownHeight, partnerHeight);
     }
 
-    // The drop always asks for an even split, so this is where a client that won't take its half
-    // gets accommodated. Read rather than signalled because a refusal is silence: the frame simply
-    // doesn't change and nothing fires.
+    // The drop always requests an even split, so this is where a client refusing its half is
+    // accommodated. Read rather than signalled because refusal stays silent: the frame does not
+    // change and nothing fires.
     _settleQuarterHeights(window, zone, rect, convertedRect, workArea, workspace, monitor, conversion, ownHeight, partnerHeight) {
         this._timeoutRegistry.add(constants.POLL_INTERVAL_MS, () => {
             if (!window.get_compositor_private() ||
@@ -897,8 +898,8 @@ export const EdgeTilingManager = GObject.registerClass({
         const workspace = window.get_workspace();
         const monitor = window.get_monitor();
 
-        // The region recorded here is the real split, not the one we asked for. Eased rather
-        // than snapped since this lands a beat after the tile animation the user is watching.
+        // The region recorded here is the actual split, not the requested one. Eased rather than
+        // snapped because it lands just after the tile animation the user is watching.
         const place = (win, region) => {
             MosaicModel.setRegion(win, region, workspace, monitor);
             if (this._animationsManager)
@@ -907,9 +908,9 @@ export const EdgeTilingManager = GObject.registerClass({
                 MosaicConstraints.commitRegion(win, region);
         };
 
-        // Whoever turned down the height it was handed decides where the divider sits; the other
-        // absorbs the remainder. Handing the refuser back the very size it just rejected is what
-        // used to push it past the edge of its own column.
+        // Whoever rejected the height it was given chooses the divider position; the other absorbs
+        // the rest. Returning the refuser the exact size it just turned down is what used to push
+        // it past the edge of its own column.
         const partnerHeight = workArea.height - ownHeight;
         let ownFinal = actualNewFrame.height;
         if (actualNewFrame.height <= ownHeight && actualConvertedFrame.height > partnerHeight)
@@ -940,7 +941,7 @@ export const EdgeTilingManager = GObject.registerClass({
         Logger.log(`removeTile: Removing tile from window ${winId}, zone=${savedState.zone}`);
         Logger.log(`removeTile: Saved state to restore: ${savedState.width}x${savedState.height} at (${savedState.x}, ${savedState.y})`);
 
-        // Stamped here, not in a per-caller flag, so mouse drag, keyboard shortcut and
+        // Applied at this point, not via a per-caller flag, so mouse drag, keyboard shortcut and
         // auto-tile dependent cleanup all suppress the same settled-resize ejection window.
         this._lastRemoveTileAt = monotonicNow();
 
@@ -950,13 +951,15 @@ export const EdgeTilingManager = GObject.registerClass({
         const savedHeight = savedState.height;
         const savedZone = savedState.zone;
 
-        // Drop the whole state, not just the zone: a leftover width/height would make the
-        // next saveWindowState preserve it and freeze the restore size for the window's life.
+        // Discard the full state, not just the zone: a stale width/height would let the next
+        // saveWindowState keep it, fixing the restore size for the window's life.
         WindowState.remove(window, 'edgeTilingState');
 
-        // Back to a normal window: restore the pre-tiling preferred size and drop any mosaic-learned minimum.
+        // Return to a normal window: restore the pre-tiling preferred size and clear any mosaic-
+        // learned minimum.
         WindowState.set(window, 'preferredSize', { width: savedWidth, height: savedHeight });
-        // The layout reads this before the frame, so the size survives a retile landing before the frame settles.
+        // Layout reads this before the frame, so the size survives a retile arriving before the
+        // frame settles.
         WindowState.set(window, 'targetRestoredSize', { width: savedWidth, height: savedHeight });
         WindowState.remove(window, 'actualMinWidth');
         WindowState.remove(window, 'actualMinHeight');
@@ -988,21 +991,21 @@ export const EdgeTilingManager = GObject.registerClass({
         }, 'edgeTiling_removeTileSizeSettle');
     }
 
-    // Mirrors the targetRestoredSize bridge above: while it's live, a settling resize is
-    // that restore's tail, not a window that's genuinely too big for the workspace.
+    // Mirrors the targetRestoredSize bridge above: while live, a settling resize is that restore's
+    // tail, not a window truly too large for the workspace.
     isRestoringFromEdgeTile(now) {
         return this._lastRemoveTileAt !== null &&
             (now - this._lastRemoveTileAt) < constants.EDGE_TILE_EXIT_SUPPRESSION_MS;
     }
 
-    // A window leaving the workspace takes its auto-tiled companions back to the mosaic with it.
-    // Maximizing never untiles, so the sacred path has to ask for this on its own.
+    // When a window leaves the workspace, its auto-tiled companions return to the mosaic with it.
+    // Maximizing never untiles, so the sacred path must ask for this itself.
     releaseAutoTileDependents(window) {
         const dependents = WindowState.get(window, 'autoTileDependents');
         if (!dependents || dependents.size === 0) return;
 
         Logger.log(`Releasing ${dependents.size} auto-tile dependents of ${window.get_id()}`);
-        // Copy set to avoid modification during iteration
+        // Copied set to avoid mutating during iteration
         for (const dependent of Array.from(dependents)) {
             this.removeTile(dependent);
 
@@ -1012,8 +1015,8 @@ export const EdgeTilingManager = GObject.registerClass({
         WindowState.remove(window, 'autoTileDependents');
     }
 
-    // An untiled window drags its auto-tiled dependents out with it, and stops counting
-    // against whatever master pulled it in.
+    // An untiled window pulls its auto-tiled dependents out too, and no longer counts against
+    // whichever master drew it in.
     _releaseAutoTileLinks(window) {
         this.releaseAutoTileDependents(window);
 
@@ -1025,15 +1028,15 @@ export const EdgeTilingManager = GObject.registerClass({
         }
     }
 
-    // Maximizing never untiles, so without this the vacated quarter stays dead space: the mosaic
-    // only ever gets the opposite side, and the window stacked against it can't reach it either.
+    // Maximizing never untiles, so without this the emptied quarter remains dead space: the mosaic
+    // only receives the opposite side, and the adjacent stacked window can't reach it either.
     expandQuarterPartner(window) {
         const zone = this.getWindowState(window)?.zone;
         if (!zone || !this._isQuarterZone(zone)) return;
         this._expandAdjacentQuarterToFull(window, zone);
     }
 
-    // The quarter stacked against the one leaving has the whole side to itself now.
+    // The quarter stacked against the departing one now has the entire side to itself.
     _expandAdjacentQuarterToFull(window, savedZone) {
         Logger.log(`Quarter tile ${window.get_id()} leaving zone ${savedZone}`);
 
@@ -1045,8 +1048,8 @@ export const EdgeTilingManager = GObject.registerClass({
         const adjacentWindow = this._findWindowInZone(adjacentZone, workspace, monitor);
         if (!adjacentWindow) return;
 
-        // The side comes from the zone we were handed, since on the untile path our own
-        // state is already gone and reading it back would say RIGHT_FULL for a left quarter.
+        // The side comes from the supplied zone, because on the untile path our own state is
+        // already gone and a readback would report RIGHT_FULL for a left quarter.
         const fullZone = this._getFullZoneFromQuarter(savedZone);
         const workArea = workspace.get_work_area_for_monitor(monitor);
         const fullRect = this.getZoneRect(fullZone, workArea, adjacentWindow);
@@ -1059,8 +1062,9 @@ export const EdgeTilingManager = GObject.registerClass({
     }
 
     _restoreFrameAfterUntile(window, savedWidth, savedHeight, placeAtCursor) {
-        // Restore the pre-tiling size as it was. Whether it still fits is the mosaic's call, and it
-        // shrinks or miniaturizes accordingly; pre-shrinking here would just lose the size for good.
+        // Bring back the pre-tiling size unchanged. Whether it still fits is the mosaic's call, and
+        // it
+        // shrinks or miniaturizes accordingly; shrinking early here would lose the size for good.
         let restoredX;
         let restoredY;
         if (placeAtCursor) {
@@ -1068,8 +1072,9 @@ export const EdgeTilingManager = GObject.registerClass({
             restoredX = cursorX - (savedWidth / 2);
             restoredY = cursorY - 20;
         } else {
-            // Only the window the pointer is holding belongs at the cursor. A dependent or a
-            // swapped-out tile isn't, so it grows in place and lets the mosaic ease it to its slot.
+            // Only the window under the pointer belongs at the cursor. A dependent or
+            // swapped-out tile doesn't, so it grows in place and lets the mosaic ease it into
+            // position.
             const frame = window.get_frame_rect();
             restoredX = frame.x;
             restoredY = frame.y;
@@ -1098,13 +1103,14 @@ export const EdgeTilingManager = GObject.registerClass({
         this._windowingManager.showWorkspaceSwitcher(newWorkspace, monitor);
     }
 
-    // Same pairing applyTile makes, minus the overflow check around it: a window that returns
-    // from its sacred workspace still carries its zone, so no tile ever lands to trigger one.
+    // The pairing applyTile performs, without the overflow check around it: a window returning
+    // from the sacred workspace still carries its zone, so no tile ever lands to set one off.
     tryPairMosaicIntoOppositeHalf(tiledWindow) {
         const zone = this.getWindowState(tiledWindow)?.zone;
         if (!zone) return false;
 
-        // Still maximized means no free half, and its frame would size the pair down to nothing.
+        // Still maximized means there is no free half, and its frame would scale the pair down to
+        // nothing.
         if (tiledWindow.is_maximized()) return false;
 
         const workspace = tiledWindow.get_workspace();
@@ -1118,13 +1124,14 @@ export const EdgeTilingManager = GObject.registerClass({
             workspace.get_work_area_for_monitor(monitor));
     }
 
-    // Counterpart of the expansion on exile: the quarter this window was stacked against took the
-    // whole side while it was away, so reclaiming the tile means splitting that side in two again.
+    // Counterpart to the exile expansion: the quarter this window was stacked with
+    // took the whole side while it was away, so reclaiming the tile divides that side in half
+    // again.
     tryRestoreQuarterPartner(returningWindow) {
         const zone = this.getWindowState(returningWindow)?.zone;
         if (!zone || !this._isQuarterZone(zone)) return false;
 
-        // Still sacred means the safety timeout forced the return before the unmaximize landed.
+        // Still sacred means the safety timeout forced the return before the unmaximize completed.
         if (returningWindow.is_maximized() || returningWindow.is_fullscreen()) return false;
 
         const workspace = returningWindow.get_workspace();
@@ -1144,13 +1151,13 @@ export const EdgeTilingManager = GObject.registerClass({
         const oppositeZone = (zone === TileZone.LEFT_FULL) ? TileZone.RIGHT_FULL : TileZone.LEFT_FULL;
         const oppositeRect = this.getZoneRect(oppositeZone, workArea, mosaicWindow);
 
-        // A window that can't fill the half (max-size capped) falls through to the miniature path.
+        // A window that cannot fill the half (max-size capped) falls through to the miniature path.
         if (!oppositeRect || !this.isEdgeTileable(mosaicWindow, oppositeRect)) return false;
 
         Logger.log(`Auto-tiling single window ${mosaicWindow.get_id()} to opposite zone ${oppositeZone}`);
 
-        // Reserve the zone and drop any miniature synchronously so the trigger's size-changed
-        // retile treats this window as tiled before applyTile positions it, with no race.
+        // Reserve the zone and remove any miniature synchronously so the trigger's size-changed
+        // retile sees this window as tiled before applyTile positions it, with no race.
         this.saveWindowState(mosaicWindow);
         const oppState = this.getWindowState(mosaicWindow);
         if (oppState) oppState.zone = oppositeZone;
@@ -1181,7 +1188,8 @@ export const EdgeTilingManager = GObject.registerClass({
             return;
         }
 
-        // Single edge tile: pair the last window into the opposite half instead of miniaturizing it.
+        // Single edge tile: match the last window with the opposite half rather than miniaturizing
+        // it.
         if (mosaicWindows.length === 1 &&
             this._tryPairIntoOppositeHalf(mosaicWindows[0], tiledWindow, zone, workArea)) {
             return;
@@ -1189,7 +1197,8 @@ export const EdgeTilingManager = GObject.registerClass({
 
         if (!this._tilingManager) return;
 
-        // Miniaturized windows report their original full size from get_frame_rect, so pass the miniature display size instead.
+        // Miniaturized windows report their original full size via get_frame_rect, so pass the
+        // miniature display size instead.
         const testTileInfo = this._tilingManager._tile(
             mosaicWindows.map((w, i) => {
                 if (WindowState.get(w, IS_MINIATURE)) {

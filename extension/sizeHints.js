@@ -3,8 +3,8 @@
 
 import Mtk from 'gi://Mtk';
 
-// Mutter keeps size hints in client space, which for a CSD window includes its shadow, while
-// everything here compares against frame rects. Left raw, every min reads a shadow too big.
+// Mutter holds size hints in client space, which for a CSD window includes its shadow, while
+// this code compares against frame rects. Unadjusted, each min reads a shadow too large.
 function hintToFrame(window, width, height) {
     const frame = window.client_rect_to_frame_rect(new Mtk.Rectangle({ x: 0, y: 0, width, height }));
     return { width: Math.max(0, frame.width), height: Math.max(0, frame.height) };

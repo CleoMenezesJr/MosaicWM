@@ -40,13 +40,13 @@ export const AnimationsManager = GObject.registerClass({
         this._membershipChangeBounce = false;
     }
 
-    // Runs even with animations off: it's the only signal that the drop will be refused, and
-    // honouring the preference here would turn the refusal into nothing happening at all.
+    // It runs without needing animations; it is the only sign that a removal gets refused, and
+    // seeing the choice here would erase that refusal.
     shakeRefusal(actor) {
         if (!actor || actor.is_destroyed?.()) return;
 
-        // home has to be a resting value. While another ease owns translation_x, reading it
-        // would capture a frame and the hops below would park the actor on that frame.
+        // The property named home must be idle. If another easing handles translation_x, checking
+        // it would stall the actor on that frame before later steps advance him.
         if (actor.get_transition('translation-x')) return;
 
         const step = Math.ceil(constants.REFUSAL_SHAKE_MS / 4);
@@ -182,9 +182,9 @@ export const AnimationsManager = GObject.registerClass({
             return;
         }
 
-        // A miniature restore animates scale on this same actor and owns recovery
-        // if we cut it off below (see continueScaleUp in miniature.js), so piling our
-        // own scale ease on top would fight it for the same property.
+        // A tiny restore effect animates scale on this actor and takes recovery when cut (see
+        // continueScaleUp in miniature.js); adding our own scale easing on top clashes with it for
+        // the same property.
         const skipScale = WindowState.get(window, MINIATURE_ANIM_KIND) !== undefined;
 
         if (this._isRedundantRetile(window, targetRect)) {
@@ -200,8 +200,8 @@ export const AnimationsManager = GObject.registerClass({
         const currentScaleX = windowActor.scale_x;
         const currentScaleY = windowActor.scale_y;
 
-        // remove_all_transitions fires old onStopped(isFinished=false);
-        // the guard at the ease callback returns early without double cleanup.
+        // Triggering remove_all_transitions initiates the prior onStopped(isFinished=false); the
+        // check inside the ease callback exits immediately, avoiding duplicate shutdown.
         windowActor.remove_all_transitions();
         this._cancelResizeFollower(window.get_id());
 

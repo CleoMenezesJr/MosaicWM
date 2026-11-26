@@ -3525,7 +3525,14 @@ export const TilingManager = GObject.registerClass({
             return f.mode === p.mode &&
                 Math.max(f.size.width - p.current.width, f.size.height - p.current.height) > tolerance;
         });
-        return held.fits && !beatsHeld ? held : free;
+        const winner = held.fits && !beatsHeld ? 'held' : 'free';
+        Logger.log(`[ALLOC-PICK] winner=${winner} held.fits=${held.fits} beatsHeld=${beatsHeld} freeS=${free.s.toFixed(4)} heldS=${held.s.toFixed(4)} ${participants.map(p => {
+            const f = free.entries.get(p.id);
+            const h = held.entries.get(p.id);
+            const fmt = e => e ? `${e.mode[0]}${e.size.width}x${e.size.height}` : '-';
+            return `${p.id}:cur=${p.current.width}x${p.current.height} free=${fmt(f)} held=${fmt(h)}`;
+        }).join(' ')}`);
+        return winner === 'held' ? held : free;
     }
 
     _allocationSlots(workspace) {

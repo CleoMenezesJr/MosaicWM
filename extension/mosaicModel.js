@@ -4,9 +4,8 @@
 
 import { MosaicTileGroupStore } from './mosaicTileGroup.js';
 
-// Groups own the regions; this is the window-keyed view onto them that the rest of the
-// extension already speaks. Keyed by window ID, not the GObject, to survive GI reference
-// churn (same reason windowState.js exists).
+// Groups hold the regions; this is the extension's existing window-keyed view over them. It keys by
+// window ID, not the GObject, to survive GI reference churn (same reason windowState.js exists).
 const _store = new MosaicTileGroupStore();
 
 function idOf(window) {
@@ -28,8 +27,8 @@ export const MosaicModel = {
         return _store.groupOfWindow(id)?.regionOf(id) ?? null;
     },
 
-    // The layout's intent beats the live frame: mid-animation the frame is a transient
-    // size, and with the overview open Mutter drops our moves entirely.
+    // Layout intent outranks the live frame: during animation the size is transient, and while the
+    // overview is open Mutter discards our moves entirely.
     geometryOf(window) {
         const region = this.regionFor(window);
         if (region) return region;
@@ -37,15 +36,15 @@ export const MosaicModel = {
         return frame ? { x: frame.x, y: frame.y, width: frame.width, height: frame.height } : null;
     },
 
-    // The client refused or changed the size on its own, so the model takes the real
-    // frame as the new intent instead of fighting it back.
+    // The client refused or independently changed the size, so the model treats the actual frame as
+    // the new intent instead of opposing it.
     learn(window, frame) {
         const id = idOf(window);
         const group = id !== undefined ? _store.groupOfWindow(id) : null;
         const member = group?.memberOf(id);
         if (!member) return;
-        // Store's setMember also updates the reverse index, but this call never moves the
-        // window to a different group, and there's no workspace/monitor to give it here anyway.
+        // Store's setMember also keeps the reverse index, but this call never shifts the window to
+        // another group, and no workspace/monitor exists to supply here anyway.
         group.setMember(id, { ...member, region: frame });
     },
 
@@ -59,7 +58,7 @@ export const MosaicModel = {
     clear() { _store.clear(); },
 };
 
-// Existing call sites speak this shape; kept so moving the store is not also an API churn.
+// Current call sites use this shape; kept so relocating the store does not also require API churn.
 export const ComputedLayouts = {
     get(mw) { return MosaicModel.regionFor(mw) ?? undefined; },
     set(mw, layout) { MosaicModel.setRegion(mw, layout, mw?.get_workspace?.(), mw?.get_monitor?.()); },

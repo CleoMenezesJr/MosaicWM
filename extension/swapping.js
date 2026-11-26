@@ -9,7 +9,7 @@ import { monotonicNow } from './timing.js';
 
 import GObject from 'gi://GObject';
 
-// Which axis each direction travels on, and which way "closer" runs on it.
+// Axis per direction, and which way "closer" goes on it.
 const DIRECTION_RULES = Object.freeze({
     left: { axis: 'x', sign: -1 },
     right: { axis: 'x', sign: 1 },
@@ -21,13 +21,13 @@ function centerOf(frame) {
     return { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
 }
 
-// A horizontal move only counts windows sharing rows, a vertical one columns.
+// Horizontal moves consider only row-sharing windows; vertical ones, column-sharing.
 function overlapsOnCrossAxis(a, b, axis) {
     if (axis === 'x') return !(a.y + a.height <= b.y || b.y + b.height <= a.y);
     return !(a.x + a.width <= b.x || b.x + b.width <= a.x);
 }
 
-// Positive means the candidate really sits that way from the origin.
+// Positive means the candidate is truly that way from the origin.
 function signedDistance(origin, center, rule) {
     return (center[rule.axis] - origin[rule.axis]) * rule.sign;
 }
@@ -190,8 +190,8 @@ export const SwappingManager = GObject.registerClass({
         const centerX = workArea.x + workArea.width / 2;
         const windowCenterX = centerOf(window.get_frame_rect()).x;
 
-        // Only reach for a tile once the move actually crosses the center; one sitting
-        // on the same half as us isn't the neighbor in that direction.
+        // Grab a tile only after the move truly passes the center; a tile on our half isn't that
+        // direction's neighbor.
         const crossesCenter = direction === 'left' ? windowCenterX > centerX : windowCenterX < centerX;
         if (!crossesCenter) return null;
 
@@ -248,15 +248,15 @@ export const SwappingManager = GObject.registerClass({
 
         const neighbor = this.findNeighbor(window, direction, workspace, monitor);
 
-        // A snapped (edge-tiled) neighbor in this direction wins, so only recompose the
-        // mosaic when there isn't one. Recomposition is deterministic per press and moves
-        // retarget mid-flight, so it skips the anti-oscillation throttle below.
+        // A snapped (edge-tiled) neighbor this way takes precedence, so recompose the mosaic only
+        // if absent. Recomposition is fixed per press and in-flight moves retarget, so it bypasses
+        // the anti-oscillation throttle below.
         const snappedInDirection = neighbor && neighbor.type === 'tiling';
         if (!isWindowTiled && this._tilingManager && !snappedInDirection) {
             return this._recompose(window, direction, workspace, monitor);
         }
 
-        // Hysteresis: prevent rapid oscillation of the neighbor swap below.
+        // Hysteresis: stop the neighbor swap below from flipping rapidly.
         const lastSwap = WindowState.get(window, 'lastSwapTime');
         if (lastSwap && (monotonicNow() - lastSwap) < 500) {
             Logger.log(`Swap throttled for window ${window.get_id()}`);
@@ -283,8 +283,8 @@ export const SwappingManager = GObject.registerClass({
             Logger.log(`Recomposed to [${best.shape.join(',')}] moving ${window.get_id()} ${direction}`);
             return true;
         }
-        // Recompose is the whole mosaic keyboard action; if nothing moves that way, do
-        // nothing rather than an order-swap that would leave the pinned shape stale.
+        // Recompose is the full mosaic keyboard action; when nothing moves that way, do nothing
+        // instead of an order-swap that leaves the pinned shape stale.
         Logger.log(`No recomposition for ${window.get_id()} ${direction}`);
         return false;
     }
@@ -316,8 +316,8 @@ export const SwappingManager = GObject.registerClass({
         }
     }
 
-    // Only the paths that place the window into a zone stamp the throttle clock; a plain
-    // swap leaves it alone, same as before.
+    // Just the paths placing the window into a zone mark the throttle clock; a plain swap leaves it
+    // alone, as before.
     _markSwapped(window, success) {
         if (success) WindowState.set(window, 'lastSwapTime', monotonicNow());
         return success;

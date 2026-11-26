@@ -96,8 +96,8 @@ export const ReorderingManager = GObject.registerClass({
         return this._edgeTilingManager.detectZone(cursor.x, cursor.y, workArea, workspace) !== TileZone.NONE;
     }
 
-    // Sticking to the layout we're already previewing until the new one is clearly closer;
-    // near-ties would otherwise flip the preview back and forth under a still cursor.
+    // Keep the layout already previewed until the new one is clearly nearer;
+    // near-ties would otherwise make the preview oscillate beneath a stationary cursor.
     _shouldSwitchLayout(cursor, closestLayout, minDist) {
         if (!this._chosenLayout || closestLayout === this._chosenLayout) return true;
 
@@ -125,8 +125,8 @@ export const ReorderingManager = GObject.registerClass({
         return `layout-${Math.round(layout.draggedRect.x)}-${Math.round(layout.draggedRect.y)}`;
     }
 
-    // The edge-zone exit tiles the mosaic itself and needs to reproduce this layout;
-    // adopting it here keeps the next motion from moving everything again.
+    // The edge-zone exit tiles the mosaic itself and must recreate this layout;
+    // using it here prevents the next motion from reshuffling everything.
     layoutForZoneExit() {
         if (!this.dragStart || !this._dragContext) return null;
 
@@ -147,8 +147,8 @@ export const ReorderingManager = GObject.registerClass({
         const monitor = global.display.get_current_monitor();
         let meta_windows = this._windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
 
-        // If the dragged window is on a different monitor (cursor crossed before window did),
-        // include it so layout computation can place it in the cursor monitor's mosaic.
+        // If the dragged window sits on another monitor (the cursor crossed first),
+        // add it so layout computation can position it within the cursor monitor's mosaic.
         if (!meta_windows.find(w => w.get_id() === meta_window.get_id())) {
             meta_windows = [meta_window, ...meta_windows];
         }
@@ -182,8 +182,8 @@ export const ReorderingManager = GObject.registerClass({
         this._tilingManager.enableDragMode(remainingSpace);
 
         this.dragStart = true;
-        // Plain-data copy: the layout search only needs geometry and ids, and
-        // descriptors carry a metaWindow GObject that must not be serialized.
+        // Plain-data copy: the layout search needs only geometry and ids,
+        // while descriptors hold a metaWindow GObject that may not be serialized.
         const descriptorsCopy = descriptors.map(d => ({
             id: d.id,
             index: d.index,
@@ -199,7 +199,7 @@ export const ReorderingManager = GObject.registerClass({
             windows: descriptorsCopy
         };
 
-        // Pre-compute all valid mosaic layouts for this drag session
+        // Prepare all valid mosaic layouts for this drag session
         const draggedId = meta_window.get_id();
         const workArea = remainingSpace || workspace.get_work_area_for_monitor(monitor);
         this._dragLayouts = this._tilingManager.computeDragLayouts(descriptorsCopy, workArea, draggedId);
@@ -218,7 +218,7 @@ export const ReorderingManager = GObject.registerClass({
         const workspace = meta_window.get_workspace();
         this.dragStart = false;
 
-        // Use the shape from the layout, not re-derived from positions: unequal-height windows
+        // Use the layout's shape, not one re-derived from positions: unequal-height windows
         // have differing top edges and would be misread as separate rows.
         if (!skip_apply && this._chosenLayout && this._tilingManager) {
             this._tilingManager.pinComposition(workspace, this._chosenLayout.shape, this._chosenLayout.permOrder, this._chosenLayout.vertical);

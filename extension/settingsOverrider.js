@@ -58,7 +58,7 @@ export class SettingsOverrider {
             }
         }
 
-        // Flush dconf before process exit (e.g. uninstall).
+        // Sync dconf before process exit (e.g. uninstall).
         Gio.Settings.sync();
 
         this.#overrides.clear();

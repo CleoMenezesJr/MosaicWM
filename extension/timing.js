@@ -10,9 +10,9 @@ import * as constants from './constants.js';
 
 const FALLBACK_ANIMATION_MS = 250;
 
-// Milliseconds, matching the constants these get compared against. The wall clock
-// can step backwards on an NTP correction, and a negative delta reads as "just
-// happened" to every dedupe and settle check we have.
+// Milliseconds, aligned with the constants these are compared against. The wall clock
+// may jump backward on an NTP correction, and a negative delta is read as "just
+// happened" by every dedupe and settle check we have.
 export function monotonicNow() {
     return GLib.get_monotonic_time() / 1000;
 }
@@ -39,10 +39,10 @@ function compositorLaters() {
     return _laters;
 }
 
-// Runs within the sweep that scheduled it, before the next paint, the hook
-// Mutter's own drag throttles with. Each call schedules its own run; the
-// caller owns dedupe by latching. Returns a cancel every exit path must call;
-// a later outliving its owner would tile a workspace being torn down.
+// Runs inside the sweep that scheduled it, ahead of the next paint, the hook
+// used by Mutter's own drag throttling. Each call plans its own run; the
+// caller owns dedupe through latching. Returns a cancel each exit path must invoke;
+// a later outlasting its owner would tile a workspace being torn down.
 export function beforeRedraw(callback) {
     const laters = compositorLaters();
     if (laters) {
