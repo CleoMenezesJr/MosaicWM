@@ -82,6 +82,8 @@ export default class WindowMosaicExtension extends Extension {
         this._dndScheduleRestore = null;
         this._dndPendingWindowId = null;
 
+        this._sessionModeUpdatedId = 0;
+
         this._injectionManager = null;
 
         this._timeoutRegistry = null;
@@ -141,6 +143,32 @@ export default class WindowMosaicExtension extends Extension {
                 this.tilingManager?.cascadeWorkspaceWindows(workspace);
             return GLib.SOURCE_REMOVE;
         });
+    }
+
+    _removeIndicator() {
+        if (this._mosaicIndicator) {
+            this._mosaicIndicator.destroy();
+            this._mosaicIndicator = null;
+        }
+    }
+
+    _syncIndicatorForSessionMode() {
+        // Quick Settings UI does not belong on the lock screen.
+        const inUserSession = Main.sessionMode.currentMode === 'user' ||
+            Main.sessionMode.parentMode === 'user';
+        if (!inUserSession) {
+            this._removeIndicator();
+            return;
+        }
+
+        if (!this._mosaicIndicator) {
+            this._mosaicIndicator = new MosaicIndicator(this);
+            Main.panel.statusArea.quickSettings.addExternalIndicator(this._mosaicIndicator);
+        }
+    }
+
+    _onSessionModeChanged() {
+        this._syncIndicatorForSessionMode();
     }
 
     _updateIndicatorIcon() {
@@ -301,8 +329,9 @@ export default class WindowMosaicExtension extends Extension {
 
         this._setupDndMiniatureRestore();
 
-        this._mosaicIndicator = new MosaicIndicator(this);
-        Main.panel.statusArea.quickSettings.addExternalIndicator(this._mosaicIndicator);
+        this._sessionModeUpdatedId = Main.sessionMode.connect('updated',
+            this._onSessionModeChanged.bind(this));
+        this._syncIndicatorForSessionMode();
 
         this._settingsOverrider = new SettingsOverrider();
 
@@ -963,6 +992,7 @@ export default class WindowMosaicExtension extends Extension {
     // Phases run in the same order the old flat method did; teardown order is load-bearing
     // (e.g. the miniature listener comes off before restore, handlers destroy before refs null).
     disable() {
+        // unlock-dialog keeps the extension alive on the lock screen; this still runs on full disable.
         Logger.log('Disabling extension');
 
         if (this._timeoutRegistry) {
@@ -1022,9 +1052,11 @@ export default class WindowMosaicExtension extends Extension {
         if (this.drawingManager) this.drawingManager.destroy();
         if (this.animationsManager) this.animationsManager.destroy();
 
-        if (this._mosaicIndicator) {
-            this._mosaicIndicator.destroy();
-            this._mosaicIndicator = null;
+        this._removeIndicator();
+
+        if (this._sessionModeUpdatedId) {
+            Main.sessionMode.disconnect(this._sessionModeUpdatedId);
+            this._sessionModeUpdatedId = 0;
         }
 
         if (this._focusWindowChangedId) {
