@@ -268,7 +268,7 @@ export default class WindowMosaicExtension extends Extension {
         this.swappingManager = new SwappingManager();
         this.drawingManager = new DrawingManager();
         this.animationsManager = new AnimationsManager();
-        this.mosaicRenderer = new MosaicRenderer();
+        this.mosaicRenderer = new MosaicRenderer(this.animationsManager);
         this.windowingManager = new WindowingManager();
 
         this.windowingManager.setEdgeTilingManager(this.edgeTilingManager);

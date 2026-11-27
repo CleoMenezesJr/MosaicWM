@@ -1201,6 +1201,13 @@ export const WindowHandler = GObject.registerClass({
             const scheduleFirstPlacementFailsafe = () => {
                 this._timeoutRegistry.add(constants.SLIDE_IN_FAILSAFE_MS, () => {
                     if (!WindowState.get(window, 'pendingFirstPlacement')) return GLib.SOURCE_REMOVE;
+                    // An open overview means the claim is parked in the model, not stranded;
+                    // the hidden flush plays its entrance. Only rescue it once the overview
+                    // is gone and nothing is animating it.
+                    if (Main.overview.visible) {
+                        scheduleFirstPlacementFailsafe();
+                        return GLib.SOURCE_REMOVE;
+                    }
                     if (this._ext.animationsManager.hasActiveOrPendingEntrance(window)) {
                         scheduleFirstPlacementFailsafe();
                         return GLib.SOURCE_REMOVE;

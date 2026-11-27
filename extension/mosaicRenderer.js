@@ -3,6 +3,7 @@
 // Renders the mosaic model onto its surfaces: real windows, or the overview's clones
 
 import { lerp } from 'resource:///org/gnome/shell/misc/util.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import * as Logger from './logger.js';
 import { MosaicModel } from './mosaicModel.js';
@@ -12,7 +13,8 @@ import * as WindowState from './windowState.js';
 import { IS_MINIATURE } from './windowState.js';
 
 export class MosaicRenderer {
-    constructor() {
+    constructor(animations) {
+        this._animations = animations;
         // The shell creates a new WorkspaceLayout for each overview session, so these last only
         // while it is open; clearOverviewLayouts drops them on hide.
         this._overviewLayouts = new Map();
@@ -99,6 +101,13 @@ export class MosaicRenderer {
         const group = MosaicModel.store.groupFor(workspace.index(), monitor);
         if (!group || group.size === 0) return;
 
+        // Windows that claimed an entrance while the overview was open could not play it:
+        // Mutter drops frame moves until it closes. The 'hidden' flush is the first moment
+        // the move is accepted, so replay the slide there instead of committing it silently.
+        const layouts = [...group.members()]
+            .filter(m => isWindowAlive(m.window) && !WindowState.get(m.window, IS_MINIATURE))
+            .map(m => ({ window: m.window, rect: m.region }));
+
         let applied = 0;
         for (const member of group.members()) {
             if (!isWindowAlive(member.window)) continue;
@@ -106,7 +115,13 @@ export class MosaicRenderer {
             // here would compound atop it.
             if (WindowState.get(member.window, IS_MINIATURE)) continue;
             const r = member.region;
-            MosaicConstraints.commitRegion(member.window, r);
+            const claim = WindowState.get(member.window, 'pendingFirstPlacement');
+            const animating = this._animations.hasActiveOrPendingEntrance(member.window);
+            if (claim && !animating && !Main.overview.visible) {
+                this._animations.animateDeferredEntrance(member.window, r, layouts);
+            } else {
+                MosaicConstraints.commitRegion(member.window, r);
+            }
             applied++;
         }
         Logger.log(`[FLUSH] Applied ${applied} region(s) to WS-${workspace.index()} monitor ${monitor}`);

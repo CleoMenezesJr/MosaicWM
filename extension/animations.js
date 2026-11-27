@@ -262,14 +262,13 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     _applyWithoutAnimation(window, targetRect, { userOp, firstPlacement, onComplete }) {
-        // move_resize_frame is a no-op while the overview is open (Mutter discards it), and
-        // the flush places this window for real once it hides, so skip entirely rather than
-        // snapping to a position that never took effect and losing the animation.
+        // move_resize_frame is a no-op while the overview is open (Mutter discards it). The
+        // window still renders in the overview from the model, so it has to be visible there;
+        // the entrance claim survives for the flush that plays once the overview hides.
         if (Main.overview.visible) {
             // The map-time opacity=0 still has to be cleared here: no ease is running to do it,
             // so the window would sit invisible until the 1s failsafe pops it in.
             if (firstPlacement) {
-                WindowState.remove(window, 'pendingFirstPlacement');
                 const actor = window.get_compositor_private();
                 if (actor && !actor.is_destroyed()) actor.opacity = 255;
             }
@@ -496,6 +495,18 @@ export const AnimationsManager = GObject.registerClass({
         return Math.abs(deltaX) >= Math.abs(deltaY)
             ? { x: deltaX < 0 ? -OFFSET : OFFSET, y: 0 }
             : { x: 0, y: deltaY < 0 ? -OFFSET : OFFSET };
+    }
+
+    // Replays an entrance whose claim survived the overview-visible tile pass. At 'hidden' the
+    // window is sitting visible at its committed slot, so hide it first: the ease's own fade
+    // then reads as the slide-in it would have been at map time.
+    animateDeferredEntrance(window, targetRect, windowLayouts) {
+        const actor = window.get_compositor_private();
+        if (actor && !actor.is_destroyed()) actor.opacity = 0;
+        this.animateWindow(window, targetRect, {
+            firstPlacement: true,
+            slideInOffset: this._computeSlideInOffset(window, targetRect, windowLayouts),
+        });
     }
 
     // Where an in-flight ease is driving the window, so size-changed can tell the
