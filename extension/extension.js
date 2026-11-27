@@ -172,19 +172,8 @@ export default class WindowMosaicExtension extends Extension {
     }
 
     _updateIndicatorIcon() {
-        if (this._mosaicIndicator) {
+        if (this._mosaicIndicator)
             this._mosaicIndicator._updateIcon();
-        }
-    }
-
-    _tileWindowWorkspace(meta_window) {
-        if(!meta_window) return;
-        const workspace = meta_window.get_workspace();
-        if(!workspace) return;
-        this.tilingManager.tileWorkspaceWindows(workspace,
-            meta_window,
-            null,
-            false);
     }
 
     _tileAllWorkspaces = () => {

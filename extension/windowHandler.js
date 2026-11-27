@@ -384,25 +384,6 @@ export const WindowHandler = GObject.registerClass({
         if (ws) this.tilingManager.tileWorkspaceWindows(ws, win, mon);
     }
 
-    onWindowUnmaximized(window) {
-        const workspace = window.get_workspace();
-        if (!workspace) return;
-
-        WindowState.remove(window, 'openedMaximized');
-
-        const monitor = window.get_monitor();
-        const workspaceWindows = this.windowingManager.getMonitorWorkspaceWindows(workspace, monitor);
-
-        if (workspaceWindows.length > 1) {
-            // Restore preferred size if it was edge-constrained or smart-resized
-            if (WindowState.get(window, 'isConstrainedByMosaic')) {
-                this.tilingManager.restorePreferredSize(window);
-            }
-
-            this.tilingManager.tileWorkspaceWindows(workspace, window, monitor);
-        }
-    }
-
     handleExclusionStateChange(window) {
         const windowId = window.get_id();
         const workspace = window.get_workspace();
