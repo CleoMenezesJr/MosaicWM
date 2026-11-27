@@ -823,11 +823,55 @@ export const WindowHandler = GObject.registerClass({
             .filter(w => !WindowState.get(w, 'pendingInQueue'));
         const otherWindows = workspaceWindows.filter(w => w.get_id() !== window.get_id());
 
+        if (this._settleBornSacredInPlace(window, workspace, monitor,
+            isIncomingSacred, hasExistingSacred, otherWindows)) {
+            return { handled: false };
+        }
+
         if (hasExistingSacred || (isIncomingSacred && otherWindows.length > 0)) {
             Logger.log(`Sacred Isolation triggered (IncomingSacred: ${isIncomingSacred}, HasExistingSacred: ${hasExistingSacred}) - isolating`);
             return { handled: true, result: await this.windowingManager.moveOversizedWindow(window) };
         }
         return { handled: false };
+    }
+
+    // A client that restores its own maximized state at launch (its saved
+    // state, not a user asking for sacred) should not get exiled when its
+    // real size fits alongside the others; unmaximize in place so the
+    // normal entrance plays.
+    _settleBornSacredInPlace(window, workspace, monitor, isIncomingSacred, hasExistingSacred, otherWindows) {
+        if (!isIncomingSacred || otherWindows.length === 0 || hasExistingSacred) return false;
+        // True fullscreen (games, video) keeps the sacred promise; a maximized
+        // frame from restored client state does not.
+        if (window.is_fullscreen()) return false;
+
+        const preferredSize = this.tilingManager.getPreferredSize(window);
+        const openingSize = WindowState.get(window, 'openingSize');
+        // The evaluation can run before onWindowCreated captures the opening
+        // size; a maximized frame with no recorded size is the born signal.
+        const bornMaximized = WindowState.get(window, 'openedMaximized')
+            || (!preferredSize && !openingSize);
+        if (!bornMaximized) return false;
+
+        if (!this._bornSacredFits(window, workspace, monitor, preferredSize, openingSize)) return false;
+
+        Logger.log(`Born-maximized arrival ${window.get_id()} fits at its restored size - unmaximizing in place instead of isolating`);
+        // Marking it born-maximized routes the resulting state flip through the
+        // settle path that captures the real size and tiles; the normal entrance
+        // claim rides along untouched.
+        WindowState.set(window, 'openedMaximized', true);
+        window.unmaximize();
+        return true;
+    }
+
+    // Unmaximizing pins the window to its restored size, so it has to really
+    // fit; arrivals with no recorded size only have the estimate to check.
+    _bornSacredFits(window, workspace, monitor, preferredSize, openingSize) {
+        const wa = workspace.get_work_area_for_monitor(monitor);
+        const preMaxSize = preferredSize || openingSize
+            || { width: Math.round(wa.width * constants.BORN_SACRED_SIZE_RATIO), height: Math.round(wa.height * constants.BORN_SACRED_SIZE_RATIO) };
+        return !this.tilingManager.retileWithAllocation(
+            workspace, monitor, window, { dryRun: true, overrideSize: preMaxSize }).overflow;
     }
 
     _handleDnDArrival(window, workspace, monitor) {

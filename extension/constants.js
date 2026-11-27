@@ -65,6 +65,9 @@ export const ZONE_VERTICAL_PAIR = Object.freeze({
 
 export const STARTUP_TILE_DELAY_MS = 300;
 
+// Fallback size estimate for a born-maximized arrival with no recorded size.
+export const BORN_SACRED_SIZE_RATIO = 0.8;
+
 export const ANIMATION_DURATION_MS = 250;
 
 export const MIN_WINDOW_WIDTH = 400;
