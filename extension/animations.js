@@ -12,12 +12,15 @@ import { MINIATURE_ANIM_KIND } from './windowState.js';
 import { getAnimationsEnabled, getSlowDownFactor } from './timing.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
 import { followResize } from './resizeFollower.js';
+import { createEasing } from './easing.js';
 
 import GObject from 'gi://GObject';
 
 const ANIMATION_DURATION = constants.ANIMATION_DURATION_MS;
 const ANIMATION_MODE = Clutter.AnimationMode.EASE_OUT_BACK;
 const ANIMATION_MODE_SUBTLE = Clutter.AnimationMode.EASE_OUT_QUAD;
+const USE_HOUSE_CURVE = constants.ANIMATION_EASING === 'house';
+const HOUSE_EASE = createEasing(constants.HOUSE_CURVE);
 
 export const AnimationsManager = GObject.registerClass({
     GTypeName: 'MosaicAnimationsManager',
@@ -30,6 +33,8 @@ export const AnimationsManager = GObject.registerClass({
         this._isDragging = false;
         this._animatingWindows = new Map(); // Window ID -> actor, drives animations-completed signal
         this._animatingTargets = new Map(); // Window ID -> last targetRect, to detect redundant retile calls
+        this._translationTimelines = new Map(); // Window ID -> Clutter.Timeline owning translation_x/y
+        this._opacityTimelines = new Map(); // Window ID -> { timeline, actor } owning the entrance fade
         this._pendingEntranceEases = new Map(); // Window ID -> ease params, for entrances deferred until the actor is mapped
         this._resizeFollowers = new Map(); // Window ID -> follower keeping a slow client's actor at its slot
         this._justEndedDrag = false;
@@ -48,6 +53,8 @@ export const AnimationsManager = GObject.registerClass({
         // The property named home must be idle. If another easing handles translation_x, checking
         // it would stall the actor on that frame before later steps advance him.
         if (actor.get_transition('translation-x')) return;
+        const window = actor.get_meta_window?.();
+        if (window && this._translationTimelines.has(window.get_id())) return;
 
         const step = Math.ceil(constants.REFUSAL_SHAKE_MS / 4);
         const home = actor.translation_x;
@@ -90,7 +97,12 @@ export const AnimationsManager = GObject.registerClass({
         for (const [id, actor] of this._animatingWindows) {
             let stale;
             try {
-                stale = !actor || actor.is_destroyed() || !actor.get_transition('translation_x');
+                // The house path owns translation through a timeline, so the transition probe
+                // the Clutter path relies on would read it as already finished.
+                stale = !actor || actor.is_destroyed() ||
+                    (USE_HOUSE_CURVE
+                        ? !this._translationTimelines.get(id)?.is_playing()
+                        : !actor.get_transition('translation_x'));
             } catch (_e) {
                 // Actor's underlying GObject was fully disposed (e.g. window destroyed
                 // mid-animation), not merely Clutter-destroyed, so any method call
@@ -98,6 +110,7 @@ export const AnimationsManager = GObject.registerClass({
                 stale = true;
             }
             if (stale) {
+                this._stopTranslationTimeline(id);
                 this._animatingWindows.delete(id);
                 this._animatingTargets.delete(id);
             }
@@ -202,6 +215,7 @@ export const AnimationsManager = GObject.registerClass({
 
         // Triggering remove_all_transitions initiates the prior onStopped(isFinished=false); the
         // check inside the ease callback exits immediately, avoiding duplicate shutdown.
+        this._stopTranslationTimeline(window.get_id());
         windowActor.remove_all_transitions();
         this._cancelResizeFollower(window.get_id());
 
@@ -246,7 +260,7 @@ export const AnimationsManager = GObject.registerClass({
             windowActor.set_scale(initialScaleX, initialScaleY);
         }
 
-        const easeParams = { effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect };
+        const easeParams = { initialTx, initialTy, effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect };
 
         // Clutter silently skips implicit transitions on actors that aren't mapped yet
         // (should_skip_implicit_transition in clutter-actor.c) and just snaps to the
@@ -262,6 +276,7 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     _applyWithoutAnimation(window, targetRect, { userOp, firstPlacement, onComplete }) {
+        this._stopTranslationTimeline(window.get_id());
         // move_resize_frame is a no-op while the overview is open (Mutter discards it). The
         // window still renders in the overview from the model, so it has to be visible there;
         // the entrance claim survives for the flush that plays once the overview hides.
@@ -289,6 +304,7 @@ export const AnimationsManager = GObject.registerClass({
 
     _applyNoActor(window, targetRect, { firstPlacement, onComplete }) {
         Logger.log(`No actor for window ${window.get_id()}, skipping animation`);
+        this._stopTranslationTimeline(window.get_id());
         WindowState.set(window, 'isMosaicResizing', true);
         MosaicConstraints.commitRegion(window, targetRect);
         this._clearMosaicResizingSoon(window);
@@ -339,13 +355,11 @@ export const AnimationsManager = GObject.registerClass({
     // Runs the actual translation/scale ease. Called either immediately from
     // animateWindow (actor already mapped) or later via runDeferredEntrance,
     // once windowHandler.js confirms the actor is mapped.
-    _runEntranceEase(window, windowActor, { effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect }) {
-        // Position keeps its own bounce; scale and opacity run as separate eases so
-        // they can use a different curve. EASE_OUT_BACK overshoots past its target
-        // and clamps there, so bundled into the same ease as translation it finishes
+    _runEntranceEase(window, windowActor, { initialTx, initialTy, effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect }) {
+        // Position and scale run as separate animations. EASE_OUT_BACK overshoots past its
+        // target and clamps there, so bundled into the same ease as translation it finishes
         // (and visually settles) well before the bouncy slide-in does. A resize that
-        // overshoots reads as a glitch, and a fade that overshoots reads as already
-        // finished while the window is still visibly sliding.
+        // overshoots reads as a glitch.
         if (!skipScale) {
             this._resizeFollowers.set(window.get_id(), followResize(window, windowActor, targetRect, {
                 duration: effectiveDuration, mode: ANIMATION_MODE_SUBTLE, registry: this._timeoutRegistry,
@@ -356,16 +370,27 @@ export const AnimationsManager = GObject.registerClass({
         // knew where to slide in from. Needed even with no offset (e.g. the very
         // first window in an empty workspace), otherwise it never finishes fading in.
         if (firstPlacement) {
-            windowActor.ease({
-                opacity: 255,
-                duration: effectiveDuration,
-                mode: ANIMATION_MODE_SUBTLE,
-                onStopped: (isFinished) => {
-                    if (!isFinished) return;
-                    if (windowActor && !windowActor.is_destroyed())
-                        windowActor.opacity = 255;
-                }
+            if (USE_HOUSE_CURVE) {
+                this._startEntranceOpacity(window, windowActor, effectiveDuration);
+            } else {
+                windowActor.ease({
+                    opacity: 255,
+                    duration: effectiveDuration,
+                    mode: ANIMATION_MODE_SUBTLE,
+                    onStopped: (isFinished) => {
+                        if (!isFinished) return;
+                        if (windowActor && !windowActor.is_destroyed())
+                            windowActor.opacity = 255;
+                    }
+                });
+            }
+        }
+
+        if (USE_HOUSE_CURVE) {
+            this._easeTranslationWithHouseCurve(window, windowActor, {
+                initialTx, initialTy, effectiveDuration, firstPlacement, onComplete,
             });
+            return;
         }
 
         windowActor.ease({
@@ -375,16 +400,117 @@ export const AnimationsManager = GObject.registerClass({
             mode: animationMode,
             onStopped: (isFinished) => {
                 if (!isFinished) return; // redirect in progress; new animation owns cleanup
-                if (windowActor && !windowActor.is_destroyed())
-                    windowActor.set_translation(0, 0, 0);
-                if (firstPlacement) WindowState.remove(window, 'pendingFirstPlacement');
-                this._animatingWindows.delete(window.get_id());
-                this._animatingTargets.delete(window.get_id());
-                this._checkAllAnimationsComplete();
-                WindowState.set(window, 'isMosaicResizing', false);
-                if (onComplete) onComplete();
+                this._finishTranslationEase(window, windowActor, { firstPlacement, onComplete });
             }
         });
+    }
+
+    // A Clutter ease only takes an enum curve, so the house bezier drives translation from a
+    // timeline instead. Everything after the curve (cleanup, redirect, completion) is the same
+    // contract the Clutter path signs.
+    _easeTranslationWithHouseCurve(window, windowActor, { initialTx, initialTy, effectiveDuration, firstPlacement, onComplete }) {
+        this.animateTranslation(window, windowActor, {
+            fromTx: initialTx,
+            fromTy: initialTy,
+            toTx: 0,
+            toTy: 0,
+            duration: effectiveDuration,
+            onComplete: () => this._finishTranslationEase(window, windowActor, { firstPlacement, onComplete }),
+        });
+    }
+
+    // Shared with the miniature path, whose leg ends on the slot rect instead of zero. A takeover
+    // stop stays silent; whoever interrupted owns translation from then on.
+    animateTranslation(window, windowActor, { fromTx, fromTy, toTx, toTy, duration, onComplete }) {
+        const id = window.get_id();
+        this._stopTranslationTimeline(id);
+        // A clockless timeline never ticks; binding it to the actor picks up the stage view's clock.
+        const timeline = new Clutter.Timeline({
+            duration: Math.max(1, duration),
+            actor: windowActor,
+        });
+        this._translationTimelines.set(id, timeline);
+
+        timeline.connect('new-frame', tl => {
+            if (windowActor.is_destroyed()) {
+                tl.stop();
+                return;
+            }
+            const eased = HOUSE_EASE(tl.get_progress());
+            windowActor.set_translation(
+                fromTx + (toTx - fromTx) * eased,
+                fromTy + (toTy - fromTy) * eased,
+                0);
+        });
+
+        timeline.connect('stopped', (_tl, isFinished) => {
+            if (!isFinished) return; // redirect in progress; new animation owns cleanup
+            if (this._translationTimelines.get(id) === timeline) this._translationTimelines.delete(id);
+            if (onComplete) onComplete();
+        });
+
+        timeline.start();
+    }
+
+    _finishTranslationEase(window, windowActor, { firstPlacement, onComplete }) {
+        if (windowActor && !windowActor.is_destroyed())
+            windowActor.set_translation(0, 0, 0);
+        if (firstPlacement) WindowState.remove(window, 'pendingFirstPlacement');
+        this._animatingWindows.delete(window.get_id());
+        this._animatingTargets.delete(window.get_id());
+        this._checkAllAnimationsComplete();
+        WindowState.set(window, 'isMosaicResizing', false);
+        if (onComplete) onComplete();
+    }
+
+    // Translation ownership moves to a takeover ease (miniature, drag preview); a running
+    // timeline would keep writing it behind their back.
+    stopTranslationEase(windowId) {
+        this._stopTranslationTimeline(windowId);
+    }
+
+    _stopTranslationTimeline(windowId) {
+        const timeline = this._translationTimelines.get(windowId);
+        if (!timeline) return;
+        this._translationTimelines.delete(windowId);
+        timeline.stop();
+    }
+
+    // The house curve settles the slide long before 250ms, so a native fade would leave the
+    // window sitting in place while still translucent. Same curve, same clock.
+    _startEntranceOpacity(window, windowActor, duration) {
+        const id = window.get_id();
+        this._stopOpacityTimeline(id);
+        const startOpacity = windowActor.opacity;
+        const timeline = new Clutter.Timeline({ duration: Math.max(1, duration), actor: windowActor });
+        this._opacityTimelines.set(id, { timeline, actor: windowActor });
+
+        timeline.connect('new-frame', tl => {
+            if (windowActor.is_destroyed()) {
+                if (this._opacityTimelines.get(id)?.timeline === timeline)
+                    this._opacityTimelines.delete(id);
+                tl.stop();
+                return;
+            }
+            const eased = HOUSE_EASE(tl.get_progress());
+            windowActor.set_opacity(Math.round(startOpacity + (255 - startOpacity) * eased));
+        });
+
+        timeline.connect('stopped', (_tl, isFinished) => {
+            if (!isFinished) return; // a newer fade continues from the current value
+            if (this._opacityTimelines.get(id)?.timeline === timeline)
+                this._opacityTimelines.delete(id);
+            if (!windowActor.is_destroyed()) windowActor.set_opacity(255);
+        });
+
+        timeline.start();
+    }
+
+    _stopOpacityTimeline(windowId) {
+        const entry = this._opacityTimelines.get(windowId);
+        if (!entry) return;
+        this._opacityTimelines.delete(windowId);
+        entry.timeline.stop();
     }
 
     // Called from windowHandler.js's onWindowCreated once the actor is confirmed
@@ -533,6 +659,7 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     removeAnimatingWindow(windowId) {
+        this._stopTranslationTimeline(windowId);
         this._cancelResizeFollower(windowId);
         this._animatingTargets.delete(windowId);
         if (this._animatingWindows.delete(windowId)) {
@@ -558,6 +685,13 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     cleanup() {
+        for (const id of [...this._translationTimelines.keys()])
+            this._stopTranslationTimeline(id);
+        for (const { timeline, actor } of [...this._opacityTimelines.values()]) {
+            timeline.stop();
+            if (actor && !actor.is_destroyed()) actor.set_opacity(255);
+        }
+        this._opacityTimelines.clear();
         this._cancelAllResizeFollowers({ resetScale: true });
         this._animatingWindows.clear();
         this._animatingTargets.clear();

@@ -60,7 +60,7 @@ export function applyMiniatureActorState(actor, scale, targetX, targetY) {
     Logger.log(`[MINIATURE] applyMiniatureActorState: actor=( ${ax},${ay} ${actorW}x${actorH}) target=(${targetX},${targetY}) scale=${scale} tx=${tx} ty=${ty} FINAL_SIZE=${Math.round(actorW * scale)}x${Math.round(actorH * scale)}`);
 }
 
-export function animateMiniatureToTarget(actor, window, scale, targetX, targetY, duration) {
+export function animateMiniatureToTarget(actor, window, scale, targetX, targetY, duration, animationsManager = null) {
     const kind = WindowState.get(window, MINIATURE_ANIM_KIND);
 
     if (kind === 'create' || kind === 'restore') {
@@ -68,6 +68,9 @@ export function animateMiniatureToTarget(actor, window, scale, targetX, targetY,
         return;
     }
 
+    const curTx = actor.translation_x;
+    const curTy = actor.translation_y;
+    animationsManager?.stopTranslationEase(window.get_id());
     actor.remove_all_transitions();
 
     WindowState.set(window, MINIATURE_TARGET_POS, { x: targetX, y: targetY });
@@ -79,18 +82,29 @@ export function animateMiniatureToTarget(actor, window, scale, targetX, targetY,
 
     const { tx: targetTx, ty: targetTy } = frameTranslation(actor, scale, targetX, targetY);
 
+    const onArrived = () => {
+        WindowState.remove(window, ANIMATING_MINIATURE);
+        WindowState.remove(window, MINIATURE_ANIM_KIND);
+        const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
+        const sc = WindowState.get(window, MINIATURE_SCALE);
+        if (tgt && sc) applyMiniatureActorState(actor, sc, tgt.x, tgt.y);
+    };
+
+    if (constants.ANIMATION_EASING === 'house' && animationsManager) {
+        animationsManager.animateTranslation(window, actor, {
+            fromTx: curTx, fromTy: curTy, toTx: targetTx, toTy: targetTy, duration,
+            onComplete: onArrived,
+        });
+        return;
+    }
+
     actor.ease({
         translation_x: targetTx,
         translation_y: targetTy,
         duration,
         mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         onStopped: (isFinished) => {
-            if (!isFinished) return;
-            WindowState.remove(window, ANIMATING_MINIATURE);
-            WindowState.remove(window, MINIATURE_ANIM_KIND);
-            const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
-            const sc = WindowState.get(window, MINIATURE_SCALE);
-            if (tgt && sc) applyMiniatureActorState(actor, sc, tgt.x, tgt.y);
+            if (isFinished) onArrived();
         },
     });
 }
@@ -410,6 +424,7 @@ export const MiniatureManager = GObject.registerClass({
     // Layout may recalculate the slot mid-ease; the final onStopped must re-apply the new target
     // instead of leaving the actor on a stale position.
     _finishMiniatureAnim(window, windowActor) {
+        this._stopTranslationTakeover(window);
         WindowState.remove(window, ANIMATING_MINIATURE);
         WindowState.remove(window, MINIATURE_ANIM_KIND);
         windowActor.set_pivot_point(0, 0);
@@ -452,13 +467,13 @@ export const MiniatureManager = GObject.registerClass({
         windowActor.set_scale(cs, cs);
         windowActor.set_translation(startTx, startTy, 0);
 
-        windowActor.ease({
-            scale_x: scale,
-            scale_y: scale,
-            translation_x: endTx,
-            translation_y: endTy,
+        this._easeTransform(window, windowActor, {
+            fromTx: startTx,
+            fromTy: startTy,
+            toTx: endTx,
+            toTy: endTy,
+            scale,
             duration: animDuration,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onStopped: () => this._finishMiniatureAnim(window, windowActor),
         });
 
@@ -485,13 +500,13 @@ export const MiniatureManager = GObject.registerClass({
         windowActor.set_pivot_point(px, py);
         windowActor.set_translation(0, 0, 0);
 
-        windowActor.ease({
-            scale_x: scale,
-            scale_y: scale,
-            translation_x: tx,
-            translation_y: ty,
+        this._easeTransform(window, windowActor, {
+            fromTx: 0,
+            fromTy: 0,
+            toTx: tx,
+            toTy: ty,
+            scale,
             duration: animDuration,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onStopped: () => this._finishMiniatureAnim(window, windowActor),
         });
 
@@ -638,15 +653,16 @@ export const MiniatureManager = GObject.registerClass({
         // Without the flag, the enforce effect writes the final transform at the next paint, and
         // that direct write loses this ease.
         WindowState.set(window, ANIMATING_MINIATURE, true);
-        windowActor.ease({
-            scale_x: scale,
-            scale_y: scale,
-            translation_x: tx,
-            translation_y: ty,
+        this._easeTransform(window, windowActor, {
+            fromTx: liveTx,
+            fromTy: liveTy,
+            toTx: tx,
+            toTy: ty,
+            scale,
             duration: constants.MINIATURE_ANIM_MS,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onStopped: (isFinished) => {
                 if (!isFinished) return;
+                this._stopTranslationTakeover(window);
                 WindowState.remove(window, ANIMATING_MINIATURE);
                 const tgt = WindowState.get(window, MINIATURE_TARGET_POS);
                 const sc = WindowState.get(window, MINIATURE_SCALE);
@@ -735,6 +751,38 @@ export const MiniatureManager = GObject.registerClass({
         }
     }
 
+    _stopTranslationTakeover(window) {
+        this._animationsManager?.stopTranslationEase(window.get_id());
+    }
+
+    // House curve owns translation, scale keeps the native curve so an interrupted scale-up keeps
+    // its resume path; a takeover stops translation silently and owns it from then on.
+    _easeTransform(window, windowActor, { fromTx, fromTy, toTx, toTy, scale, duration, onStopped }) {
+        const mode = Clutter.AnimationMode.EASE_OUT_QUAD;
+        if (constants.ANIMATION_EASING === 'house' && this._animationsManager) {
+            this._animationsManager.animateTranslation(window, windowActor, {
+                fromTx, fromTy, toTx, toTy, duration,
+            });
+            windowActor.ease({
+                scale_x: scale,
+                scale_y: scale,
+                duration,
+                mode,
+                onStopped,
+            });
+            return;
+        }
+        windowActor.ease({
+            scale_x: scale,
+            scale_y: scale,
+            translation_x: toTx,
+            translation_y: toTy,
+            duration,
+            mode,
+            onStopped,
+        });
+    }
+
     _animateRestore(window, windowActor, { sc, tgt, activate }) {
         this._removeEnforceEffect(windowActor);
 
@@ -775,6 +823,7 @@ export const MiniatureManager = GObject.registerClass({
 
         // Set after remove_all_transitions: create's onStopped fires synchronously and clears
         // MINIATURE_ANIM_KIND, so earlier setting would be overwritten.
+        this._stopTranslationTakeover(window);
         windowActor.remove_all_transitions();
         WindowState.set(window, MINIATURE_ANIM_KIND, 'restore');
 
@@ -796,13 +845,13 @@ export const MiniatureManager = GObject.registerClass({
             this._finishRestoreScaleUp(window, windowActor);
         };
 
-        windowActor.ease({
-            scale_x: 1.0,
-            scale_y: 1.0,
-            translation_x: 0,
-            translation_y: 0,
+        this._easeTransform(window, windowActor, {
+            fromTx: startTx,
+            fromTy: startTy,
+            toTx: 0,
+            toTy: 0,
+            scale: 1.0,
             duration,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onStopped: continueScaleUp,
         });
 
@@ -840,6 +889,7 @@ export const MiniatureManager = GObject.registerClass({
     }
 
     _finishRestoreScaleUp(window, windowActor) {
+        this._stopTranslationTakeover(window);
         if (WindowState.get(window, MINIATURE_ANIM_KIND) === 'restore')
             WindowState.remove(window, MINIATURE_ANIM_KIND);
         this._detachRestoreRaceGuard(window, windowActor);
@@ -887,6 +937,7 @@ export const MiniatureManager = GObject.registerClass({
             // before this handler has set the rebased scale/translation; the flag tells it to hold
             // off instead of racing its own "pick back up" ease against this one.
             WindowState.set(window, 'restoreRaceGuardRebasing', true);
+            this._stopTranslationTakeover(window);
             windowActor.remove_all_transitions();
             windowActor.set_pivot_point(0, 0);
             windowActor.set_scale(newScaleX, newScaleY);
@@ -897,13 +948,13 @@ export const MiniatureManager = GObject.registerClass({
             lastActorW = newActorW;
             lastActorH = newActorH;
 
-            windowActor.ease({
-                scale_x: 1.0,
-                scale_y: 1.0,
-                translation_x: 0,
-                translation_y: 0,
+            this._easeTransform(window, windowActor, {
+                fromTx: visualX - ax - extL * newScaleX,
+                fromTy: visualY - ay - extT * newScaleY,
+                toTx: 0,
+                toTy: 0,
+                scale: 1.0,
                 duration,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
                 onStopped: continueScaleUp,
             });
             WindowState.remove(window, 'restoreRaceGuardRebasing');

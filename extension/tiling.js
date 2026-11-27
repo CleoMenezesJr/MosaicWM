@@ -16,6 +16,7 @@ import { MosaicConstraints } from './mosaicConstraint.js';
 import { rectOf } from './mosaicTileGroup.js';
 import {
     IS_MINIATURE,
+    MINIATURE_ANIM_KIND,
     MINIATURE_SCALE,
     MINIATURE_TARGET_POS,
     ANIMATING_MINIATURE,
@@ -550,7 +551,7 @@ export const TilingManager = GObject.registerClass({
         if (actor && !actor.is_destroyed()) {
             const sc = WindowState.get(window, MINIATURE_SCALE) ?? 1;
             animateMiniatureToTarget(actor, window, sc, pos.x, pos.y,
-                constants.ANIMATION_DURATION_MS);
+                constants.ANIMATION_DURATION_MS, this._animationsManager);
         }
         // MosaicLayoutStrategy reads ComputedLayouts for the overview region, so keep it in sync.
         ComputedLayouts.set(window, { x: pos.x, y: pos.y, width: pos.width, height: pos.height });
@@ -752,13 +753,13 @@ export const TilingManager = GObject.registerClass({
     _createDescriptor(meta_window, monitor, index, reference_window) {
         if(reference_window)
             if(meta_window.get_id() === reference_window.get_id())
-                return new WindowDescriptor(meta_window, index);
+                return new WindowDescriptor(meta_window, index, this._animationsManager);
 
         if( this._windowingManager.isExcluded(meta_window) ||
             meta_window.get_monitor() !== monitor ||
             this._windowingManager.isMaximizedOrFullscreen(meta_window))
             return false;
-        return new WindowDescriptor(meta_window, index);
+        return new WindowDescriptor(meta_window, index, this._animationsManager);
     }
 
     windowsToDescriptors(meta_windows, monitor, reference_window) {
@@ -2385,7 +2386,7 @@ export const TilingManager = GObject.registerClass({
         const actor = window.get_compositor_private();
         const sc = WindowState.get(window, MINIATURE_SCALE) ?? 1;
         if (actor && !actor.is_destroyed()) {
-            animateMiniatureToTarget(actor, window, sc, tx, ty, constants.ANIMATION_DURATION_MS);
+            animateMiniatureToTarget(actor, window, sc, tx, ty, constants.ANIMATION_DURATION_MS, this._animationsManager);
         }
         this._recordRegion(window, region, ctx);
         Logger.log(`[MINIATURE] animateTile ${orient} ${window.get_id()}: target=(${tx},${ty}) scale=${sc.toFixed(4)} region=${region.width}x${region.height}`);
@@ -3204,7 +3205,7 @@ export const TilingManager = GObject.registerClass({
         const { width, height } = this._sizeForNewWindow(window, overrideSize);
         Logger.log(`canFitWindow: Window not in workspace - adding with size ${width}x${height} (preferred=${!!overrideSize || !!WindowState.get(window, 'preferredSize')})`);
 
-        const descriptor = new WindowDescriptor(window, windows.length);
+        const descriptor = new WindowDescriptor(window, windows.length, this._animationsManager);
         descriptor.width = width;
         descriptor.height = height;
         windows.push(descriptor);
@@ -3396,18 +3397,27 @@ export const TilingManager = GObject.registerClass({
 
     // A thumbnail scales off the frame it had when it left the tiling; a window about to become
     // one scales off the frame it has now, same reference createMiniature fits the region with.
+    _isRestoringInFlight(w) {
+        return WindowState.get(w, MINIATURE_ANIM_KIND) === 'restore' &&
+            !WindowState.get(w, 'restoringFromMiniature');
+    }
+
     _allocationParticipant(w, d, tileArea, reference, resizingWindowId, mru) {
         const id = w.get_id();
         const isThumb = !!(WindowState.get(w, IS_MINIATURE) || WindowState.get(w, PENDING_MINIATURE));
         const ref = (isThumb && WindowState.get(w, PRE_MINIATURE_SIZE)) || w.get_frame_rect();
         const { natural, preferred, min, threshold } = this._windowSizeBounds(w, tileArea);
+        // A restore in flight keeps the size its restore pass chose. A later pass (a sibling
+        // closing) handing it another one rebases the actor mid-scale-up, which reads as a jump.
+        // The restore pass itself (restoringFromMiniature) is the one allowed to pick that size.
+        const restoring = this._isRestoringInFlight(w);
         return {
             id,
             mode: isThumb ? 'thumbnail' : 'window',
-            fixed: !isThumb && this._isFixedParticipant(w, reference, resizingWindowId),
+            fixed: restoring || (!isThumb && this._isFixedParticipant(w, reference, resizingWindowId)),
             capAtThreshold: !isThumb && this._isCappedParticipant(w, reference),
             mruRank: mru.get(id) ?? Number.MAX_SAFE_INTEGER,
-            current: { width: d.width, height: d.height },
+            current: restoring ? this.getEffectiveWindowSize(w) : { width: d.width, height: d.height },
             natural,
             preferred,
             min,
@@ -3821,10 +3831,11 @@ export const TilingManager = GObject.registerClass({
 });
 
 class WindowDescriptor {
-    constructor(meta_window, index) {
+    constructor(meta_window, index, animationsManager = null) {
         const frame = meta_window.get_frame_rect();
 
         this.index = index;
+        this.animationsManager = animationsManager;
         this.x = frame.x;
         this.y = frame.y;
         this.metaWindow = meta_window;
@@ -3897,7 +3908,7 @@ class WindowDescriptor {
         if (!windowActor || windowActor.is_destroyed()) return;
 
         const sc = WindowState.get(window, MINIATURE_SCALE) ?? 1;
-        animateMiniatureToTarget(windowActor, window, sc, x, y, constants.ANIMATION_DURATION_MS);
+        animateMiniatureToTarget(windowActor, window, sc, x, y, constants.ANIMATION_DURATION_MS, this.animationsManager);
     }
 
     _drawWindowDrag(window, x, y) {
@@ -3936,6 +3947,7 @@ class WindowDescriptor {
         const startTx = visualX - actor_x_new - px * dw - extLeft * currentScale;
         const startTy = visualY - actor_y_new - py * dh - extTop * currentScale;
         windowActor.set_pivot_point(px, py);
+        this.animationsManager?.stopTranslationEase(window.get_id());
         windowActor.remove_all_transitions();
         windowActor.set_scale(currentScale, currentScale);
         windowActor.set_translation(startTx, startTy, 0);
@@ -3965,6 +3977,7 @@ class WindowDescriptor {
         // actor carries the position the window really got.
         MosaicConstraints.moveThenCommit(window, { x, y, width: this.width, height: this.height });
         if (alive) {
+            this.animationsManager?.stopTranslationEase(window.get_id());
             windowActor.set_translation(visualX - windowActor.x, visualY - windowActor.y, 0);
             windowActor.ease({
                 translation_x: 0,

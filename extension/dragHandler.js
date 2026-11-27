@@ -544,6 +544,7 @@ export const DragHandler = GObject.registerClass({
         for (const win of this._previewMiniaturizedWindows) {
             const actor = win.get_compositor_private();
             if (actor && !actor.is_destroyed()) {
+                this.animationsManager?.stopTranslationEase(win.get_id());
                 actor.remove_all_transitions();
                 actor.set_scale(1, 1);
                 actor.set_translation(0, 0, 0);

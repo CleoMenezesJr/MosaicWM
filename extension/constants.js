@@ -70,6 +70,12 @@ export const BORN_SACRED_SIZE_RATIO = 0.8;
 
 export const ANIMATION_DURATION_MS = 250;
 
+// 'house' drives translation with HOUSE_CURVE on a Clutter.Timeline; 'clutter' keeps the
+// built-in modes.
+export const ANIMATION_EASING = 'house';
+// House entrance curve (decel preset): fast start, no overshoot, quick settle.
+export const HOUSE_CURVE = Object.freeze({ x1: 0.16, y1: 1, x2: 0.3, y2: 1 });
+
 export const MIN_WINDOW_WIDTH = 400;
 export const MIN_WINDOW_HEIGHT = 100;
 export const ABSOLUTE_MIN_HEIGHT = 100;

@@ -151,11 +151,21 @@ export function searchSmallestFit(probe, eps, previousS) {
     return at(b.hi);
 }
 
+// A live resize moves the answer a few grid steps per tick, so probe outward exponentially
+// from the prior s instead of bisecting the whole range once its neighbors don't bracket it.
 function warmStart(test, b, previousS, eps, top) {
     if (previousS === null || previousS <= 0 || previousS >= 1) return;
     const k = Math.max(1, Math.min(top - 1, Math.round(previousS / eps)));
     test(k);
-    test(b.hi !== null ? k - 1 : k + 1);
+    const dir = b.hi !== null ? -1 : 1;
+    let step = 1;
+    let probe = k + dir;
+    while (probe > 0 && probe < top) {
+        test(probe);
+        if (dir < 0 ? b.lo !== null : b.hi !== null) return;
+        step *= 2;
+        probe = k + dir * step;
+    }
 }
 
 export function allocate({
@@ -167,7 +177,14 @@ export function allocate({
     slope = constants.ALLOCATOR_MRU_RATE_SLOPE,
     tolerancePx = constants.FIT_SCALE_SEARCH_TOLERANCE_PX,
 }) {
-    const once = pool => allocateOnce(pool, fits, previousS, { restoreMarginPx, allowRestore }, slope, tolerancePx);
+    // Each extra run (crossing settle, head hold, one-as-window) starts from the s the last one
+    // found; they land within a step or two of each other, so the prior answer saves a full search.
+    let warm = previousS;
+    const once = pool => {
+        const result = allocateOnce(pool, fits, warm, { restoreMarginPx, allowRestore }, slope, tolerancePx);
+        if (result.fits) warm = result.s;
+        return result;
+    };
     const run = pool => settleCrossings(pool, once);
     const free = run(participants);
     if (!free.fits) return free;
