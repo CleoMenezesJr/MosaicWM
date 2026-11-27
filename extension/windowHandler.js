@@ -84,9 +84,16 @@ export const WindowHandler = GObject.registerClass({
     shouldSkipSlideIn(window) {
         return WindowState.get(window, 'movedByOverflow') || this._ext._overflowInProgress
             || !this._ext.isMosaicEnabledForWorkspace(window.get_workspace())
-            || this.windowingManager.isMaximizedOrFullscreen(window)
+            || (this.windowingManager.isMaximizedOrFullscreen(window) && !this._canSettleMaximized(window))
             || this.windowingManager.isExcludedByPolicy(window)
             || !this._hasSiblings(window);
+    }
+
+    // A client restoring its own maximized state paints at monitor size before the
+    // tile pass runs, so that paint has to be hidden first. The in-place settle
+    // unmaximizes it; if it ends up isolated, the isolation path reveals it.
+    _canSettleMaximized(window) {
+        return window.is_maximized() && !window.is_fullscreen();
     }
 
     // Floating windows never enter the tile pass that would clear opacity=0;
@@ -830,6 +837,7 @@ export const WindowHandler = GObject.registerClass({
 
         if (hasExistingSacred || (isIncomingSacred && otherWindows.length > 0)) {
             Logger.log(`Sacred Isolation triggered (IncomingSacred: ${isIncomingSacred}, HasExistingSacred: ${hasExistingSacred}) - isolating`);
+            this.revealPendingEntrance(window);
             return { handled: true, result: await this.windowingManager.moveOversizedWindow(window) };
         }
         return { handled: false };
@@ -1240,6 +1248,9 @@ export const WindowHandler = GObject.registerClass({
         // deferred entrance once the actor is actually mapped.
         if (!this.shouldSkipSlideIn(window)) {
             WindowState.set(window, 'pendingFirstPlacement', true);
+            // The overview reports visible through its whole exit animation, so this also
+            // marks windows that map while it is closing.
+            if (Main.overview.visible) WindowState.set(window, 'overviewArrival', true);
             const actor = window.get_compositor_private();
             // onWindowCreated races independently and may have already started (or
             // queued) the real entrance ease by the time this runs. Resetting opacity
@@ -1259,7 +1270,7 @@ export const WindowHandler = GObject.registerClass({
                 this._timeoutRegistry.add(constants.SLIDE_IN_FAILSAFE_MS, () => {
                     if (!WindowState.get(window, 'pendingFirstPlacement')) return GLib.SOURCE_REMOVE;
                     // An open overview means the claim is parked in the model, not stranded;
-                    // the hidden flush plays its entrance. Only rescue it once the overview
+                    // the hidden flush settles it at the slot. Only rescue it once the overview
                     // is gone and nothing is animating it.
                     if (Main.overview.visible) {
                         scheduleFirstPlacementFailsafe();

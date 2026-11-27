@@ -53,17 +53,23 @@ export class MosaicRenderer {
 
                 const from = layout._windowSlots.map(slot => [...slot]);
                 layout._layout = layout._createBestLayout(layout._workarea);
-                const to = new Map(layout._getWindowSlots(layout._windowSlotsBox).map(slot => [slot[4], slot]));
 
+                const frozen = new Map(from.map(slot => [slot[4], slot]));
+                const to = new Map(layout._getWindowSlots(layout._windowSlotsBox).map(slot => [slot[4], slot]));
                 const adjustment = layout._stateAdjustment;
                 const blend = () => {
                     const t = adjustment.value;
-                    layout._windowSlots = from.map(([x, y, w, h, child]) => {
+                    // A preview added mid-exit only exists in the shell's rebuilds; clamping to
+                    // the freeze-time list would leave it unallocated and painting full-size. The
+                    // exit never re-aims a sibling at a layout published after the freeze, since
+                    // a late target would cross the whole push in its last frames.
+                    layout._windowSlots = layout._windowSlots.map(([x, y, w, h, child]) => {
+                        const start = frozen.get(child);
                         const target = to.get(child);
-                        if (!target) return [x, y, w, h, child];
+                        if (!start || !target) return [x, y, w, h, child];
                         return [
-                            lerp(target[0], x, t), lerp(target[1], y, t),
-                            lerp(target[2], w, t), lerp(target[3], h, t), child,
+                            lerp(target[0], start[0], t), lerp(target[1], start[1], t),
+                            lerp(target[2], start[2], t), lerp(target[3], start[3], t), child,
                         ];
                     });
                 };
@@ -101,31 +107,37 @@ export class MosaicRenderer {
         const group = MosaicModel.store.groupFor(workspace.index(), monitor);
         if (!group || group.size === 0) return;
 
-        // Windows that claimed an entrance while the overview was open could not play it:
-        // Mutter drops frame moves until it closes. The 'hidden' flush is the first moment
-        // the move is accepted, so replay the slide there instead of committing it silently.
-        const layouts = [...group.members()]
-            .filter(m => isWindowAlive(m.window) && !WindowState.get(m.window, IS_MINIATURE))
-            .map(m => ({ window: m.window, rect: m.region }));
+        const members = group.members().filter(member => isWindowAlive(member.window));
+        const hasEntrance = members.some(member => WindowState.get(member.window, 'pendingFirstPlacement'));
 
         let applied = 0;
-        for (const member of group.members()) {
-            if (!isWindowAlive(member.window)) continue;
+        let deferred = 0;
+        for (const member of members) {
             // createMiniature drives the miniature through the actor's scale, so moving the frame
             // here would compound atop it.
             if (WindowState.get(member.window, IS_MINIATURE)) continue;
             const r = member.region;
-            const claim = WindowState.get(member.window, 'pendingFirstPlacement');
-            // A settle pass can start the entrance first and sit on the claim; replaying
-            // over it re-zeros the opacity so the fade is actually visible.
-            if (claim && !Main.overview.visible) {
-                this._animations.animateDeferredEntrance(member.window, r, layouts);
+            // An entrance claimed while the overview was up converges here: the closing flush
+            // lands the frame; the one after the cut settles it or leaves it to the queued pass.
+            if (WindowState.get(member.window, 'pendingFirstPlacement')) {
+                this._animations.finishOverviewArrival(member.window, r);
+            } else if (hasEntrance && !Main.overview.visible && !this._frameMatches(member.window, r)) {
+                // The pass queued behind this flush owns the push; committing the sibling here
+                // would land it first and leave the entrance with nothing to animate.
+                deferred++;
+                continue;
             } else {
                 MosaicConstraints.commitRegion(member.window, r);
             }
             applied++;
         }
-        Logger.log(`[FLUSH] Applied ${applied} region(s) to WS-${workspace.index()} monitor ${monitor}`);
+        Logger.log(`[FLUSH] Applied ${applied} region(s), ${deferred} deferred to reflow, to WS-${workspace.index()} monitor ${monitor}`);
+    }
+
+    _frameMatches(window, rect) {
+        const frame = window.get_frame_rect();
+        return frame.x === rect.x && frame.y === rect.y &&
+            frame.width === rect.width && frame.height === rect.height;
     }
 
     destroy() {

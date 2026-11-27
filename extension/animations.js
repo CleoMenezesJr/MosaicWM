@@ -179,18 +179,23 @@ export const AnimationsManager = GObject.registerClass({
         return { duration, mode, onComplete, draggedWindow, subtle, userOp, firstPlacement, slideInOffset, hold };
     }
 
+    _skipsFullEntrance(window, targetRect, { draggedWindow, firstPlacement, userOp, onComplete }) {
+        if (!this.shouldAnimateWindow(window, draggedWindow)) {
+            this._cancelResizeFollower(window.get_id(), { resetScale: true });
+            this._applyWithoutAnimation(window, targetRect, { userOp, firstPlacement, onComplete });
+            return true;
+        }
+
+        return false;
+    }
+
     animateWindow(window, targetRect, options = {}) {
         const { duration, mode, onComplete, draggedWindow, subtle, userOp, firstPlacement, slideInOffset, hold } =
             this._animOptions(options);
         const ease = options.ease ?? null;
 
-        // These paths move the frame without an ease to re-aim a follower, so one still holding an
-        // earlier slot would draw the window at the wrong size.
-        if (!this.shouldAnimateWindow(window, draggedWindow)) {
-            this._cancelResizeFollower(window.get_id(), { resetScale: true });
-            this._applyWithoutAnimation(window, targetRect, { userOp, firstPlacement, onComplete });
+        if (this._skipsFullEntrance(window, targetRect, { draggedWindow, firstPlacement, userOp, onComplete }))
             return;
-        }
 
         const windowActor = window.get_compositor_private();
         if (!windowActor) {
@@ -288,13 +293,11 @@ export const AnimationsManager = GObject.registerClass({
 
     _applyWithoutAnimation(window, targetRect, { userOp, firstPlacement, onComplete }) {
         this._stopTranslationTimeline(window.get_id());
-        // move_resize_frame is a no-op while the overview is open (Mutter discards it). The
-        // window still renders in the overview from the model, so it has to be visible there;
-        // the entrance claim survives for the flush that plays once the overview hides.
+        // move_resize_frame is a no-op while the overview is open (Mutter discards it). A window
+        // parked while the grid still accepts arrivals has to be visible in it; one that arrives
+        // during the exit stays invisible so the cut can run its entrance.
         if (Main.overview.visible) {
-            // The map-time opacity=0 still has to be cleared here: no ease is running to do it,
-            // so the window would sit invisible until the 1s failsafe pops it in.
-            if (firstPlacement) {
+            if (firstPlacement && !Main.overview.closing) {
                 const actor = window.get_compositor_private();
                 if (actor && !actor.is_destroyed()) actor.opacity = 255;
             }
@@ -321,6 +324,44 @@ export const AnimationsManager = GObject.registerClass({
         this._clearMosaicResizingSoon(window);
         if (firstPlacement) WindowState.remove(window, 'pendingFirstPlacement');
         if (onComplete) onComplete();
+    }
+
+    // The overview's exit already carried the arrival to the desktop; an entrance started
+    // afterwards replays a motion the user just watched.
+    settleOverviewArrival(window, targetRect) {
+        const windowActor = window.get_compositor_private();
+        this._stopTranslationTimeline(window.get_id());
+        this._stopOpacityTimeline(window.get_id());
+        if (windowActor && !windowActor.is_destroyed()) {
+            windowActor.remove_all_transitions();
+            windowActor.set_translation(0, 0, 0);
+            windowActor.opacity = 255;
+        }
+        this._animatingWindows.delete(window.get_id());
+        this._animatingTargets.delete(window.get_id());
+        WindowState.set(window, 'isMosaicResizing', true);
+        MosaicConstraints.commitRegion(window, targetRect);
+        this._clearMosaicResizingSoon(window);
+        WindowState.remove(window, 'pendingFirstPlacement');
+        WindowState.remove(window, 'overviewArrival');
+        this._checkAllAnimationsComplete();
+        Logger.log(`[ANIM-DIAG] settled overview arrival for ${window.get_id()}`);
+    }
+
+    // Both overview flushes converge here. The closing one only lands the frame. The one after
+    // the cut settles what the grid already showed and leaves an unseen window to the queued pass.
+    finishOverviewArrival(window, targetRect) {
+        if (Main.overview.visible || this.hasActiveOrPendingEntrance(window)) {
+            MosaicConstraints.commitRegion(window, targetRect);
+            return;
+        }
+        const windowActor = window.get_compositor_private();
+        const seenInGrid = windowActor && !windowActor.is_destroyed() && windowActor.opacity >= 255;
+        if (!getAnimationsEnabled() || seenInGrid) {
+            this.settleOverviewArrival(window, targetRect);
+            return;
+        }
+        MosaicConstraints.commitRegion(window, targetRect);
     }
 
     // Redundant retile to the same destination already in flight (e.g. the
@@ -606,12 +647,17 @@ export const AnimationsManager = GObject.registerClass({
                 ? this._computeSlideInOffset(window, rect, windowLayouts.concat(miniLayouts), pushDistance)
                 : null;
 
+            // The entrant covers the same distance as the sibling it displaces, so it has to
+            // cover it at the same rate; on the house curve it outruns the push and paints
+            // over it. A cue with no push behind it keeps the house curve.
+            const ease = this._translationEase(isFirstPlacement, slideInOffset, pushDistance);
+
             this.animateWindow(window, rect, {
                 draggedWindow,
                 firstPlacement: isFirstPlacement,
                 slideInOffset,
                 hold,
-                ease: isFirstPlacement ? null : REFLOW_EASE,
+                ease,
             });
         }
     }
@@ -736,23 +782,12 @@ export const AnimationsManager = GObject.registerClass({
             : { x: 0, y: deltaY < 0 ? -offset : offset };
     }
 
-    // Replays an entrance whose claim survived the overview-visible tile pass. A settle
-    // pass at 'hidden' can beat the flush to the claim and start a slide at full opacity
-    // (the overview branch restored it for the grid), which reads as no animation; restart
-    // from opacity 0 so the fade lands like a first placement.
-    animateDeferredEntrance(window, targetRect, windowLayouts) {
-        const actor = window.get_compositor_private();
-        if (actor && !actor.is_destroyed()) {
-            this._stopTranslationTimeline?.(window.get_id());
-            actor.remove_all_transitions();
-            this._animatingWindows.delete(window.get_id());
-            this._animatingTargets.delete(window.get_id());
-            actor.opacity = 0;
-        }
-        this.animateWindow(window, targetRect, {
-            firstPlacement: true,
-            slideInOffset: this._computeSlideInOffset(window, targetRect, windowLayouts),
-        });
+    // A sibling displacing on the entrant's slide axis is what the offset was sized against.
+    _translationEase(firstPlacement, slideInOffset, pushDistance) {
+        if (!firstPlacement) return REFLOW_EASE;
+        if (!slideInOffset || !pushDistance) return null;
+        const axis = slideInOffset.x !== 0 ? 'x' : 'y';
+        return pushDistance[axis] > 0 ? REFLOW_EASE : null;
     }
 
     // Where an in-flight ease is driving the window, so size-changed can tell the
