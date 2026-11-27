@@ -36,6 +36,7 @@ export const AnimationsManager = GObject.registerClass({
         this._translationTimelines = new Map(); // Window ID -> Clutter.Timeline owning translation_x/y
         this._opacityTimelines = new Map(); // Window ID -> { timeline, actor } owning the entrance fade
         this._pendingEntranceEases = new Map(); // Window ID -> ease params, for entrances deferred until the actor is mapped
+        this._heldReTiling = null; // pass waiting for an unmapped entrant, so push and entrance start together
         this._resizeFollowers = new Map(); // Window ID -> follower keeping a slow client's actor at its slot
         this._justEndedDrag = false;
         this._resizingWindowId = null;
@@ -172,12 +173,13 @@ export const AnimationsManager = GObject.registerClass({
             userOp = false,
             firstPlacement = false,
             slideInOffset = null,
+            hold = null,
         } = options;
-        return { duration, mode, onComplete, draggedWindow, subtle, userOp, firstPlacement, slideInOffset };
+        return { duration, mode, onComplete, draggedWindow, subtle, userOp, firstPlacement, slideInOffset, hold };
     }
 
     animateWindow(window, targetRect, options = {}) {
-        const { duration, mode, onComplete, draggedWindow, subtle, userOp, firstPlacement, slideInOffset } =
+        const { duration, mode, onComplete, draggedWindow, subtle, userOp, firstPlacement, slideInOffset, hold } =
             this._animOptions(options);
 
         // These paths move the frame without an ease to re-aim a follower, so one still holding an
@@ -231,7 +233,7 @@ export const AnimationsManager = GObject.registerClass({
 
         this._primeAndEase(window, windowActor, targetRect, {
             currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, slideInOffset,
-            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete,
+            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete, hold,
         });
     }
 
@@ -239,7 +241,7 @@ export const AnimationsManager = GObject.registerClass({
     // frame move together, then hands off to whichever ease path applies.
     _primeAndEase(window, windowActor, targetRect, opts) {
         const { currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, slideInOffset,
-            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete } = opts;
+            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete, hold } = opts;
 
         const { initialTx, initialTy, initialScaleX, initialScaleY } = this._computeInitialTransform(
             { currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, targetRect, slideInOffset });
@@ -261,6 +263,13 @@ export const AnimationsManager = GObject.registerClass({
         }
 
         const easeParams = { initialTx, initialTy, effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect };
+
+        // A reflow with an unmapped entrant parks every actor here instead of starting piecemeal;
+        // the pass that starts the slide must start the push on the same frame.
+        if (hold) {
+            hold.entries.push({ window, windowActor, easeParams });
+            return;
+        }
 
         // Clutter silently skips implicit transitions on actors that aren't mapped yet
         // (should_skip_implicit_transition in clutter-actor.c) and just snaps to the
@@ -516,6 +525,9 @@ export const AnimationsManager = GObject.registerClass({
     // Called from windowHandler.js's onWindowCreated once the actor is confirmed
     // mapped, safe to ease now that Clutter will no longer skip the transition outright.
     runDeferredEntrance(window) {
+        if (this._heldReTiling?.entrantId === window.get_id())
+            this._releaseHeldReTiling();
+
         const pending = this._pendingEntranceEases.get(window.get_id());
         if (!pending) return;
         this._pendingEntranceEases.delete(window.get_id());
@@ -541,14 +553,28 @@ export const AnimationsManager = GObject.registerClass({
         const previousMembershipChangeBounce = this._membershipChangeBounce;
         if (passHasEntrant) this._membershipChangeBounce = true;
 
+        const forcedIds = this._cancelHeldReTiling();
+        const pushDistance = passHasEntrant ? this._measurePushDistance(windowLayouts) : null;
+        const entrant = passHasEntrant ? this._findUnmappedEntrant(windowLayouts, miniLayouts) : null;
+        const hold = entrant ? { entrantId: entrant.get_id(), entries: [], timerId: null } : null;
+
         try {
-            this._animateReTilingPass(windowLayouts, draggedWindow, miniLayouts);
+            this._animateReTilingPass(windowLayouts, draggedWindow, miniLayouts, pushDistance, hold, forcedIds);
         } finally {
             this._membershipChangeBounce = previousMembershipChangeBounce;
         }
+
+        if (hold && hold.entries.length > 0) {
+            this._heldReTiling = hold;
+            // A client that never maps must not freeze the reflow; release the push without it.
+            hold.timerId = this._timeoutRegistry.add(constants.ENTRANT_HOLD_MS, () => {
+                if (this._heldReTiling === hold) this._releaseHeldReTiling();
+                return GLib.SOURCE_REMOVE;
+            }, 'animations_entrant_hold');
+        }
     }
 
-    _animateReTilingPass(windowLayouts, draggedWindow, miniLayouts) {
+    _animateReTilingPass(windowLayouts, draggedWindow, miniLayouts, pushDistance = null, hold = null, forcedIds = new Set()) {
         for (const { window, rect } of windowLayouts) {
             // Cleared by animateWindow once this placement actually finishes (not
             // here), since a single window-open burst can recurse through several
@@ -558,15 +584,16 @@ export const AnimationsManager = GObject.registerClass({
 
             const currentRect = window.get_frame_rect();
 
-            const needsMove = Math.abs(currentRect.x - rect.x) > constants.ANIMATION_DIFF_THRESHOLD ||
-                             Math.abs(currentRect.y - rect.y) > constants.ANIMATION_DIFF_THRESHOLD ||
-                             Math.abs(currentRect.width - rect.width) > constants.ANIMATION_DIFF_THRESHOLD ||
-                             Math.abs(currentRect.height - rect.height) > constants.ANIMATION_DIFF_THRESHOLD;
+            const needsMove = this._rectMoved(currentRect, rect);
+
+            // A held pass already committed its frames; re-prime those windows even when the
+            // target matches, or their parked actors would never receive an ease.
+            const forced = forcedIds.has(window.get_id());
 
             // A first placement still needs to run through animateWindow even when
             // the raw spawn position happens to already match the target, since it
             // owns clearing the opacity=0 onWindowAdded left it at and the slide-in offset.
-            if (!needsMove && !isFirstPlacement) {
+            if (!needsMove && !isFirstPlacement && !forced) {
                 MosaicConstraints.commitRegion(window, rect);
                 continue;
             }
@@ -575,10 +602,79 @@ export const AnimationsManager = GObject.registerClass({
             // direction purposes even though they're excluded from windowLayouts
             // (createMiniature owns their own animation, not this loop).
             const slideInOffset = isFirstPlacement
-                ? this._computeSlideInOffset(window, rect, windowLayouts.concat(miniLayouts))
+                ? this._computeSlideInOffset(window, rect, windowLayouts.concat(miniLayouts), pushDistance)
                 : null;
 
-            this.animateWindow(window, rect, { draggedWindow, firstPlacement: isFirstPlacement, slideInOffset });
+            this.animateWindow(window, rect, { draggedWindow, firstPlacement: isFirstPlacement, slideInOffset, hold });
+        }
+    }
+
+    _rectMoved(currentRect, rect) {
+        return Math.abs(currentRect.x - rect.x) > constants.ANIMATION_DIFF_THRESHOLD ||
+            Math.abs(currentRect.y - rect.y) > constants.ANIMATION_DIFF_THRESHOLD ||
+            Math.abs(currentRect.width - rect.width) > constants.ANIMATION_DIFF_THRESHOLD ||
+            Math.abs(currentRect.height - rect.height) > constants.ANIMATION_DIFF_THRESHOLD;
+    }
+
+    // The entrant must travel as far as the window it pushes, otherwise it starts inside the
+    // pushed window's old area and slides across it instead of pushing it. The before-position
+    // is the frame plus its parked translation (same pair _computeInitialTransform reads).
+    _measurePushDistance(windowLayouts) {
+        let x = 0;
+        let y = 0;
+        for (const { window, rect } of windowLayouts) {
+            if (WindowState.get(window, 'pendingFirstPlacement')) continue;
+            const old = window.get_frame_rect();
+            const actor = window.get_compositor_private();
+            const alive = actor && !actor.is_destroyed();
+            const tx = alive ? actor.translation_x : 0;
+            const ty = alive ? actor.translation_y : 0;
+            x = Math.max(x, Math.abs(rect.x - (old.x + tx)));
+            y = Math.max(y, Math.abs(rect.y - (old.y + ty)));
+        }
+        return { x, y };
+    }
+
+    _findUnmappedEntrant(windowLayouts, miniLayouts) {
+        for (const { window } of [...windowLayouts, ...miniLayouts]) {
+            if (!WindowState.get(window, 'pendingFirstPlacement')) continue;
+            const actor = window.get_compositor_private();
+            if (!actor || !actor.mapped) return window;
+        }
+        return null;
+    }
+
+    // A newer pass supersedes the parked one. Its windows keep their committed frames but are
+    // re-primed from the parked visual position, so they still end where the newest pass says.
+    _cancelHeldReTiling() {
+        const hold = this._heldReTiling;
+        if (!hold) return new Set();
+        this._heldReTiling = null;
+        if (hold.timerId !== null) this._timeoutRegistry.remove(hold.timerId);
+
+        const ids = new Set();
+        for (const { window } of hold.entries) {
+            const id = window.get_id();
+            ids.add(id);
+            this._animatingWindows.delete(id);
+            this._animatingTargets.delete(id);
+        }
+        return ids;
+    }
+
+    _releaseHeldReTiling() {
+        const hold = this._heldReTiling;
+        if (!hold) return;
+        this._heldReTiling = null;
+        if (hold.timerId !== null) this._timeoutRegistry.remove(hold.timerId);
+
+        for (const { window, windowActor, easeParams } of hold.entries) {
+            if (!windowActor || windowActor.is_destroyed()) continue;
+            if (easeParams.firstPlacement && !windowActor.mapped) {
+                this._pendingEntranceEases.set(window.get_id(), { windowActor, ...easeParams });
+                continue;
+            }
+            this._runEntranceEase(window, windowActor, easeParams);
         }
     }
 
@@ -592,12 +688,12 @@ export const AnimationsManager = GObject.registerClass({
     // side to slide from. By the time this runs, windowHandler.js's _hasSiblings
     // has already decided to suppress Mutter's native animation (skipNextEffect),
     // so there's no going back to it here even if we detected the enclosure.
-    _computeSlideInOffset(window, targetRect, windowLayouts) {
-        const OFFSET = constants.SLIDE_IN_OFFSET_PX;
+    _computeSlideInOffset(window, targetRect, windowLayouts, pushDistance = null) {
         const siblings = windowLayouts.filter(l => l.window.get_id() !== window.get_id());
 
         if (siblings.length === 0) {
             // Nothing to push against, so fall back to a workspace-switch cue, if any.
+            const OFFSET = constants.SLIDE_IN_OFFSET_PX;
             const ws = window.get_workspace();
             const prevWSIndex = WindowState.get(window, 'previousWorkspace');
             if (ws && prevWSIndex !== undefined && prevWSIndex !== ws.index())
@@ -617,10 +713,20 @@ export const AnimationsManager = GObject.registerClass({
         const winCenterY = targetRect.y + targetRect.height / 2;
         const deltaX = winCenterX - centerX;
         const deltaY = winCenterY - centerY;
+        const OFFSET = this._pushSlideOffset(deltaX, deltaY, pushDistance);
 
+        return this._slideDirection(deltaX, deltaY, OFFSET);
+    }
+
+    _pushSlideOffset(deltaX, deltaY, pushDistance) {
+        const axisDistance = Math.abs(deltaX) >= Math.abs(deltaY) ? pushDistance?.x : pushDistance?.y;
+        return Math.max(constants.SLIDE_IN_OFFSET_PX, Math.round(axisDistance ?? 0));
+    }
+
+    _slideDirection(deltaX, deltaY, offset) {
         return Math.abs(deltaX) >= Math.abs(deltaY)
-            ? { x: deltaX < 0 ? -OFFSET : OFFSET, y: 0 }
-            : { x: 0, y: deltaY < 0 ? -OFFSET : OFFSET };
+            ? { x: deltaX < 0 ? -offset : offset, y: 0 }
+            : { x: 0, y: deltaY < 0 ? -offset : offset };
     }
 
     // Replays an entrance whose claim survived the overview-visible tile pass. A settle
@@ -685,6 +791,7 @@ export const AnimationsManager = GObject.registerClass({
     }
 
     cleanup() {
+        this._cancelHeldReTiling();
         for (const id of [...this._translationTimelines.keys()])
             this._stopTranslationTimeline(id);
         for (const { timeline, actor } of [...this._opacityTimelines.values()]) {
