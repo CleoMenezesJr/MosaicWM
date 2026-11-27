@@ -75,6 +75,9 @@ export const ANIMATION_DURATION_MS = 250;
 export const ANIMATION_EASING = 'house';
 // House entrance curve (decel preset): fast start, no overshoot, quick settle.
 export const HOUSE_CURVE = Object.freeze({ x1: 0.16, y1: 1, x2: 0.3, y2: 1 });
+// A window already on screen must visibly travel from its old slot to the new one;
+// the house curve fronts almost the whole move into the first frames and reads as a jump.
+export const REFLOW_CURVE = Object.freeze({ x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 });
 
 export const MIN_WINDOW_WIDTH = 400;
 export const MIN_WINDOW_HEIGHT = 100;

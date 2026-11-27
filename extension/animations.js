@@ -21,6 +21,7 @@ const ANIMATION_MODE = Clutter.AnimationMode.EASE_OUT_BACK;
 const ANIMATION_MODE_SUBTLE = Clutter.AnimationMode.EASE_OUT_QUAD;
 const USE_HOUSE_CURVE = constants.ANIMATION_EASING === 'house';
 const HOUSE_EASE = createEasing(constants.HOUSE_CURVE);
+const REFLOW_EASE = createEasing(constants.REFLOW_CURVE);
 
 export const AnimationsManager = GObject.registerClass({
     GTypeName: 'MosaicAnimationsManager',
@@ -181,6 +182,7 @@ export const AnimationsManager = GObject.registerClass({
     animateWindow(window, targetRect, options = {}) {
         const { duration, mode, onComplete, draggedWindow, subtle, userOp, firstPlacement, slideInOffset, hold } =
             this._animOptions(options);
+        const ease = options.ease ?? null;
 
         // These paths move the frame without an ease to re-aim a follower, so one still holding an
         // earlier slot would draw the window at the wrong size.
@@ -233,7 +235,7 @@ export const AnimationsManager = GObject.registerClass({
 
         this._primeAndEase(window, windowActor, targetRect, {
             currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, slideInOffset,
-            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete, hold,
+            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete, hold, ease,
         });
     }
 
@@ -241,7 +243,7 @@ export const AnimationsManager = GObject.registerClass({
     // frame move together, then hands off to whichever ease path applies.
     _primeAndEase(window, windowActor, targetRect, opts) {
         const { currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, slideInOffset,
-            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete, hold } = opts;
+            userOp, skipScale, effectiveDuration, animationMode, firstPlacement, onComplete, hold, ease } = opts;
 
         const { initialTx, initialTy, initialScaleX, initialScaleY } = this._computeInitialTransform(
             { currentFrame, currentTx, currentTy, currentScaleX, currentScaleY, targetRect, slideInOffset });
@@ -262,7 +264,7 @@ export const AnimationsManager = GObject.registerClass({
             windowActor.set_scale(initialScaleX, initialScaleY);
         }
 
-        const easeParams = { initialTx, initialTy, effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect };
+        const easeParams = { initialTx, initialTy, effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect, ease };
 
         // A reflow with an unmapped entrant parks every actor here instead of starting piecemeal;
         // the pass that starts the slide must start the push on the same frame.
@@ -323,8 +325,8 @@ export const AnimationsManager = GObject.registerClass({
 
     // Redundant retile to the same destination already in flight (e.g. the
     // window-open queue re-evaluates the same window ~100ms later). Restarting
-    // the ease would cut the original transition off before its EASE_OUT_BACK
-    // overshoot plays, replacing a full bounce with an imperceptible one.
+    // the ease would cut the original transition off before it settles,
+    // replacing a full movement with an imperceptible one.
     _isRedundantRetile(window, targetRect) {
         const lastTarget = this._animatingTargets.get(window.get_id());
         // A skipScale delivery only ever applied position, so a later call for the
@@ -364,11 +366,9 @@ export const AnimationsManager = GObject.registerClass({
     // Runs the actual translation/scale ease. Called either immediately from
     // animateWindow (actor already mapped) or later via runDeferredEntrance,
     // once windowHandler.js confirms the actor is mapped.
-    _runEntranceEase(window, windowActor, { initialTx, initialTy, effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect }) {
-        // Position and scale run as separate animations. EASE_OUT_BACK overshoots past its
-        // target and clamps there, so bundled into the same ease as translation it finishes
-        // (and visually settles) well before the bouncy slide-in does. A resize that
-        // overshoots reads as a glitch.
+    _runEntranceEase(window, windowActor, { initialTx, initialTy, effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect, ease }) {
+        // Scale runs on its own subtle ease. EASE_OUT_BACK overshoots past its
+        // target and clamps there, and a resize that overshoots reads as a glitch.
         if (!skipScale) {
             this._resizeFollowers.set(window.get_id(), followResize(window, windowActor, targetRect, {
                 duration: effectiveDuration, mode: ANIMATION_MODE_SUBTLE, registry: this._timeoutRegistry,
@@ -396,8 +396,8 @@ export const AnimationsManager = GObject.registerClass({
         }
 
         if (USE_HOUSE_CURVE) {
-            this._easeTranslationWithHouseCurve(window, windowActor, {
-                initialTx, initialTy, effectiveDuration, firstPlacement, onComplete,
+            this._easeTranslationWithBezier(window, windowActor, {
+                initialTx, initialTy, effectiveDuration, firstPlacement, onComplete, ease,
             });
             return;
         }
@@ -414,23 +414,24 @@ export const AnimationsManager = GObject.registerClass({
         });
     }
 
-    // A Clutter ease only takes an enum curve, so the house bezier drives translation from a
-    // timeline instead. Everything after the curve (cleanup, redirect, completion) is the same
+    // A Clutter ease only takes an enum curve, so a bezier drives translation from a timeline
+    // instead. Everything after the curve (cleanup, redirect, completion) is the same
     // contract the Clutter path signs.
-    _easeTranslationWithHouseCurve(window, windowActor, { initialTx, initialTy, effectiveDuration, firstPlacement, onComplete }) {
+    _easeTranslationWithBezier(window, windowActor, { initialTx, initialTy, effectiveDuration, firstPlacement, onComplete, ease }) {
         this.animateTranslation(window, windowActor, {
             fromTx: initialTx,
             fromTy: initialTy,
             toTx: 0,
             toTy: 0,
             duration: effectiveDuration,
+            ease,
             onComplete: () => this._finishTranslationEase(window, windowActor, { firstPlacement, onComplete }),
         });
     }
 
     // Shared with the miniature path, whose leg ends on the slot rect instead of zero. A takeover
     // stop stays silent; whoever interrupted owns translation from then on.
-    animateTranslation(window, windowActor, { fromTx, fromTy, toTx, toTy, duration, onComplete }) {
+    animateTranslation(window, windowActor, { fromTx, fromTy, toTx, toTy, duration, onComplete, ease = null }) {
         const id = window.get_id();
         this._stopTranslationTimeline(id);
         // A clockless timeline never ticks; binding it to the actor picks up the stage view's clock.
@@ -445,7 +446,7 @@ export const AnimationsManager = GObject.registerClass({
                 tl.stop();
                 return;
             }
-            const eased = HOUSE_EASE(tl.get_progress());
+            const eased = (ease ?? HOUSE_EASE)(tl.get_progress());
             windowActor.set_translation(
                 fromTx + (toTx - fromTx) * eased,
                 fromTy + (toTy - fromTy) * eased,
@@ -605,7 +606,13 @@ export const AnimationsManager = GObject.registerClass({
                 ? this._computeSlideInOffset(window, rect, windowLayouts.concat(miniLayouts), pushDistance)
                 : null;
 
-            this.animateWindow(window, rect, { draggedWindow, firstPlacement: isFirstPlacement, slideInOffset, hold });
+            this.animateWindow(window, rect, {
+                draggedWindow,
+                firstPlacement: isFirstPlacement,
+                slideInOffset,
+                hold,
+                ease: isFirstPlacement ? null : REFLOW_EASE,
+            });
         }
     }
 
