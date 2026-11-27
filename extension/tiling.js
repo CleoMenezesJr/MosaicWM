@@ -26,6 +26,7 @@ import { getMiniatureSize, applyMiniatureActorState, animateMiniatureToTarget } 
 import { isWindowAlive } from './liveness.js';
 import { frameMinSize, frameMaxSize } from './sizeHints.js';
 import { windowSizeBounds } from './sizeBounds.js';
+import { hasReliableSize, isFixedParticipant, isCappedParticipant, sizeAtLongestSide } from './sizeIntent.js';
 import { getSlowDownFactor, monotonicNow } from './timing.js';
 
 const POSITION_STABILITY_WEIGHT = 40;
@@ -3016,7 +3017,7 @@ export const TilingManager = GObject.registerClass({
     // Miniature scale is fitted to the region, so falling back to the whole work area would
     // mini at full size.
     _fallbackMiniRegion(win, miniSize, tileArea) {
-        const size = miniSize ?? this._sizeAtLongestSide(win.get_frame_rect(), constants.MINIATURE_TARGET_SIZE_PX);
+        const size = miniSize ?? sizeAtLongestSide(win.get_frame_rect(), constants.MINIATURE_TARGET_SIZE_PX);
         return { x: tileArea.x, y: tileArea.y, width: size.width, height: size.height };
     }
 
@@ -3380,13 +3381,6 @@ export const TilingManager = GObject.registerClass({
         return { x: area.x, y: area.y, width: Math.min(area.width, maxW), height: Math.min(area.height, maxH) };
     }
 
-    _hasReliableSize(w, referenceId) {
-        return w.get_id() === referenceId
-            || !!WindowState.get(w, 'preferredSize')
-            || !!WindowState.get(w, 'openingSize')
-            || !!WindowState.get(w, 'isConstrainedByMosaic');
-    }
-
     _allocationParticipants(metaWindows, descriptors, tileArea, workspace, reference, resizingWindowId) {
         const mru = this._windowingManager.getMRUOrder(workspace);
         const byId = new Map(descriptors.map(d => [d.id, d]));
@@ -3419,7 +3413,7 @@ export const TilingManager = GObject.registerClass({
             min,
             threshold,
             aspectRef: { width: ref.width, height: ref.height },
-            floor: this._sizeAtLongestSide(ref, constants.MINIATURE_TARGET_SIZE_PX),
+            floor: sizeAtLongestSide(ref, constants.MINIATURE_TARGET_SIZE_PX),
         };
     }
 
@@ -3435,8 +3429,19 @@ export const TilingManager = GObject.registerClass({
     }
 
     _isFixedParticipant(w, reference, resizingWindowId) {
-        return w.get_id() === resizingWindowId || (!w.allows_resize?.() && !this._isSizePinned(w)) ||
-            !this._hasReliableSize(w, reference?.get_id());
+        const id = w.get_id();
+        return isFixedParticipant({
+            id,
+            resizingWindowId,
+            allowsResize: !!w.allows_resize?.(),
+            pinned: this._isSizePinned(w),
+            reliable: hasReliableSize({
+                isReference: id === reference?.get_id(),
+                preferred: !!WindowState.get(w, 'preferredSize'),
+                opening: !!WindowState.get(w, 'openingSize'),
+                constrained: !!WindowState.get(w, 'isConstrainedByMosaic'),
+            }),
+        });
     }
 
     // A pinned window can't shrink but can still become a thumbnail; its min already equals its
@@ -3450,8 +3455,12 @@ export const TilingManager = GObject.registerClass({
     // The pass's own subject (arrival, re-include, sacred return, restore) stays a window; the
     // user just asked for it.
     _isCappedParticipant(w, reference) {
-        return w.get_id() === reference?.get_id() || this._isArrivalPending(w) ||
-            WindowState.get(w, 'restoringFromMiniature') === true;
+        return isCappedParticipant({
+            id: w.get_id(),
+            referenceId: reference?.get_id() ?? null,
+            arrivalPending: this._isArrivalPending(w),
+            restoringFromMiniature: WindowState.get(w, 'restoringFromMiniature') === true,
+        });
     }
 
     // postKey is the key the next pass will build once this result is applied (modes flipped),
@@ -3702,11 +3711,6 @@ export const TilingManager = GObject.registerClass({
         } finally {
             this._allocationCandidateSize = null;
         }
-    }
-
-    _sizeAtLongestSide(refSize, targetPx) {
-        const scale = targetPx / Math.max(refSize.width, refSize.height);
-        return { width: Math.round(refSize.width * scale), height: Math.round(refSize.height * scale) };
     }
 
     _applyPendingMiniature(w, d, sim) {
