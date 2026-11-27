@@ -2511,15 +2511,17 @@ export const TilingManager = GObject.registerClass({
         return { stop: true };
     }
 
-    // Newest goes. A drag or live resize is exempt for the same reason the reference rung is: the
-    // drop decides, not the pass under the cursor.
-    _ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor) {
+    // Newest goes, except a protected reference. A drag or live resize is exempt for the same
+    // reason the reference rung is: the drop decides, not the pass under the cursor.
+    _ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor, referenceProtected = false, reference = null) {
         if (!overflow || this.isDragging || this.isResizing) return false;
 
         // A window mid-restore is the user's explicit pick; ejecting it undoes the restore
-        // they just asked for. Overflow inside a restore resolves by miniaturizing, never
-        // by moving the restored window away.
+        // they just asked for. The reference of a keep-oversized pass carries the same promise:
+        // the caller already fitted it, so overflow resolves by miniaturizing the others.
+        const protectedWindow = referenceProtected ? reference : null;
         const candidates = meta_windows.filter(w =>
+            w !== protectedWindow &&
             !this._windowingManager.isExcluded(w) &&
             !WindowState.get(w, 'restoringFromMiniature'));
         if (candidates.length <= 1) return false;
@@ -2795,7 +2797,7 @@ export const TilingManager = GObject.registerClass({
 
         // Ejecting and miniaturizing above can both come back still overflowing, and the packer
         // force-stacks into the work area rather than refusing, so drawing it piles windows up.
-        if (this._ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor)) {
+        if (this._ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor, keep_oversized_windows, reference_meta_window)) {
             // The miniaturization above still stands; finalize it here too, or the flagged
             // window never gets its miniature and stays frozen out of every later pass.
             this._finalizeTilePass(overflow, meta_windows, computedRegions, tileArea, workspace, isRecursive);
