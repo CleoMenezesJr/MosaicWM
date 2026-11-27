@@ -240,6 +240,17 @@ export const WindowingManager = GObject.registerClass({
                 }
             }
 
+            // A sacred exile always leaves the undo data behind, whether the debounce
+            // or the arrival pass initiated it; unmaximize only reads this record.
+            if (isSacred && !WindowState.get(window, 'maximizedUndoInfo')) {
+                WindowState.set(window, 'maximizedUndoInfo', {
+                    originalWorkspace: currentIndex,
+                    currentWorkspace: target_workspace.index(),
+                    monitor,
+                    preMaxSize: WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize'),
+                });
+            }
+
             const previous_workspace = window.get_workspace();
             const switchFocusRequested = options.switchFocus !== false;
 

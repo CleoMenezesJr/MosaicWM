@@ -928,7 +928,18 @@ export const WindowHandler = GObject.registerClass({
             Logger.log(`Window ${window.get_id()} opened maximized - marked for auto-tile check`);
         }
 
-        const processWindowCallback = () => this._processCreatedWindow(window);
+        // A readiness retry can fire after placement (for example when the user
+        // maximizes the window), and creation logic would then run against a window
+        // that is no longer being created. One resolution per window.
+        const processWindowCallback = () => {
+            if (WindowState.get(window, 'creationResolved')) {
+                Logger.log(`Window ${window.get_id()} creation already resolved; ignoring late readiness retry`);
+                return GLib.SOURCE_REMOVE;
+            }
+            const result = this._processCreatedWindow(window);
+            if (result === GLib.SOURCE_REMOVE) WindowState.set(window, 'creationResolved', true);
+            return result;
+        };
 
         const actor = window.get_compositor_private();
         if (actor) {
@@ -1014,15 +1025,19 @@ export const WindowHandler = GObject.registerClass({
 
     // Runs once the window is ready enough to place. SOURCE_CONTINUE re-arms the readiness
     // gate; SOURCE_REMOVE means placement is resolved (tiled, isolated, queued, or deferred).
+    _isCreatedWindowReady(window, workspace, monitor) {
+        return monitor !== null &&
+            window.wm_class !== null &&
+            isWindowAlive(window) &&
+            workspace.list_windows().length !== 0 &&
+            !window.is_hidden();
+    }
+
     _processCreatedWindow(window) {
         const monitor = window.get_monitor();
         const workspace = window.get_workspace();
 
-        if (!(monitor !== null &&
-              window.wm_class !== null &&
-              isWindowAlive(window) &&
-              workspace.list_windows().length !== 0 &&
-              !window.is_hidden()))
+        if (!this._isCreatedWindowReady(window, workspace, monitor))
             return GLib.SOURCE_CONTINUE;
 
         if (this.windowingManager.isExcluded(window)) {
@@ -1032,11 +1047,24 @@ export const WindowHandler = GObject.registerClass({
             return GLib.SOURCE_REMOVE;
         }
 
-        this._captureOpeningSize(window, workspace, monitor);
+        const openedMaximized = WindowState.get(window, 'openedMaximized') === true;
+        const nowMaximized = this.windowingManager.isMaximizedOrFullscreen(window);
 
-        if (this.windowingManager.isMaximizedOrFullscreen(window)) {
+        if (openedMaximized && nowMaximized) {
+            this._captureOpeningSize(window, workspace, monitor, true);
             return this._handleSacredCreated(window, workspace, monitor);
         }
+
+        if (nowMaximized || openedMaximized) {
+            // The window changed state while the creation gate was still closed, after
+            // the arrival pass had already placed it. Its size targets belong to that
+            // pass; capturing the frame it happens to have now would overwrite them.
+            Logger.log(`Window ${window.get_id()} changed state while creation gate was closed; queueing for evaluation`);
+            this.enqueueWindowForEvaluation(window, workspace, monitor);
+            return GLib.SOURCE_REMOVE;
+        }
+
+        this._captureOpeningSize(window, workspace, monitor, false);
 
         const edgeResult = this._tryTileNewWithEdge(window, workspace, monitor);
         if (edgeResult !== null) return edgeResult;
@@ -1052,8 +1080,8 @@ export const WindowHandler = GObject.registerClass({
     }
 
     // Use saved_rect for natural size (get_frame_rect matches monitor if Maximized).
-    _captureOpeningSize(window, workspace, monitor) {
-        if (!this.windowingManager.isMaximizedOrFullscreen(window)) {
+    _captureOpeningSize(window, workspace, monitor, maximized) {
+        if (!maximized) {
             // ONLY save preferred size if the window is NOT maximized/fullscreen upon creation.
             // This prevents capturing "almost-maximized" frames during the opening animation.
             this.tilingManager.savePreferredSize(window);

@@ -306,7 +306,6 @@ export const ResizeHandler = GObject.registerClass({
 
         Logger.log('[SACRED-ENTER] User entering sacred state - debouncing before moving to new workspace');
         WindowState.set(window, 'sacredEnterPending', true);
-        const preMaxSize = WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize');
 
         this._timeoutRegistry.add(constants.SACRED_ENTER_DEBOUNCE_MS, () => {
             WindowState.remove(window, 'sacredEnterPending');
@@ -324,16 +323,9 @@ export const ResizeHandler = GObject.registerClass({
             }
 
             Logger.log('[SACRED-ENTER] Still in sacred state after debounce - moving to new workspace');
-            const originalWorkspaceIndex = currentWorkspace.index();
 
             this.windowingManager.moveOversizedWindow(window).then((newWorkspace) => {
                 if (newWorkspace) {
-                    WindowState.set(window, 'maximizedUndoInfo', {
-                        originalWorkspace: originalWorkspaceIndex,
-                        currentWorkspace: newWorkspace.index(),
-                        monitor: currentMonitor,
-                        preMaxSize: preMaxSize
-                    });
                     // The companion only holds that half because this window was tiled beside it.
                     this.edgeTilingManager.releaseAutoTileDependents(window);
                     this.edgeTilingManager.expandQuarterPartner(window);
