@@ -25,6 +25,7 @@ import {
 import { getMiniatureSize, applyMiniatureActorState, animateMiniatureToTarget } from './miniature.js';
 import { isWindowAlive } from './liveness.js';
 import { frameMinSize, frameMaxSize } from './sizeHints.js';
+import { windowSizeBounds } from './sizeBounds.js';
 import { getSlowDownFactor, monotonicNow } from './timing.js';
 
 const POSITION_STABILITY_WEIGHT = 40;
@@ -3212,16 +3213,7 @@ export const TilingManager = GObject.registerClass({
             return { width: overrideSize.width, height: overrideSize.height };
         }
 
-        const smartResizeSize = WindowState.get(window, 'targetSmartResizeSize');
-        if (smartResizeSize) return { width: smartResizeSize.width, height: smartResizeSize.height };
-
-        // Use the actual frame dimensions instead of a hardcoded fallback.
-        const preferredSize = WindowState.get(window, 'preferredSize') || WindowState.get(window, 'openingSize');
-        const frame = window.get_frame_rect();
-        return {
-            width: preferredSize ? preferredSize.width : frame.width,
-            height: preferredSize ? preferredSize.height : frame.height,
-        };
+        return this._descriptorSizeForExisting(window);
     }
 
     _updateExistingWindowDescriptor(window, windows, overrideSize, newWindowId) {
@@ -3429,23 +3421,15 @@ export const TilingManager = GObject.registerClass({
         };
     }
 
-    // Neither preferred nor threshold may sit under what the client enforces, and a saved
-    // preferred can. Nor past the packing area, where an arrival held at it can't fit even alone.
     _windowSizeBounds(w, tileArea) {
-        const min = this.getWindowMinimumSize(w);
         const saved = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'openingSize') || this.getEffectiveWindowSize(w);
-        const natural = { width: Math.max(saved.width, min.width), height: Math.max(saved.height, min.height) };
-        const area = packingArea(tileArea);
-        const preferred = {
-            width: Math.max(Math.min(natural.width, area.width), min.width),
-            height: Math.max(Math.min(natural.height, area.height), min.height),
-        };
-        const { thresholdW, thresholdH } = this._miniatureThreshold(w, tileArea);
-        const threshold = {
-            width: Math.round(Math.min(Math.max(thresholdW, min.width), preferred.width)),
-            height: Math.round(Math.min(Math.max(thresholdH, min.height), preferred.height)),
-        };
-        return { natural, preferred, min: { width: min.width, height: min.height }, threshold };
+        return windowSizeBounds({
+            min: this.getWindowMinimumSize(w),
+            max: this.getWindowMaximumSize(w),
+            saved,
+            workArea: tileArea,
+            area: packingArea(tileArea),
+        });
     }
 
     _isFixedParticipant(w, reference, resizingWindowId) {
@@ -3721,18 +3705,6 @@ export const TilingManager = GObject.registerClass({
     _sizeAtLongestSide(refSize, targetPx) {
         const scale = targetPx / Math.max(refSize.width, refSize.height);
         return { width: Math.round(refSize.width * scale), height: Math.round(refSize.height * scale) };
-    }
-
-    _miniatureThreshold(w, workArea) {
-        const min = this.getWindowMinimumSize(w);
-        const maxSize = this.getWindowMaximumSize(w);
-        // Some clients publish a max past the monitor, which pins the threshold to preferred.
-        const effectiveMaxW = Math.min(maxSize?.width || workArea.width, workArea.width);
-        const effectiveMaxH = Math.min(maxSize?.height || workArea.height, workArea.height);
-        return {
-            thresholdW: (min.width + effectiveMaxW) / 2,
-            thresholdH: (min.height + effectiveMaxH) / 2,
-        };
     }
 
     _applyPendingMiniature(w, d, sim) {
