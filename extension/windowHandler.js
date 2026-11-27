@@ -102,6 +102,19 @@ export const WindowHandler = GObject.registerClass({
         }
     }
 
+    // The overflow move parks a sacred arrival where no tile pass will touch it,
+    // stranding its entrance claim. Replay it as a fade unless the destination
+    // tile is already easing it: a maximized window has nowhere to slide from.
+    _replayStrandedEntrance(window) {
+        if (!WindowState.get(window, 'pendingFirstPlacement')) return;
+        if (this.animationsManager.hasActiveOrPendingEntrance(window)) return;
+
+        this.animationsManager.animateWindow(window, window.get_frame_rect(), {
+            firstPlacement: true,
+            slideInOffset: null,
+        });
+    }
+
     // Lock a workspace to prevent recursive or conflicting tiling triggers.
     // Reference-counted: overlapping tileWorkspaceWindows calls (e.g. drag-end
     // and resize-end firing close together) each hold their own depth, so the
@@ -1406,6 +1419,7 @@ export const WindowHandler = GObject.registerClass({
                 Logger.log('Skipping early tile in waitForGeometry - window was moved by overflow (Flags cleared to prevent leakage)');
                 WindowState.remove(WINDOW, 'movedByOverflow');
                 WindowState.remove(WINDOW, 'arrivalPending');
+                this._replayStrandedEntrance(WINDOW);
                 return GLib.SOURCE_REMOVE;
             }
 
