@@ -305,7 +305,6 @@ export const WindowingManager = GObject.registerClass({
                                     }
                                 } finally {
                                     WindowState.remove(window, 'movedByOverflow');
-                                    WindowState.remove(window, 'overflowOriginWorkspace');
 
                                     if (this._overflowEndCallback) {
                                         this._overflowEndCallback();
@@ -318,7 +317,6 @@ export const WindowingManager = GObject.registerClass({
                             Logger.error(`Error during moveOversizedWindow retiling: ${e}`);
 
                             WindowState.remove(window, 'movedByOverflow');
-                            WindowState.remove(window, 'overflowOriginWorkspace');
 
                             if (this._overflowEndCallback) {
                                 this._overflowEndCallback();
@@ -328,7 +326,6 @@ export const WindowingManager = GObject.registerClass({
                     }, this._timeoutRegistry);
                 } else {
                     WindowState.remove(window, 'movedByOverflow');
-                    WindowState.remove(window, 'overflowOriginWorkspace');
 
                     if (this._overflowEndCallback) {
                         this._overflowEndCallback();
