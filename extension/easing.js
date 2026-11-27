@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Cubic-bezier easing for window transitions
 
+import * as constants from './constants.js';
+
 function sample(a1, a2, t) {
     const mt = 1 - t;
     return 3 * mt * mt * t * a1 + 3 * mt * t * t * a2 + t * t * t;
@@ -38,3 +40,7 @@ export function createEasing({ x1, y1, x2, y2 }) {
         return sample(y1, y2, t);
     };
 }
+
+export const HOUSE_EASE = createEasing(constants.HOUSE_CURVE);
+export const REFLOW_EASE = createEasing(constants.REFLOW_CURVE);
+

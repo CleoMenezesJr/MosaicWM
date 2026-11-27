@@ -12,7 +12,7 @@ import { MINIATURE_ANIM_KIND } from './windowState.js';
 import { getAnimationsEnabled, getSlowDownFactor } from './timing.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
 import { followResize } from './resizeFollower.js';
-import { createEasing } from './easing.js';
+import { HOUSE_EASE, REFLOW_EASE } from './easing.js';
 
 import GObject from 'gi://GObject';
 
@@ -20,8 +20,6 @@ const ANIMATION_DURATION = constants.ANIMATION_DURATION_MS;
 const ANIMATION_MODE = Clutter.AnimationMode.EASE_OUT_BACK;
 const ANIMATION_MODE_SUBTLE = Clutter.AnimationMode.EASE_OUT_QUAD;
 const USE_HOUSE_CURVE = constants.ANIMATION_EASING === 'house';
-const HOUSE_EASE = createEasing(constants.HOUSE_CURVE);
-const REFLOW_EASE = createEasing(constants.REFLOW_CURVE);
 
 export const AnimationsManager = GObject.registerClass({
     GTypeName: 'MosaicAnimationsManager',

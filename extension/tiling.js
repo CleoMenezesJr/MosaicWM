@@ -29,6 +29,7 @@ import { frameMinSize, frameMaxSize } from './sizeHints.js';
 import { windowSizeBounds } from './sizeBounds.js';
 import { hasReliableSize, isFixedParticipant, isCappedParticipant, sizeAtLongestSide } from './sizeIntent.js';
 import { getSlowDownFactor, monotonicNow } from './timing.js';
+import { REFLOW_EASE } from './easing.js';
 
 const POSITION_STABILITY_WEIGHT = 40;
 // Tuning these two changes nothing on its own since they rank in tiers, never in one sum.
@@ -2386,7 +2387,21 @@ export const TilingManager = GObject.registerClass({
         const actor = window.get_compositor_private();
         const sc = WindowState.get(window, MINIATURE_SCALE) ?? 1;
         if (actor && !actor.is_destroyed()) {
-            animateMiniatureToTarget(actor, window, sc, tx, ty, constants.ANIMATION_DURATION_MS, this._animationsManager);
+            // Siblings in this pass go through shouldAnimateWindow; the miniature follows the same
+            // gate, or it animates while the windows stand still. A create or restore in flight keeps
+            // its own ease, which resumes toward the stashed target.
+            const animKind = WindowState.get(window, MINIATURE_ANIM_KIND);
+            if (animKind === 'create' || animKind === 'restore' ||
+                this._animationsManager?.shouldAnimateWindow(window)) {
+                animateMiniatureToTarget(actor, window, sc, tx, ty, constants.ANIMATION_DURATION_MS,
+                    this._animationsManager, REFLOW_EASE);
+            } else {
+                this._animationsManager?.stopTranslationEase(window.get_id());
+                WindowState.remove(window, ANIMATING_MINIATURE);
+                WindowState.remove(window, MINIATURE_ANIM_KIND);
+                applyMiniatureActorState(actor, sc, tx, ty);
+                WindowState.set(window, MINIATURE_TARGET_POS, { x: tx, y: ty });
+            }
         }
         this._recordRegion(window, region, ctx);
         Logger.log(`[MINIATURE] animateTile ${orient} ${window.get_id()}: target=(${tx},${ty}) scale=${sc.toFixed(4)} region=${region.width}x${region.height}`);

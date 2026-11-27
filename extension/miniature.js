@@ -12,6 +12,7 @@ import * as Logger from './logger.js';
 import * as constants from './constants.js';
 import * as WindowState from './windowState.js';
 import { getSlowDownFactor } from './timing.js';
+import { REFLOW_EASE } from './easing.js';
 import {
     IS_MINIATURE,
     MINIATURE_SCALE,
@@ -60,7 +61,7 @@ export function applyMiniatureActorState(actor, scale, targetX, targetY) {
     Logger.log(`[MINIATURE] applyMiniatureActorState: actor=( ${ax},${ay} ${actorW}x${actorH}) target=(${targetX},${targetY}) scale=${scale} tx=${tx} ty=${ty} FINAL_SIZE=${Math.round(actorW * scale)}x${Math.round(actorH * scale)}`);
 }
 
-export function animateMiniatureToTarget(actor, window, scale, targetX, targetY, duration, animationsManager = null) {
+export function animateMiniatureToTarget(actor, window, scale, targetX, targetY, duration, animationsManager = null, ease = null) {
     const kind = WindowState.get(window, MINIATURE_ANIM_KIND);
 
     if (kind === 'create' || kind === 'restore') {
@@ -81,6 +82,8 @@ export function animateMiniatureToTarget(actor, window, scale, targetX, targetY,
     actor.set_scale(scale, scale);
 
     const { tx: targetTx, ty: targetTy } = frameTranslation(actor, scale, targetX, targetY);
+    // Same slow-down scaling animateWindow uses, so slow-motion affects both sides equally.
+    const scaledDuration = Math.ceil(duration * getSlowDownFactor());
 
     const onArrived = () => {
         WindowState.remove(window, ANIMATING_MINIATURE);
@@ -90,9 +93,13 @@ export function animateMiniatureToTarget(actor, window, scale, targetX, targetY,
         if (tgt && sc) applyMiniatureActorState(actor, sc, tgt.x, tgt.y);
     };
 
-    if (constants.ANIMATION_EASING === 'house' && animationsManager) {
+    // The curve must match what the siblings ease with in this pass; a move with no ease
+    // comes from a drag path, whose windows use the native quad.
+    if (constants.ANIMATION_EASING === 'house' && animationsManager && ease) {
         animationsManager.animateTranslation(window, actor, {
-            fromTx: curTx, fromTy: curTy, toTx: targetTx, toTy: targetTy, duration,
+            fromTx: curTx, fromTy: curTy, toTx: targetTx, toTy: targetTy,
+            duration: scaledDuration,
+            ease,
             onComplete: onArrived,
         });
         return;
@@ -101,7 +108,7 @@ export function animateMiniatureToTarget(actor, window, scale, targetX, targetY,
     actor.ease({
         translation_x: targetTx,
         translation_y: targetTy,
-        duration,
+        duration: scaledDuration,
         mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         onStopped: (isFinished) => {
             if (isFinished) onArrived();
@@ -660,7 +667,8 @@ export const MiniatureManager = GObject.registerClass({
             toTx: tx,
             toTy: ty,
             scale,
-            duration: constants.MINIATURE_ANIM_MS,
+            duration: Math.ceil(constants.MINIATURE_ANIM_MS * getSlowDownFactor()),
+            ease: REFLOW_EASE,
             onStopped: (isFinished) => {
                 if (!isFinished) return;
                 this._stopTranslationTakeover(window);
@@ -757,12 +765,13 @@ export const MiniatureManager = GObject.registerClass({
     }
 
     // House curve owns translation, scale keeps the native curve so an interrupted scale-up keeps
-    // its resume path; a takeover stops translation silently and owns it from then on.
-    _easeTransform(window, windowActor, { fromTx, fromTy, toTx, toTy, scale, duration, onStopped }) {
+    // its resume path; a takeover stops translation silently and owns it from then on. A caller
+    // moving its windows on another curve passes it through ease (default house).
+    _easeTransform(window, windowActor, { fromTx, fromTy, toTx, toTy, scale, duration, onStopped, ease = null }) {
         const mode = Clutter.AnimationMode.EASE_OUT_QUAD;
         if (constants.ANIMATION_EASING === 'house' && this._animationsManager) {
             this._animationsManager.animateTranslation(window, windowActor, {
-                fromTx, fromTy, toTx, toTy, duration,
+                fromTx, fromTy, toTx, toTy, duration, ease,
             });
             windowActor.ease({
                 scale_x: scale,
