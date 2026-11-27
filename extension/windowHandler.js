@@ -14,6 +14,7 @@ import * as constants from './constants.js';
 import { TileZone } from './constants.js';
 import * as WindowState from './windowState.js';
 import { IS_MINIATURE } from './windowState.js';
+import { moveWindowToWorkspace, consumeExpectedMove } from './workspaceMove.js';
 import { ComputedLayouts, MosaicModel } from './mosaicModel.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
 import { isWindowAlive } from './liveness.js';
@@ -296,7 +297,7 @@ export const WindowHandler = GObject.registerClass({
             return true;
         if (WindowState.get(win, WindowState.MINIATURE_ANIM_KIND) !== undefined)
             return true;
-        return [WindowState.PENDING_MINIATURE, 'isEnteringSacred', 'unmaximizing', 'isRestoringSacred'].some(flag => WindowState.get(win, flag));
+        return [WindowState.PENDING_MINIATURE, 'isEnteringSacred', 'unmaximizing', 'sacredRestore'].some(flag => WindowState.get(win, flag));
     }
 
     _outsideMosaicSlot(win) {
@@ -703,7 +704,7 @@ export const WindowHandler = GObject.registerClass({
             Logger.log(`Evaluation queue: User switched to WS-${activeWorkspace.index()} during processing (batch started on WS-${state.batchActiveWorkspace.index()}) - following user`);
             state.lastOverflowWorkspace = null;
             overflowedWorkspaces.clear();
-            window.change_workspace(activeWorkspace);
+            moveWindowToWorkspace(window, activeWorkspace, 'queue-follow-user');
             return activeWorkspace;
         }
 
@@ -725,7 +726,7 @@ export const WindowHandler = GObject.registerClass({
         Logger.log(`Evaluation queue: cascading window ${window.get_id()} to overflow destination WS-${dest.index()}`);
         if (window.get_workspace() !== dest) {
             WindowState.set(window, 'movedByOverflow', true);
-            window.change_workspace(dest);
+            moveWindowToWorkspace(window, dest, 'queue-overflow');
         }
         return dest;
     }
@@ -1218,7 +1219,7 @@ export const WindowHandler = GObject.registerClass({
             if (frame.width <= 0 || frame.height <= 0)
                 return false;
 
-            this._handleCrossWorkspaceDnD(WINDOW, WORKSPACE);
+            const isInternalMove = this._handleCrossWorkspaceDnD(WINDOW, WORKSPACE);
 
             // Mark window as waiting for geometry; prevents premature overflow
             WindowState.set(WINDOW, 'waitingForGeometry', true);
@@ -1233,7 +1234,7 @@ export const WindowHandler = GObject.registerClass({
                     WindowState.remove(WINDOW, 'arrivalPending');
                     return GLib.SOURCE_REMOVE;
                 }
-                return this.waitForGeometry(WINDOW, WORKSPACE, MONITOR);
+                return this.waitForGeometry(WINDOW, WORKSPACE, MONITOR, isInternalMove);
             }, 'windowHandler_geometryCheck');
 
             return true;
@@ -1249,7 +1250,16 @@ export const WindowHandler = GObject.registerClass({
 
     // Detect a DnD across workspaces: window was just removed from a different
     // workspace within SAFETY_TIMEOUT_BUFFER_MS, so this add is the drop side.
+    // Extension-initiated moves carry a mark and never reach the heuristic.
     _handleCrossWorkspaceDnD(WINDOW, WORKSPACE) {
+        const move = consumeExpectedMove(WINDOW, WORKSPACE);
+        if (move) {
+            Logger.log(`Cross-workspace arrival of ${WINDOW.get_id()} is an internal move (${move.reason})`);
+            WindowState.remove(WINDOW, 'previousWorkspace');
+            WindowState.remove(WINDOW, 'removedTimestamp');
+            return true;
+        }
+
         const previousWorkspaceIndex = WindowState.get(WINDOW, 'previousWorkspace');
         const removedTimestamp = WindowState.get(WINDOW, 'removedTimestamp');
         const timeSinceRemoved = removedTimestamp ? monotonicNow() - removedTimestamp : Infinity;
@@ -1257,14 +1267,23 @@ export const WindowHandler = GObject.registerClass({
         const isCrossWorkspaceDrop = previousWorkspaceIndex !== undefined
             && previousWorkspaceIndex !== WORKSPACE.index()
             && timeSinceRemoved < constants.SAFETY_TIMEOUT_BUFFER_MS;
-        if (!isCrossWorkspaceDrop || WindowState.get(WINDOW, 'movedByOverflow')) return;
+        if (!isCrossWorkspaceDrop || WindowState.get(WINDOW, 'movedByOverflow')) return false;
 
         // Mark as DnD arrival; triggers expansion after tiling
         WindowState.set(WINDOW, 'arrivedFromDnD', true);
 
         WindowState.remove(WINDOW, 'previousWorkspace');
         WindowState.remove(WINDOW, 'removedTimestamp');
-        WindowState.remove(WINDOW, 'manualWorkspaceMove');
+        return false;
+    }
+
+    // The switch animation has to finish before tiling lands on the destination,
+    // whether the move came from a user drop or from this extension.
+    _isCrossWorkspaceArrival(WINDOW, WORKSPACE, isInternalMove) {
+        if (isInternalMove || WindowState.get(WINDOW, 'arrivedFromDnD') || WindowState.get(WINDOW, 'movedByOverflow'))
+            return true;
+        const previousWorkspaceIndex = WindowState.get(WINDOW, 'previousWorkspace');
+        return previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index();
     }
 
     onWindowRemoved(workspace, window) {
@@ -1341,7 +1360,7 @@ export const WindowHandler = GObject.registerClass({
                         this._ext.windowingManager.renavigate(WORKSPACE, global.workspace_manager.get_active_workspace() === WORKSPACE, this._ext._lastVisitedWorkspace, MONITOR);
                     }
 
-                    WindowState.remove(window, 'isRestoringSacred');
+                    WindowState.remove(window, 'sacredRestore');
                 }
             }
 
@@ -1349,7 +1368,7 @@ export const WindowHandler = GObject.registerClass({
         });
     }
 
-    waitForGeometry(WINDOW, WORKSPACE, MONITOR) {
+    waitForGeometry(WINDOW, WORKSPACE, MONITOR, isInternalMove = false) {
         const rect = WINDOW.get_frame_rect();
 
         if (rect.width > 0 && rect.height > 0) {
@@ -1391,10 +1410,7 @@ export const WindowHandler = GObject.registerClass({
                 this.enqueueWindowForEvaluation(WINDOW, WORKSPACE, MONITOR);
             };
 
-            const isDnDArrival = WindowState.get(WINDOW, 'arrivedFromDnD');
-            const previousWorkspaceIndex = WindowState.get(WINDOW, 'previousWorkspace');
-
-            if (isDnDArrival || WindowState.get(WINDOW, 'movedByOverflow') || (previousWorkspaceIndex !== undefined && previousWorkspaceIndex !== WORKSPACE.index())) {
+            if (this._isCrossWorkspaceArrival(WINDOW, WORKSPACE, isInternalMove)) {
                 Logger.log('Cross-workspace move: Waiting for workspace animation');
                 afterWorkspaceSwitch(performTiling, this._ext._timeoutRegistry);
             } else {

@@ -80,6 +80,9 @@ export const DEBOUNCE_DELAY_MS = 500;
 export const RETILE_DELAY_MS = 100;
 export const GEOMETRY_CHECK_DELAY_MS = 10;
 export const SAFETY_TIMEOUT_BUFFER_MS = 100;
+// A move mark only has to outlive the window-added emission; capping it keeps a
+// stale mark from reclassifying a later user drop.
+export const WORKSPACE_MOVE_MARK_TTL_MS = 1000;
 export const EDGE_TILE_RESTORE_DELAY_MS = 300;  // Delay to prevent false overflow during edge tile restoration
 export const GEOMETRY_WAIT_MAX_ATTEMPTS = 100;   // Max attempts to wait for window geometry (100 * 10ms = 1s)
 export const REVERSE_RESIZE_PROTECTION_MS = 1000; // Protection window after a resize, unmaximize or overflow settles

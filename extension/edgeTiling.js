@@ -9,6 +9,7 @@ import * as constants from './constants.js';
 import { TileZone, ZONE_SIDE, ZONE_HALF, ZONE_VERTICAL_PAIR, SIDE_ZONES } from './constants.js';
 import * as WindowState from './windowState.js';
 import { IS_MINIATURE, ANIMATING_MINIATURE, MINIATURE_ANIM_KIND } from './windowState.js';
+import { moveWindowToWorkspace } from './workspaceMove.js';
 import { getMiniatureSize } from './miniature.js';
 import { MosaicModel } from './mosaicModel.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
@@ -1089,7 +1090,7 @@ export const EdgeTilingManager = GObject.registerClass({
         const newWorkspace = this._windowingManager.createOrReuseAdjacentWorkspace(workspace);
 
         for (const mosaicWindow of mosaicWindows) {
-            mosaicWindow.change_workspace(newWorkspace);
+            moveWindowToWorkspace(mosaicWindow, newWorkspace, 'edge-evacuation');
         }
 
         this._timeoutRegistry.add(constants.REVERSE_RESIZE_PROTECTION_MS, () => {

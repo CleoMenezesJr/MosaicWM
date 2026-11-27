@@ -2487,12 +2487,12 @@ export const TilingManager = GObject.registerClass({
         // Only overflow a window whose arrival is still being placed; this prevents expelling
         // existing windows during resize retiling.
         const isNewlyAdded = this._isArrivalPending(reference_meta_window);
-        if (!isNewlyAdded && !WindowState.get(reference_meta_window, 'forceOverflow') && !WindowState.get(reference_meta_window, 'isRestoringSacred')) {
+        if (!isNewlyAdded && !WindowState.get(reference_meta_window, 'sacredRestore')) {
             Logger.log(`Skipping overflow for ${reference_meta_window.get_id()} - not a new window`);
             return { tile_info, referenceOverflowSkipped: true };
         }
 
-        if (WindowState.get(reference_meta_window, 'isRestoringSacred')) {
+        if (WindowState.get(reference_meta_window, 'sacredRestore')) {
             Logger.log(`Skipping overflow for ${reference_meta_window.get_id()}: sacred restore in progress`);
             // The allocation already gave way for a returning sacred window; still overflowing
             // means it can't fit at all.

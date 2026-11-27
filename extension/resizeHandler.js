@@ -7,6 +7,7 @@ import Meta from 'gi://Meta';
 import * as Logger from './logger.js';
 import { afterWorkspaceSwitch, afterAnimations, beforeRedraw, monotonicNow } from './timing.js';
 import * as WindowState from './windowState.js';
+import { moveWindowToWorkspace } from './workspaceMove.js';
 import * as constants from './constants.js';
 import { TileZone } from './constants.js';
 import { isResizeGrabOp } from './grabOps.js';
@@ -454,7 +455,7 @@ export const ResizeHandler = GObject.registerClass({
         // A sacred restore waits on this same size-changed, and the resize that just
         // landed is the one it ordered itself. Returning here would strand it until
         // the safety timeout.
-        if (WindowState.get(window, 'isRestoringSacred') === undefined) {
+        if (!WindowState.get(window, 'sacredRestore')) {
             this._sizeChanged = false;
             return true;
         }
@@ -462,13 +463,13 @@ export const ResizeHandler = GObject.registerClass({
     }
 
     _handleSacredResizePhase(window) {
-        const originWorkspaceIndex = WindowState.get(window, 'isRestoringSacred');
-        if (originWorkspaceIndex === undefined) return false;
+        const restore = WindowState.get(window, 'sacredRestore');
+        if (!restore) return false;
 
         // No longer sacred (unmaximized) means it finished resizing in place; otherwise it's
         // still maximized but moving. Either way we block further size handling here.
         if (!this.windowingManager.isMaximizedOrFullscreen(window)) {
-            this.completeSacredReturn(window, originWorkspaceIndex);
+            this.completeSacredReturn(window, restore.originWorkspaceIndex);
         }
         this._sizeChanged = false;
         return true;
@@ -602,7 +603,7 @@ export const ResizeHandler = GObject.registerClass({
     _inResizeTransition(window, clientOwnedSize) {
         return WindowState.get(window, 'isEnteringSacred') ||
             WindowState.get(window, 'unmaximizing') ||
-            WindowState.get(window, 'isRestoringSacred') ||
+            WindowState.get(window, 'sacredRestore') ||
             WindowState.get(window, 'openedMaximized') ||
             (WindowState.get(window, 'isMosaicResizing') && !clientOwnedSize);
     }
@@ -899,7 +900,7 @@ export const ResizeHandler = GObject.registerClass({
     // stuck on the isolated workspace if nothing else nudges it.
     scheduleSacredRestoreSafety(window, originWorkspaceIndex) {
         this._timeoutRegistry.add(constants.SACRED_RESTORE_SAFETY_TIMEOUT_MS, () => {
-            if (WindowState.get(window, 'isRestoringSacred') === originWorkspaceIndex) {
+            if (WindowState.get(window, 'sacredRestore')?.originWorkspaceIndex === originWorkspaceIndex) {
                 Logger.log(`[SACRED-TIMEOUT] Window ${window.get_id()} never confirmed unmaximize - forcing deferred move`);
                 this.completeSacredReturn(window, originWorkspaceIndex);
             }
@@ -907,17 +908,17 @@ export const ResizeHandler = GObject.registerClass({
         }, 'resizeHandler_sacredRestoreSafety');
     }
 
-    // Clearing the flag below makes this safe to call twice, since the real
+    // Clearing the restore below makes this safe to call twice, since the real
     // signal and the timeout above can both end up calling it.
     completeSacredReturn(window, originWorkspaceIndex) {
-        if (WindowState.get(window, 'isRestoringSacred') !== originWorkspaceIndex) return;
+        const restore = WindowState.get(window, 'sacredRestore');
+        if (restore?.originWorkspaceIndex !== originWorkspaceIndex) return;
 
         Logger.log(`[SACRED-MOVE] Window ${window.get_id()} finished in-place resize. Moving to origin workspace ${originWorkspaceIndex}.`);
 
         const workspaceManager = global.workspace_manager;
         if (originWorkspaceIndex < 0 || originWorkspaceIndex >= workspaceManager.get_n_workspaces()) {
-            WindowState.remove(window, 'isRestoringSacred');
-            WindowState.remove(window, 'sacredFitConfirmed');
+            WindowState.remove(window, 'sacredRestore');
             return;
         }
 
@@ -926,15 +927,14 @@ export const ResizeHandler = GObject.registerClass({
         const oldWorkspace = window.get_workspace();
         // handleUnmaximizeUndo sets this once it already checked the window
         // fits, so the tile pass below doesn't second-guess it as overflow.
-        const fitConfirmed = WindowState.get(window, 'sacredFitConfirmed') === true;
+        const fitConfirmed = restore.fitConfirmed === true;
 
-        window.change_workspace(originWS);
+        moveWindowToWorkspace(window, originWS, 'sacred-return');
         originWS.activate(global.get_current_time());
         this.windowingManager.showWorkspaceSwitcher(originWS, monitor);
 
         // prevent double-move
-        WindowState.remove(window, 'isRestoringSacred');
-        WindowState.remove(window, 'sacredFitConfirmed');
+        WindowState.remove(window, 'sacredRestore');
 
         afterWorkspaceSwitch(() => {
             Logger.log(`Triggering tiling in destination workspace ${originWorkspaceIndex}`);
@@ -1044,8 +1044,7 @@ export const ResizeHandler = GObject.registerClass({
         // Wait for the real size-changed confirmation instead of guessing with
         // a timer; a fixed delay could move the window before it's actually
         // done resizing, and it'd show up at the destination still huge.
-        WindowState.set(window, 'isRestoringSacred', origIndex);
-        WindowState.set(window, 'sacredFitConfirmed', true);
+        WindowState.set(window, 'sacredRestore', { originWorkspaceIndex: origIndex, fitConfirmed: true });
         this.scheduleSacredRestoreSafety(window, origIndex);
         Logger.log(`[SACRED-DEFER] Window ${window.get_id()} resizing in place before deferred move to WS ${origIndex}`);
     }

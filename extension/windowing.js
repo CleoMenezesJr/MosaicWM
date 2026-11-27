@@ -11,6 +11,7 @@ import { afterWorkspaceSwitch } from './timing.js';
 
 import { TileZone, ZONE_SIDE, SIDE_ZONES } from './constants.js';
 import * as WindowState from './windowState.js';
+import { moveWindowToWorkspace } from './workspaceMove.js';
 import { isWindowAlive } from './liveness.js';
 import { MosaicConstraints } from './mosaicConstraint.js';
 
@@ -175,7 +176,7 @@ export const WindowingManager = GObject.registerClass({
             Logger.log(`Failed to tile window: ${error.message}`);
             // Undo the move that positioned it here; stranding is worse than no tiling.
             if (previousWorkspace) {
-                window.change_workspace(previousWorkspace);
+                moveWindowToWorkspace(window, previousWorkspace, 'dual-tile-undo');
             }
             return false;
         }
@@ -242,7 +243,7 @@ export const WindowingManager = GObject.registerClass({
             const previous_workspace = window.get_workspace();
             const switchFocusRequested = options.switchFocus !== false;
 
-            window.change_workspace(target_workspace);
+            moveWindowToWorkspace(window, target_workspace, 'overflow');
 
             this._timeoutRegistry.addIdle(() => {
                 const workspaceIndex = target_workspace.index();
