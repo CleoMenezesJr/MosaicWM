@@ -116,8 +116,9 @@ export class MosaicRenderer {
             if (WindowState.get(member.window, IS_MINIATURE)) continue;
             const r = member.region;
             const claim = WindowState.get(member.window, 'pendingFirstPlacement');
-            const animating = this._animations.hasActiveOrPendingEntrance(member.window);
-            if (claim && !animating && !Main.overview.visible) {
+            // A settle pass can start the entrance first and sit on the claim; replaying
+            // over it re-zeros the opacity so the fade is actually visible.
+            if (claim && !Main.overview.visible) {
                 this._animations.animateDeferredEntrance(member.window, r, layouts);
             } else {
                 MosaicConstraints.commitRegion(member.window, r);

@@ -497,12 +497,19 @@ export const AnimationsManager = GObject.registerClass({
             : { x: 0, y: deltaY < 0 ? -OFFSET : OFFSET };
     }
 
-    // Replays an entrance whose claim survived the overview-visible tile pass. At 'hidden' the
-    // window is sitting visible at its committed slot, so hide it first: the ease's own fade
-    // then reads as the slide-in it would have been at map time.
+    // Replays an entrance whose claim survived the overview-visible tile pass. A settle
+    // pass at 'hidden' can beat the flush to the claim and start a slide at full opacity
+    // (the overview branch restored it for the grid), which reads as no animation; restart
+    // from opacity 0 so the fade lands like a first placement.
     animateDeferredEntrance(window, targetRect, windowLayouts) {
         const actor = window.get_compositor_private();
-        if (actor && !actor.is_destroyed()) actor.opacity = 0;
+        if (actor && !actor.is_destroyed()) {
+            this._stopTranslationTimeline?.(window.get_id());
+            actor.remove_all_transitions();
+            this._animatingWindows.delete(window.get_id());
+            this._animatingTargets.delete(window.get_id());
+            actor.opacity = 0;
+        }
         this.animateWindow(window, targetRect, {
             firstPlacement: true,
             slideInOffset: this._computeSlideInOffset(window, targetRect, windowLayouts),
