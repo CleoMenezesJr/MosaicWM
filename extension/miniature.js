@@ -593,6 +593,7 @@ export const MiniatureManager = GObject.registerClass({
         // Complete the entrance fade so mini does not draw half-transparent mid-fade.
         if (WindowState.get(window, 'pendingFirstPlacement')) {
             WindowState.remove(window, 'pendingFirstPlacement');
+            WindowState.remove(window, 'entranceIntroduced');
             windowActor.remove_transition('opacity');
             windowActor.opacity = 255;
         }

@@ -101,6 +101,7 @@ export const WindowHandler = GObject.registerClass({
     revealPendingEntrance(window) {
         if (!WindowState.get(window, 'pendingFirstPlacement')) return;
         WindowState.remove(window, 'pendingFirstPlacement');
+        WindowState.remove(window, 'entranceIntroduced');
         this.animationsManager.cancelPendingEntrance(window);
         const actor = isWindowAlive(window) ? window.get_compositor_private() : null;
         if (actor && !actor.is_destroyed()) {
@@ -1281,6 +1282,7 @@ export const WindowHandler = GObject.registerClass({
                         return GLib.SOURCE_REMOVE;
                     }
                     WindowState.remove(window, 'pendingFirstPlacement');
+                    WindowState.remove(window, 'entranceIntroduced');
                     const a = isWindowAlive(window) ? window.get_compositor_private() : null;
                     if (a && !a.is_destroyed()) a.opacity = 255;
                     return GLib.SOURCE_REMOVE;

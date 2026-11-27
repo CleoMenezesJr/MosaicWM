@@ -269,6 +269,10 @@ export const AnimationsManager = GObject.registerClass({
             windowActor.set_scale(initialScaleX, initialScaleY);
         }
 
+        // The slide start is now a real visual position; later passes in the same
+        // burst measure it and re-aim from it instead of deriving a fresh offset.
+        if (firstPlacement) WindowState.set(window, 'entranceIntroduced', true);
+
         const easeParams = { initialTx, initialTy, effectiveDuration, animationMode, skipScale, firstPlacement, onComplete, targetRect, ease };
 
         // A reflow with an unmapped entrant parks every actor here instead of starting piecemeal;
@@ -310,6 +314,7 @@ export const AnimationsManager = GObject.registerClass({
         this._clearMosaicResizingSoon(window);
         if (firstPlacement) {
             WindowState.remove(window, 'pendingFirstPlacement');
+            WindowState.remove(window, 'entranceIntroduced');
             const actor = window.get_compositor_private();
             if (actor) actor.opacity = 255;
         }
@@ -322,7 +327,10 @@ export const AnimationsManager = GObject.registerClass({
         WindowState.set(window, 'isMosaicResizing', true);
         MosaicConstraints.commitRegion(window, targetRect);
         this._clearMosaicResizingSoon(window);
-        if (firstPlacement) WindowState.remove(window, 'pendingFirstPlacement');
+        if (firstPlacement) {
+            WindowState.remove(window, 'pendingFirstPlacement');
+            WindowState.remove(window, 'entranceIntroduced');
+        }
         if (onComplete) onComplete();
     }
 
@@ -343,6 +351,7 @@ export const AnimationsManager = GObject.registerClass({
         MosaicConstraints.commitRegion(window, targetRect);
         this._clearMosaicResizingSoon(window);
         WindowState.remove(window, 'pendingFirstPlacement');
+        WindowState.remove(window, 'entranceIntroduced');
         WindowState.remove(window, 'overviewArrival');
         this._checkAllAnimationsComplete();
         Logger.log(`[ANIM-DIAG] settled overview arrival for ${window.get_id()}`);
@@ -506,7 +515,10 @@ export const AnimationsManager = GObject.registerClass({
     _finishTranslationEase(window, windowActor, { firstPlacement, onComplete }) {
         if (windowActor && !windowActor.is_destroyed())
             windowActor.set_translation(0, 0, 0);
-        if (firstPlacement) WindowState.remove(window, 'pendingFirstPlacement');
+        if (firstPlacement) {
+            WindowState.remove(window, 'pendingFirstPlacement');
+            WindowState.remove(window, 'entranceIntroduced');
+        }
         this._animatingWindows.delete(window.get_id());
         this._animatingTargets.delete(window.get_id());
         this._checkAllAnimationsComplete();
@@ -623,6 +635,7 @@ export const AnimationsManager = GObject.registerClass({
             // tileWorkspaceWindows passes, and each one needs to still see this
             // as a first placement, not just whichever pass happens to run first.
             const isFirstPlacement = WindowState.get(window, 'pendingFirstPlacement');
+            const introduced = isFirstPlacement && WindowState.get(window, 'entranceIntroduced');
 
             const currentRect = window.get_frame_rect();
 
@@ -643,14 +656,8 @@ export const AnimationsManager = GObject.registerClass({
             // Include pending miniature siblings too: they're real neighbors for
             // direction purposes even though they're excluded from windowLayouts
             // (createMiniature owns their own animation, not this loop).
-            const slideInOffset = isFirstPlacement
-                ? this._computeSlideInOffset(window, rect, windowLayouts.concat(miniLayouts), pushDistance)
-                : null;
-
-            // The entrant covers the same distance as the sibling it displaces, so it has to
-            // cover it at the same rate; on the house curve it outruns the push and paints
-            // over it. A cue with no push behind it keeps the house curve.
-            const ease = this._translationEase(isFirstPlacement, slideInOffset, pushDistance);
+            const { slideInOffset, ease } = this._planEntrance(
+                window, rect, windowLayouts, miniLayouts, pushDistance, isFirstPlacement, introduced);
 
             this.animateWindow(window, rect, {
                 draggedWindow,
@@ -660,6 +667,22 @@ export const AnimationsManager = GObject.registerClass({
                 ease,
             });
         }
+    }
+
+    // An entrant that was never primed still sits on its spawn rect, so it needs
+    // a fresh slide start; one that already primed owns its visual position and
+    // must keep it when a later burst pass re-aims it.
+    _planEntrance(window, rect, windowLayouts, miniLayouts, pushDistance, isFirstPlacement, introduced) {
+        const slideInOffset = isFirstPlacement && !introduced
+            ? this._computeSlideInOffset(window, rect, windowLayouts.concat(miniLayouts), pushDistance)
+            : null;
+
+        // The entrant covers the same distance as the sibling it displaces, so it has to
+        // cover it at the same rate; on the house curve it outruns the push and paints
+        // over it. A re-aimed entrant is already inside the push and follows it.
+        const ease = introduced ? REFLOW_EASE : this._translationEase(isFirstPlacement, slideInOffset, pushDistance);
+
+        return { slideInOffset, ease };
     }
 
     _rectMoved(currentRect, rect) {
@@ -676,14 +699,22 @@ export const AnimationsManager = GObject.registerClass({
         let x = 0;
         let y = 0;
         for (const { window, rect } of windowLayouts) {
-            if (WindowState.get(window, 'pendingFirstPlacement')) continue;
-            const old = window.get_frame_rect();
+            const pending = WindowState.get(window, 'pendingFirstPlacement');
+            const introduced = WindowState.get(window, 'entranceIntroduced');
             const actor = window.get_compositor_private();
+            // A never-primed entrant still sits on its spawn rect, and a primed one that
+            // hasn't mapped yet only has a parked translation: neither is a real position.
+            if (pending && (!introduced || !actor || actor.is_destroyed() || !actor.mapped)) {
+                continue;
+            }
+            const old = window.get_frame_rect();
             const alive = actor && !actor.is_destroyed();
             const tx = alive ? actor.translation_x : 0;
             const ty = alive ? actor.translation_y : 0;
-            x = Math.max(x, Math.abs(rect.x - (old.x + tx)));
-            y = Math.max(y, Math.abs(rect.y - (old.y + ty)));
+            const dx = Math.abs(rect.x - (old.x + tx));
+            const dy = Math.abs(rect.y - (old.y + ty));
+            x = Math.max(x, dx);
+            y = Math.max(y, dy);
         }
         return { x, y };
     }
