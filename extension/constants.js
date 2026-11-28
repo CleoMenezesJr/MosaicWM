@@ -138,6 +138,8 @@ export const QUEUE_PROCESS_DELAY_MS = 100;   // Delay between processing window 
 
 export const MINIATURE_TARGET_SIZE_PX = 256;  // Longest side of a miniaturized window
 export const MINIATURE_MAX_SCALE = 0.9;  // Scale above which a thumbnail is barely smaller than its window
+// Share of its natural size a window keeps before the pack parks it as a miniature.
+export const MINIATURE_CROSSING_FRACTION = 0.5;
 // With 2 the least recent window moves three times as fast along its axis as the most recent,
 // so it's the first to cross into a thumbnail.
 export const ALLOCATOR_MRU_RATE_SLOPE = 2;

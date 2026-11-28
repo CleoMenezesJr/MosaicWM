@@ -297,10 +297,6 @@ export const TilingManager = GObject.registerClass({
         WindowState.set(window, 'targetSmartResizeSetAt', monotonicNow());
     }
 
-    getWindowMaximumSize(window) {
-        return frameMaxSize(window);
-    }
-
     isWindowAtMinimum(window, tolerance = 10) {
         const currentSize = this.getEffectiveWindowSize(window);
         const minSize = this.getWindowMinimumSize(window);
@@ -3449,9 +3445,7 @@ export const TilingManager = GObject.registerClass({
         const saved = WindowState.get(w, 'preferredSize') || WindowState.get(w, 'openingSize') || this.getEffectiveWindowSize(w);
         return windowSizeBounds({
             min: this.getWindowMinimumSize(w),
-            max: this.getWindowMaximumSize(w),
             saved,
-            workArea: tileArea,
             area: packingArea(tileArea),
         });
     }

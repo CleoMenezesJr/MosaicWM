@@ -34,8 +34,8 @@ export function axisOf(p) {
     return { total, pLim: Math.max(t, visibleShrinkAt(p)) * legA / total };
 }
 
-// A thumbnail close to its frame's size frees almost nothing and looks like the window itself.
-// Taken off preferred, since the frame is what this cap shrinks; it'd ratchet down each pass.
+// A thumbnail near its frame's size looks like the window. Only binds when preferred pins the
+// threshold (a window bigger than the area); taken off preferred so it can't ratchet down.
 function visibleShrinkAt(p) {
     const at = axis => {
         const span = p.preferred[axis] - p.min[axis];

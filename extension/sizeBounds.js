@@ -3,9 +3,11 @@
 // Bounds the allocator reads for one participant: what the client enforces, what the
 // window wants, and the point where it becomes a thumbnail.
 
+import { MINIATURE_CROSSING_FRACTION } from './constants.js';
+
 // Neither preferred nor threshold may sit under what the client enforces, and a saved
 // preferred can. Nor past the packing area, where an arrival held at it can't fit even alone.
-export function windowSizeBounds({ min, max, saved, workArea, area }) {
+export function windowSizeBounds({ min, saved, area }) {
     const natural = {
         width: Math.max(saved.width, min.width),
         height: Math.max(saved.height, min.height),
@@ -15,12 +17,11 @@ export function windowSizeBounds({ min, max, saved, workArea, area }) {
         height: Math.max(Math.min(natural.height, area.height), min.height),
     };
 
-    // Some clients publish a max past the monitor, which pins the threshold to preferred.
-    const effectiveMaxW = Math.min(max?.width || workArea.width, workArea.width);
-    const effectiveMaxH = Math.min(max?.height || workArea.height, workArea.height);
+    // A parking point past the screen would never bind, so the preferred clamp collapses it
+    // and windows bigger than the area keep parking early.
     const threshold = {
-        width: Math.round(Math.min(Math.max((min.width + effectiveMaxW) / 2, min.width), preferred.width)),
-        height: Math.round(Math.min(Math.max((min.height + effectiveMaxH) / 2, min.height), preferred.height)),
+        width: Math.round(Math.min(Math.max(min.width, MINIATURE_CROSSING_FRACTION * natural.width), preferred.width)),
+        height: Math.round(Math.min(Math.max(min.height, MINIATURE_CROSSING_FRACTION * natural.height), preferred.height)),
     };
 
     return { natural, preferred, min: { width: min.width, height: min.height }, threshold };
