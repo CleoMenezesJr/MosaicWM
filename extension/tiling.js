@@ -2482,7 +2482,7 @@ export const TilingManager = GObject.registerClass({
     }
 
     // Enable and the Quick Settings toggle squeeze what's there rather than ejecting on re-enable,
-    // except past the parked cap: three is the most the workspace keeps.
+    // except past the parked cap: five is the most the workspace keeps.
     enforceWorkspaceFit(workspace, monitor) {
         this.retileWithAllocation(workspace, monitor, null, { keepOversized: true });
     }
@@ -3508,11 +3508,13 @@ export const TilingManager = GObject.registerClass({
         const heldFits = holdArrangement ? this._heldArrangementFits(participants, tileArea) : null;
         if (this._canReuseAllocation(memo, key, live, participants, heldFits ?? anyFits)) return memo.result;
 
+        const area = packingArea(tileArea);
         const allocate = fits => sizeAllocator.allocate({
             participants,
             fits,
             previousS: memo?.result.fits ? memo.result.s : null,
             allowRestore: !live,
+            minFreedArea: constants.MINIATURE_MIN_FREED_FRACTION * area.width * area.height,
         });
         const result = this._pickAllocation(allocate, anyFits, heldFits, participants);
         const flipped = participants.map(p => ({ ...p, mode: result.entries.get(p.id)?.mode ?? p.mode }));

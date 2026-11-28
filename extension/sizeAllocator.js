@@ -98,12 +98,28 @@ export function ratesOf(participants, slope) {
     return rates;
 }
 
+// A park whose thumbnail is not smaller than the window at its minimum frees nothing; the solver
+// would only add a click. Below the pack-share floor, keep the window and let someone else shrink.
+function parkFreesArea(p, pos, minFreedArea) {
+    if (!(minFreedArea > 0)) return true;
+    const { legA, total } = legsOf(p);
+    const windowPos = total > 0 ? Math.min(pos, legA / total) : Math.min(pos, 1);
+    const windowSize = sizeFor(p, 'window', windowPos);
+    const thumbSize = sizeFor(p, 'thumbnail', pos);
+    return windowSize.width * windowSize.height - thumbSize.width * thumbSize.height >= minFreedArea;
+}
+
 function entriesAt(participants, rates, s, opts) {
     const entries = participants.map(p => {
         if (p.fixed) return { id: p.id, mode: p.mode, size: { ...p.current }, pos: null };
         let pos = Math.min(1, s * rates.get(p.id));
         if (p.capAtThreshold) pos = Math.min(pos, axisOf(p).pLim);
-        const mode = resolveMode(p, pos, opts);
+        let mode = resolveMode(p, pos, opts);
+        if (mode === 'thumbnail' && p.mode !== 'thumbnail' && !parkFreesArea(p, pos, opts.minFreedArea)) {
+            mode = 'window';
+            const { legA, total } = legsOf(p);
+            pos = total > 0 ? Math.min(pos, legA / total) : pos;
+        }
         return { id: p.id, mode, size: sizeFor(p, mode, pos), pos };
     });
     holdRestoresToRecency(participants, entries);
@@ -176,12 +192,13 @@ export function allocate({
     restoreMarginPx = constants.MINIATURE_RESTORE_HYSTERESIS_PX,
     slope = constants.ALLOCATOR_MRU_RATE_SLOPE,
     tolerancePx = constants.FIT_SCALE_SEARCH_TOLERANCE_PX,
+    minFreedArea = 0,
 }) {
     // Each extra run (crossing settle, head hold, one-as-window) starts from the s the last one
     // found; they land within a step or two of each other, so the prior answer saves a full search.
     let warm = previousS;
     const once = pool => {
-        const result = allocateOnce(pool, fits, warm, { restoreMarginPx, allowRestore }, slope, tolerancePx);
+        const result = allocateOnce(pool, fits, warm, { restoreMarginPx, allowRestore, minFreedArea }, slope, tolerancePx);
         if (result.fits) warm = result.s;
         return result;
     };

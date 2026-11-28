@@ -140,9 +140,12 @@ export const MINIATURE_TARGET_SIZE_PX = 256;  // Longest side of a miniaturized 
 export const MINIATURE_MAX_SCALE = 0.9;  // Scale above which a thumbnail is barely smaller than its window
 // Share of its natural size a window keeps before the pack parks it as a miniature.
 export const MINIATURE_CROSSING_FRACTION = 0.5;
+// A park has to free at least this share of the pack's area; below it the miniature is a click
+// that returns nothing, so the window stays a window and the solver shrinks whoever has room.
+export const MINIATURE_MIN_FREED_FRACTION = 0.03;
 // Beyond this the parked set stops reading at a glance; the next window leaves for another
 // workspace instead of shrinking the set further.
-export const MINIATURE_MAX_PARKED = 3;
+export const MINIATURE_MAX_PARKED = 5;
 // With 2 the least recent window moves three times as fast along its axis as the most recent,
 // so it's the first to cross into a thumbnail.
 export const ALLOCATOR_MRU_RATE_SLOPE = 2;
