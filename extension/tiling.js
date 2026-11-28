@@ -3477,14 +3477,15 @@ export const TilingManager = GObject.registerClass({
         return !!min && !!max && min.width >= max.width && min.height >= max.height;
     }
 
-    // The pass's own subject (arrival, re-include, sacred return, restore) stays a window; the
-    // user just asked for it.
+    // The pass's own subject (arrival, re-include, sacred return, restore) and the focused window
+    // stay windows; the user just asked for one of them.
     _isCappedParticipant(w, reference) {
         return isCappedParticipant({
             id: w.get_id(),
             referenceId: reference?.get_id() ?? null,
             arrivalPending: this._isArrivalPending(w),
             restoringFromMiniature: WindowState.get(w, 'restoringFromMiniature') === true,
+            focusedId: global.display.get_focus_window()?.get_id() ?? null,
         });
     }
 

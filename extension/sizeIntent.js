@@ -12,10 +12,10 @@ export function isFixedParticipant({ id, resizingWindowId, allowsResize, pinned,
     return id === resizingWindowId || (!allowsResize && !pinned) || !reliable;
 }
 
-// The pass's own subject (arrival, re-include, sacred return, restore) stays a window; the
-// user just asked for it.
-export function isCappedParticipant({ id, referenceId, arrivalPending, restoringFromMiniature }) {
-    return id === referenceId || arrivalPending || restoringFromMiniature;
+// The pass's own subject (arrival, re-include, sacred return, restore) and the focused window
+// stay windows; the user just asked for one of them.
+export function isCappedParticipant({ id, referenceId, arrivalPending, restoringFromMiniature, focusedId }) {
+    return id === referenceId || id === focusedId || arrivalPending || restoringFromMiniature;
 }
 
 export function sizeAtLongestSide(refSize, targetPx) {
