@@ -2528,8 +2528,9 @@ export const TilingManager = GObject.registerClass({
         return { stop: true };
     }
 
-    // Newest goes, except a protected reference. A drag or live resize is exempt for the same
-    // reason the reference rung is: the drop decides, not the pass under the cursor.
+    // Newest goes, except a protected reference or the focused window. A drag or live resize
+    // is exempt for the same reason the reference rung is: the drop decides, not the pass.
+    // The ejected window leaves focus behind; the user was never watching it leave.
     _ejectForSurvivingOverflow(overflow, meta_windows, workspace, monitor, referenceProtected = false, reference = null) {
         if (!overflow || this.isDragging || this.isResizing) return false;
 
@@ -2537,8 +2538,10 @@ export const TilingManager = GObject.registerClass({
         // they just asked for. The reference of a keep-oversized pass carries the same promise:
         // the caller already fitted it, so overflow resolves by miniaturizing the others.
         const protectedWindow = referenceProtected ? reference : null;
+        const focused = global.display.get_focus_window();
         const candidates = meta_windows.filter(w =>
             w !== protectedWindow &&
+            w !== focused &&
             !this._windowingManager.isExcluded(w) &&
             !WindowState.get(w, 'restoringFromMiniature'));
         if (candidates.length <= 1) return false;
@@ -2550,7 +2553,7 @@ export const TilingManager = GObject.registerClass({
         }, candidates[0]);
 
         Logger.log(`Overflow survived miniaturization, ejecting newest window ${newest.get_id()}`);
-        this._windowingManager.moveOversizedWindow(newest).then((targetWorkspace) => {
+        this._windowingManager.moveOversizedWindow(newest, { switchFocus: false }).then((targetWorkspace) => {
             this.invalidateLayoutCache();
             this.tileWorkspaceWindows(workspace, null, monitor, true);
             // The focus guard after miniaturizing blocks the arrival's own restore, so the
