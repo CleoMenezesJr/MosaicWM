@@ -140,6 +140,9 @@ export const MINIATURE_TARGET_SIZE_PX = 256;  // Longest side of a miniaturized 
 export const MINIATURE_MAX_SCALE = 0.9;  // Scale above which a thumbnail is barely smaller than its window
 // Share of its natural size a window keeps before the pack parks it as a miniature.
 export const MINIATURE_CROSSING_FRACTION = 0.5;
+// Beyond this the parked set stops reading at a glance; the next window leaves for another
+// workspace instead of shrinking the set further.
+export const MINIATURE_MAX_PARKED = 3;
 // With 2 the least recent window moves three times as fast along its axis as the most recent,
 // so it's the first to cross into a thumbnail.
 export const ALLOCATOR_MRU_RATE_SLOPE = 2;

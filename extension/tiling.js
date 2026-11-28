@@ -2481,8 +2481,8 @@ export const TilingManager = GObject.registerClass({
         this._animationsManager?.animateReTiling(layouts);
     }
 
-    // Enable and the Quick Settings toggle squeeze what's there; ejecting on re-enable would scatter
-    // the user's windows.
+    // Enable and the Quick Settings toggle squeeze what's there rather than ejecting on re-enable,
+    // except past the parked cap: three is the most the workspace keeps.
     enforceWorkspaceFit(workspace, monitor) {
         this.retileWithAllocation(workspace, monitor, null, { keepOversized: true });
     }
@@ -2668,10 +2668,18 @@ export const TilingManager = GObject.registerClass({
         this._pinnedRolesUnchanged = pin.roles === roles;
     }
 
-    // A single window never overflows; a maximized/fullscreen sibling always forces it.
-    _determineOverflow(tile_info, workspace_windows) {
+    // A single window never overflows; a maximized/fullscreen sibling or an over-cap parked set
+    // always forces it.
+    _determineOverflow(tile_info, workspace_windows, allocation = null) {
         if (workspace_windows.length <= 1) return false;
         if (workspace_windows.some(w => this._windowingManager.isMaximizedOrFullscreen(w))) return true;
+        const parked = allocation
+            ? [...allocation.entries.values()].filter(e => e.mode === 'thumbnail').length
+            : 0;
+        if (parked > constants.MINIATURE_MAX_PARKED) {
+            Logger.log(`Parked set over cap (${parked} > ${constants.MINIATURE_MAX_PARKED}), overflowing`);
+            return true;
+        }
         return tile_info.overflow;
     }
 
@@ -2783,7 +2791,7 @@ export const TilingManager = GObject.registerClass({
         const { meta_windows, windows, work_area, monitor, workspace_windows, edgeTiledWindows } = ctx;
 
         const tileArea = this._effectiveTileArea(work_area);
-        this._runAllocation(meta_windows, windows, tileArea, workspace, reference_meta_window, !dryRun);
+        const allocation = this._runAllocation(meta_windows, windows, tileArea, workspace, reference_meta_window, !dryRun);
 
         this._preapplyPendingMiniSizes(windows);
 
@@ -2796,7 +2804,7 @@ export const TilingManager = GObject.registerClass({
         let tile_info = this._tile(windows, tileArea, dryRun);
         this._activePinnedShape = null;
         this._activePinnedVertical = null;
-        const overflow = this._determineOverflow(tile_info, workspace_windows);
+        const overflow = this._determineOverflow(tile_info, workspace_windows, allocation);
 
         if (dryRun) return this._dryRunResult(overflow, workspace);
 
